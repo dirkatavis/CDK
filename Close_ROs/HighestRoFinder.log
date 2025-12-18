@@ -1,0 +1,44 @@
+11/8/2025 11:23:57 AM | ==============================================
+11/8/2025 11:23:57 AM |           ***Starting New Run***
+11/8/2025 11:23:57 AM | ==============================================
+
+11/8/2025 11:24:18 AM | RESULT: The highest valid sequence number is: 2178
+11/8/2025 11:25:44 AM | ==============================================
+11/8/2025 11:25:44 AM |           ***Starting New Run***
+11/8/2025 11:25:44 AM | ==============================================
+
+11/8/2025 11:26:21 AM | RESULT: The highest valid sequence number is: 2167
+11/11/2025 8:38:38 AM | ==============================================
+11/11/2025 8:38:38 AM |           ***Starting New Run***
+11/11/2025 8:38:38 AM | ==============================================
+11/11/2025 8:38:38 AM | Starting binary search between 0 and 3000
+11/11/2025 8:38:39 AM | RO Search: 1500 | ROFound: YES
+11/11/2025 8:38:41 AM | RO Search: 2250 | ROFound: YES
+11/11/2025 8:38:43 AM | RO Search: 2625 | ROFound: NO
+11/11/2025 8:38:44 AM | RO Search: 2437 | ROFound: YES
+11/11/2025 8:38:46 AM | RO Search: 2531 | ROFound: NO
+11/11/2025 8:38:47 AM | RO Search: 2484 | ROFound: NO
+11/11/2025 8:38:48 AM | RO Search: 2460 | ROFound: NO
+11/11/2025 8:38:49 AM | RO Search: 2448 | ROFound: YES
+11/11/2025 8:38:51 AM | RO Search: 2454 | ROFound: NO
+11/11/2025 8:38:52 AM | RO Search: 2451 | ROFound: NO
+11/11/2025 8:38:53 AM | RO Search: 2449 | ROFound: YES
+11/11/2025 8:38:55 AM | RO Search: 2450 | ROFound: YES
+11/11/2025 8:38:56 AM | RESULT: The highest valid sequence number is: 2450
+11/11/2025 10:24:56 AM | ==============================================
+11/11/2025 10:24:56 AM |           ***Starting New Run***
+11/11/2025 10:24:56 AM | ==============================================
+11/11/2025 10:24:56 AM | Starting binary search between 0 and 3000
+11/11/2025 10:24:57 AM | RO Search: 1500 | ROFound: YES
+11/11/2025 10:24:59 AM | RO Search: 2250 | ROFound: YES
+11/11/2025 10:25:01 AM | RO Search: 2625 | ROFound: NO
+11/11/2025 10:25:02 AM | RO Search: 2437 | ROFound: YES
+11/11/2025 10:25:04 AM | RO Search: 2531 | ROFound: NO
+11/11/2025 10:25:05 AM | RO Search: 2484 | ROFound: NO
+11/11/2025 10:25:06 AM | RO Search: 2460 | ROFound: NO
+11/11/2025 10:25:07 AM | RO Search: 2448 | ROFound: NO
+11/11/2025 10:25:08 AM | RO Search: 2442 | ROFound: YES
+11/11/2025 10:25:10 AM | RO Search: 2445 | ROFound: NO
+11/11/2025 10:25:11 AM | RO Search: 2443 | ROFound: YES
+11/11/2025 10:25:13 AM | RO Search: 2444 | ROFound: YES
+11/11/2025 10:25:14 AM | RESULT: The highest valid sequence number is: 2444

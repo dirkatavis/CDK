@@ -1,0 +1,792 @@
+---------------------------
+BZWhll : MsgBox
+---------------------------
+Inside DetermineDebugMode: DEBUG_LOGGING is True
+---------------------------
+OK   
+---------------------------
+
+---------------------------
+BZWhll : MsgBox
+---------------------------
+After InitializeObjects: DEBUG_LOGGING is True
+---------------------------
+OK   
+---------------------------
+
+---------------------------
+BZWhll : MsgBox
+---------------------------
+LogResultWithSource - Message: DEBUG_LOGGING is set to: True
+
+g_LogBuffer BEFORE: 
+---------------------------
+OK   
+---------------------------
+
+---------------------------
+BZWhll : MsgBox
+---------------------------
+LogResultWithSource - g_LogBuffer AFTER: 10/30/2025 12:40:26 PM [INFO] [InitializeObjects] DEBUG_LOGGING is set to: True
+
+
+---------------------------
+OK   
+---------------------------
+
+
+
+
+
+---------------------------
+BZWhll : MsgBox
+---------------------------
+g_LogBuffer after direct test:
+
+TEST ENTRY - Direct Add
+
+
+---------------------------
+OK   
+---------------------------
+
+
+
+---------------------------
+BZWhll : MsgBox
+---------------------------
+LogResultWithSource - Message: Script started - Initializing...
+
+g_LogBuffer BEFORE: TEST ENTRY - Direct Add
+
+
+---------------------------
+OK   
+---------------------------
+
+---------------------------
+BZWhll : MsgBox
+---------------------------
+LogResultWithSource - g_LogBuffer AFTER: TEST ENTRY - Direct Add
+
+10/30/2025 12:41:17 PM [INFO] [Main] Script started - Initializing...
+
+
+---------------------------
+OK   
+---------------------------
+
+
+
+
+
+
+---------------------------
+BZWhll : MsgBox
+---------------------------
+g_LogBuffer after LogResultWithSource:
+
+TEST ENTRY - Direct Add
+
+10/30/2025 12:41:17 PM [INFO] [Main] Script started - Initializing...
+
+
+---------------------------
+OK   
+---------------------------
+
+
+---------------------------
+BZWhll : MsgBox
+---------------------------
+g_LogBuffer content before first flush:
+
+TEST ENTRY - Direct Add
+
+10/30/2025 12:41:17 PM [INFO] [Main] Script started - Initializing...
+
+
+---------------------------
+OK   
+---------------------------
+
+---------------------------
+BZWhll : MsgBox
+---------------------------
+DEBUG_LOGGING is: True
+---------------------------
+OK   
+---------------------------
+
+
+
+---------------------------
+BlueZone : MsgBox
+---------------------------
+LogResultWithSource - Message: Connected to BlueZone.
+
+g_LogBuffer BEFORE: 
+---------------------------
+OK   
+---------------------------
+
+
+
+
+
+---------------------------
+BlueZone : MsgBox
+---------------------------
+LogResultWithSource - g_LogBuffer AFTER: 10/30/2025 12:42:13 PM [INFO] [ConnectBlueZone] Connected to BlueZone.
+
+
+---------------------------
+OK   
+---------------------------
+
+---------------------------
+BlueZone : MsgBox
+---------------------------
+LogResultWithSource - Message: 859269 - Processing Sequence: 859269
+
+g_LogBuffer BEFORE: 10/30/2025 12:42:13 PM [INFO] [ConnectBlueZone] Connected to BlueZone.
+
+
+---------------------------
+OK   
+---------------------------
+
+
+
+---------------------------
+BlueZone : MsgBox
+---------------------------
+LogResultWithSource - g_LogBuffer AFTER: 10/30/2025 12:42:13 PM [INFO] [ConnectBlueZone] Connected to BlueZone.
+
+10/30/2025 12:42:37 PM [INFO] [ProcessCSV] 859269 - Processing Sequence: 859269
+
+
+---------------------------
+OK   
+---------------------------
+
+
+---------------------------
+BlueZone : MsgBox
+---------------------------
+LogResultWithSource - Message: CSV raw line sent: '859269'
+
+g_LogBuffer BEFORE: 10/30/2025 12:42:13 PM [INFO] [ConnectBlueZone] Connected to BlueZone.
+
+10/30/2025 12:42:37 PM [INFO] [ProcessCSV] 859269 - Processing Sequence: 859269
+
+
+---------------------------
+OK   
+---------------------------
+
+
+
+---------------------------
+BlueZone : MsgBox
+---------------------------
+LogResultWithSource - g_LogBuffer AFTER: 10/30/2025 12:42:13 PM [INFO] [ConnectBlueZone] Connected to BlueZone.
+
+10/30/2025 12:42:37 PM [INFO] [ProcessCSV] 859269 - Processing Sequence: 859269
+
+10/30/2025 12:43:07 PM [DEBUG] [ProcessCSV] CSV raw line sent: '859269'
+
+
+---------------------------
+OK   
+---------------------------
+
+
+
+---------------------------
+BlueZone : MsgBox
+---------------------------
+LogResultWithSource - Message: Trimmed RO Number: '859269' (Length: 6)
+
+g_LogBuffer BEFORE: 10/30/2025 12:42:13 PM [INFO] [ConnectBlueZone] Connected to BlueZone.
+
+10/30/2025 12:42:37 PM [INFO] [ProcessCSV] 859269 - Processing Sequence: 859269
+
+10/30/2025 12:43:07 PM [DEBUG] [ProcessCSV] CSV raw line sent: '859269'
+
+
+---------------------------
+OK   
+---------------------------
+
+
+---------------------------
+BlueZone : MsgBox
+---------------------------
+LogResultWithSource - g_LogBuffer AFTER: 10/30/2025 12:42:13 PM [INFO] [ConnectBlueZone] Connected to BlueZone.
+
+10/30/2025 12:42:37 PM [INFO] [ProcessCSV] 859269 - Processing Sequence: 859269
+
+10/30/2025 12:43:07 PM [DEBUG] [ProcessCSV] CSV raw line sent: '859269'
+
+10/30/2025 12:43:46 PM [DEBUG] [ProcessCSV] Trimmed RO Number: '859269' (Length: 6)
+
+
+---------------------------
+OK   
+---------------------------
+
+---------------------------
+BlueZone : MsgBox
+---------------------------
+LogResultWithSource - Message: Entering LogScreenSnapshot for: Main_Start
+
+g_LogBuffer BEFORE: 10/30/2025 12:42:13 PM [INFO] [ConnectBlueZone] Connected to BlueZone.
+
+10/30/2025 12:42:37 PM [INFO] [ProcessCSV] 859269 - Processing Sequence: 859269
+
+10/30/2025 12:43:07 PM [DEBUG] [ProcessCSV] CSV raw line sent: '859269'
+
+10/30/2025 12:43:46 PM [DEBUG] [ProcessCSV] Trimmed RO Number: '859269' (Length: 6)
+
+
+---------------------------
+OK   
+---------------------------
+
+
+---------------------------
+BlueZone : MsgBox
+---------------------------
+LogResultWithSource - g_LogBuffer AFTER: 10/30/2025 12:42:13 PM [INFO] [ConnectBlueZone] Connected to BlueZone.
+
+10/30/2025 12:42:37 PM [INFO] [ProcessCSV] 859269 - Processing Sequence: 859269
+
+10/30/2025 12:43:07 PM [DEBUG] [ProcessCSV] CSV raw line sent: '859269'
+
+10/30/2025 12:43:46 PM [DEBUG] [ProcessCSV] Trimmed RO Number: '859269' (Length: 6)
+
+10/30/2025 12:44:15 PM [DEBUG] [LogScreenSnapshot] Entering LogScreenSnapshot for: Main_Start
+
+
+---------------------------
+OK   
+---------------------------
+
+---------------------------
+BlueZone : MsgBox
+---------------------------
+LogResultWithSource - Message: ScreenSnapshot(Main_Start) - Full Screen:\n================================================================================\nONSITE PLUS SERVICE            (PFC) POST FINAL CHARGES            30OCT25 12:33\nREVERSED VIDEO LINES REQUIRE POSTING                                            \n                           REPAIR ORDERS TO BE POSTED                           \nSEQ TAG-NO SA#.... DT RO-NO..... CUSTOMER... VEHICLE.. PROMISED... LINES........\n  1 T50727 74663   S1 827134                 23 TESLA  18JAN 17:00 CDBA         \n  2 T55789 7417    S1 836745                 24 KIA SP 16MAY 17:00 CBA          \n  3 T51018 99      S1 844123                 23 TESLA  09JUL 17:00 CBA          \n  4 T54259 18889   S1 847202                 24 CX-90  06AUG 17:00 ABC          \n  5 T56339 72900   S1 847214                 25 ODYSSE 06AUG 17:00 CBA          \n  6 T70389 7417    S1 847229                 22 HONDA  06AUG 17:00 CBA          \n  7 T55137 339     S1 850879                 24 VOLKSW 29AUG 17:00 DCBA         \n  8 T70397 10347   S1 851310                 22 TOYOTA 02SEP 17:00 DCBA         \n  9 T70427 72925   S1 851516                 23 KIA K5 03SEP 17:00 DCBEA        \n 10 T54548 339     S1 851522                 24 Forte  03SEP 17:00 CBAD         \n 11 T54622 72925   S1 851524                 24 CHEVRO 03SEP 17:00 DCBA         \n 12 T50853 72925   S1 851562                 23 HYUNDA 03SEP 17:00 ECDBA        \n 13 T54040 10347   S1 851568                 24 MALIBU 03SEP 17:00 CBDA         \n 14 T52337 18889   S1 851631                 23 MALIBU 04SEP 17:00 EBDCA        \n 15 T53501 613     S1 851648                 24 MALIBU 04SEP 17:00 BCEDA        \n 16 T77719 18266   S1 851652                 23 CHEVY  04SEP 17:00 DCBA         \n 17 T50202 5910    S1 851669                 24 Altima 04SEP 17:00 CBA          \n                                                               MORE ON NEXT PAGE\nCOMMAND:(SEQ#/E/N/B/?)                                                          \n                                                                                \n================================================================================
+
+g_LogBuffer BEFORE: 10/30/2025 12:42:13 PM [INFO] [ConnectBlueZone] Connected to BlueZone.
+
+10/30/2025 12:42:37 PM [INFO] [ProcessCSV] 859269 - Processing Sequence: 859269
+
+10/30/2025 12:43:07 PM [DEBUG] [ProcessCSV] CSV raw line sent: '859269'
+
+10/30/2025 12:43:46 PM [DEBUG] [ProcessCSV] Trimmed RO Number: '859269' (Length: 6)
+
+10/30/2025 12:44:15 PM [DEBUG] [LogScreenSnapshot] Entering LogScreenSnapshot for: Main_Start
+
+
+---------------------------
+OK   
+---------------------------
+
+
+---------------------------
+BlueZone : MsgBox
+---------------------------
+LogResultWithSource - g_LogBuffer AFTER: 10/30/2025 12:42:13 PM [INFO] [ConnectBlueZone] Connected to BlueZone.
+
+10/30/2025 12:42:37 PM [INFO] [ProcessCSV] 859269 - Processing Sequence: 859269
+
+10/30/2025 12:43:07 PM [DEBUG] [ProcessCSV] CSV raw line sent: '859269'
+
+10/30/2025 12:43:46 PM [DEBUG] [ProcessCSV] Trimmed RO Number: '859269' (Length: 6)
+
+10/30/2025 12:44:15 PM [DEBUG] [LogScreenSnapshot] Entering LogScreenSnapshot for: Main_Start
+
+10/30/2025 12:44:33 PM [DEBUG] [LogScreenSnapshot] ScreenSnapshot(Main_Start) - Full Screen:\n================================================================================\nONSITE PLUS SERVICE            (PFC) POST FINAL CHARGES            30OCT25 12:33\nREVERSED VIDEO LINES REQUIRE POSTING                                            \n                           REPAIR ORDERS TO BE POSTED                           \nSEQ TAG-NO SA#.... DT RO-NO..... CUSTOMER... VEHICLE.. PROMISED... LINES........\n  1 T50727 74663   S1 827134                 23 TESLA  18JAN 17:00 CDBA         \n  2 T55789 7417    S1 836745                 24 KIA SP 16MAY 17:00 CBA          \n  3 T51018 99      S1 844123                 23 TESLA  09JUL 17:00 CBA          \n  4 T54259 18889   S1 847202                 24 CX-90  06AUG 17:00 ABC          \n  5 T56339 72900   S1 847214                 25 ODYSSE 06AUG 17:00 CBA          \n  6 T70389 7417    S1 847229                 22 HONDA  06AUG 17:00 CBA          \n  7 T55137 339     S1 850879                 24 VOLKSW 29AUG 17:00 DCBA         \n  8 T70397 10347   S1 851310                 22 TOYOTA 02SEP 17:00 DCBA         \n  9 T70427 72925   S1 851516                 23 KIA K5 03SEP 17:00 DCBEA        \n 10 T54548 339     S1 851522                 24 Forte  03SEP 17:00 CBAD         \n 11 T54622 72925   S1 851524                 24 CHEVRO 03SEP 17:00 DCBA         \n 12 T50853 72925   S1 851562                 23 HYUNDA 03SEP 17:00 ECDBA        \n 13 T54040 10347   S1 851568                 24 MALIBU 03SEP 17:00 CBDA         \n 14 T52337 18889   S1 851631                 23 MALIBU 04SEP 17:00 EBDCA        \n 15 T53501 613     S1 851648                 24 MALIBU 04SEP 17:00 BCEDA        \n 16 T77719 18266   S1 851652                 23 CHEVY  04SEP 17:00 DCBA         \n 17 T50202 5910    S1 851669                 24 Altima 04SEP 17:00 CBA          \n                                                               MORE ON NEXT PAGE\nCOMMAND:(SEQ#/E/N/B/?)                                                          \n                                                                                \n================================================================================
+
+
+---------------------------
+OK   
+---------------------------
+
+
+
+---------------------------
+BlueZone : MsgBox
+---------------------------
+LogResultWithSource - Message: WaitForPrompt called - Looking for: [COMMAND: (SEQ#] Value: [859269] SendEnter: True Timeout: 2000ms
+
+g_LogBuffer BEFORE: 10/30/2025 12:42:13 PM [INFO] [ConnectBlueZone] Connected to BlueZone.
+
+10/30/2025 12:42:37 PM [INFO] [ProcessCSV] 859269 - Processing Sequence: 859269
+
+10/30/2025 12:43:07 PM [DEBUG] [ProcessCSV] CSV raw line sent: '859269'
+
+10/30/2025 12:43:46 PM [DEBUG] [ProcessCSV] Trimmed RO Number: '859269' (Length: 6)
+
+10/30/2025 12:44:15 PM [DEBUG] [LogScreenSnapshot] Entering LogScreenSnapshot for: Main_Start
+
+10/30/2025 12:44:33 PM [DEBUG] [LogScreenSnapshot] ScreenSnapshot(Main_Start) - Full Screen:\n================================================================================\nONSITE PLUS SERVICE            (PFC) POST FINAL CHARGES            30OCT25 12:33\nREVERSED VIDEO LINES REQUIRE POSTING                                            \n                           REPAIR ORDERS TO BE POSTED                           \nSEQ TAG-NO SA#.... DT RO-NO..... CUSTOMER... VEHICLE.. PROMISED... LINES........\n  1 T50727 74663   S1 827134                 23 TESLA  18JAN 17:00 CDBA         \n  2 T55789 7417    S1 836745                 24 KIA SP 16MAY 17:00 CBA          \n  3 T51018 99      S1 844123                 23 TESLA  09JUL 17:00 CBA          \n  4 T54259 18889   S1 847202                 24 CX-90  06AUG 17:00 ABC          \n  5 T56339 72900   S1 847214                 25 ODYSSE 06AUG 17:00 CBA          \n  6 T70389 7417    S1 847229                 22 HONDA  06AUG 17:00 CBA          \n  7 T55137 339     S1 850879                 24 VOLKSW 29AUG 17:00 DCBA         \n  8 T70397 10347   S1 851310                 22 TOYOTA 02SEP 17:00 DCBA         \n  9 T70427 72925   S1 851516                 23 KIA K5 03SEP 17:00 DCBEA        \n 10 T54548 339     S1 851522                 24 Forte  03SEP 17:00 CBAD         \n 11 T54622 72925   S1 851524                 24 CHEVRO 03SEP 17:00 DCBA         \n 12 T50853 72925   S1 851562                 23 HYUNDA 03SEP 17:00 ECDBA        \n 13 T54040 10347   S1 851568                 24 MALIBU 03SEP 17:00 CBDA         \n 14 T52337 18889   S1 851631                 23 MALIBU 04SEP 17:00 EBDCA        \n 15 T53501 613     S1 851648                 24 MALIBU 04SEP 17:00 BCEDA        \n 16 T77719 18266   S1 851652                 23 CHEVY  04SEP 17:00 DCBA         \n 17 T50202 5910    S1 851669                 24 Altima 04SEP 17:00 CBA          \n                                                               MORE ON NEXT PAGE\nCOMMAND:(SEQ#/E/N/B/?)                                                          \n                                                                                \n================================================================================
+
+
+---------------------------
+OK   
+---------------------------
+
+
+---------------------------
+BlueZone : MsgBox
+---------------------------
+LogResultWithSource - g_LogBuffer AFTER: 10/30/2025 12:42:13 PM [INFO] [ConnectBlueZone] Connected to BlueZone.
+
+10/30/2025 12:42:37 PM [INFO] [ProcessCSV] 859269 - Processing Sequence: 859269
+
+10/30/2025 12:43:07 PM [DEBUG] [ProcessCSV] CSV raw line sent: '859269'
+
+10/30/2025 12:43:46 PM [DEBUG] [ProcessCSV] Trimmed RO Number: '859269' (Length: 6)
+
+10/30/2025 12:44:15 PM [DEBUG] [LogScreenSnapshot] Entering LogScreenSnapshot for: Main_Start
+
+10/30/2025 12:44:33 PM [DEBUG] [LogScreenSnapshot] ScreenSnapshot(Main_Start) - Full Screen:\n================================================================================\nONSITE PLUS SERVICE            (PFC) POST FINAL CHARGES            30OCT25 12:33\nREVERSED VIDEO LINES REQUIRE POSTING                                            \n                           REPAIR ORDERS TO BE POSTED                           \nSEQ TAG-NO SA#.... DT RO-NO..... CUSTOMER... VEHICLE.. PROMISED... LINES........\n  1 T50727 74663   S1 827134                 23 TESLA  18JAN 17:00 CDBA         \n  2 T55789 7417    S1 836745                 24 KIA SP 16MAY 17:00 CBA          \n  3 T51018 99      S1 844123                 23 TESLA  09JUL 17:00 CBA          \n  4 T54259 18889   S1 847202                 24 CX-90  06AUG 17:00 ABC          \n  5 T56339 72900   S1 847214                 25 ODYSSE 06AUG 17:00 CBA          \n  6 T70389 7417    S1 847229                 22 HONDA  06AUG 17:00 CBA          \n  7 T55137 339     S1 850879                 24 VOLKSW 29AUG 17:00 DCBA         \n  8 T70397 10347   S1 851310                 22 TOYOTA 02SEP 17:00 DCBA         \n  9 T70427 72925   S1 851516                 23 KIA K5 03SEP 17:00 DCBEA        \n 10 T54548 339     S1 851522                 24 Forte  03SEP 17:00 CBAD         \n 11 T54622 72925   S1 851524                 24 CHEVRO 03SEP 17:00 DCBA         \n 12 T50853 72925   S1 851562                 23 HYUNDA 03SEP 17:00 ECDBA        \n 13 T54040 10347   S1 851568                 24 MALIBU 03SEP 17:00 CBDA         \n 14 T52337 18889   S1 851631                 23 MALIBU 04SEP 17:00 EBDCA        \n 15 T53501 613     S1 851648                 24 MALIBU 04SEP 17:00 BCEDA        \n 16 T77719 18266   S1 851652                 23 CHEVY  04SEP 17:00 DCBA         \n 17 T50202 5910    S1 851669                 24 Altima 04SEP 17:00 CBA          \n                                                               MORE ON NEXT PAGE\nCOMMAND:(SEQ#/E/N/B/?)                                                          \n                                                                                \n================================================================================
+
+10/30/2025 12:44:53 PM [INFO] [WaitForPrompt] WaitForPrompt called - Looking for: [COMMAND: (SEQ#] Value: [859269] SendEnter: True Timeout: 2000ms
+
+
+---------------------------
+OK   
+---------------------------
+
+---------------------------
+BlueZone : MsgBox
+---------------------------
+LogResultWithSource - Message: Entering LogScreenSnapshot for: WaitForPrompt_Check
+
+g_LogBuffer BEFORE: 10/30/2025 12:42:13 PM [INFO] [ConnectBlueZone] Connected to BlueZone.
+
+10/30/2025 12:42:37 PM [INFO] [ProcessCSV] 859269 - Processing Sequence: 859269
+
+10/30/2025 12:43:07 PM [DEBUG] [ProcessCSV] CSV raw line sent: '859269'
+
+10/30/2025 12:43:46 PM [DEBUG] [ProcessCSV] Trimmed RO Number: '859269' (Length: 6)
+
+10/30/2025 12:44:15 PM [DEBUG] [LogScreenSnapshot] Entering LogScreenSnapshot for: Main_Start
+
+10/30/2025 12:44:33 PM [DEBUG] [LogScreenSnapshot] ScreenSnapshot(Main_Start) - Full Screen:\n================================================================================\nONSITE PLUS SERVICE            (PFC) POST FINAL CHARGES            30OCT25 12:33\nREVERSED VIDEO LINES REQUIRE POSTING                                            \n                           REPAIR ORDERS TO BE POSTED                           \nSEQ TAG-NO SA#.... DT RO-NO..... CUSTOMER... VEHICLE.. PROMISED... LINES........\n  1 T50727 74663   S1 827134                 23 TESLA  18JAN 17:00 CDBA         \n  2 T55789 7417    S1 836745                 24 KIA SP 16MAY 17:00 CBA          \n  3 T51018 99      S1 844123                 23 TESLA  09JUL 17:00 CBA          \n  4 T54259 18889   S1 847202                 24 CX-90  06AUG 17:00 ABC          \n  5 T56339 72900   S1 847214                 25 ODYSSE 06AUG 17:00 CBA          \n  6 T70389 7417    S1 847229                 22 HONDA  06AUG 17:00 CBA          \n  7 T55137 339     S1 850879                 24 VOLKSW 29AUG 17:00 DCBA         \n  8 T70397 10347   S1 851310                 22 TOYOTA 02SEP 17:00 DCBA         \n  9 T70427 72925   S1 851516                 23 KIA K5 03SEP 17:00 DCBEA        \n 10 T54548 339     S1 851522                 24 Forte  03SEP 17:00 CBAD         \n 11 T54622 72925   S1 851524                 24 CHEVRO 03SEP 17:00 DCBA         \n 12 T50853 72925   S1 851562                 23 HYUNDA 03SEP 17:00 ECDBA        \n 13 T54040 10347   S1 851568                 24 MALIBU 03SEP 17:00 CBDA         \n 14 T52337 18889   S1 851631                 23 MALIBU 04SEP 17:00 EBDCA        \n 15 T53501 613     S1 851648                 24 MALIBU 04SEP 17:00 BCEDA        \n 16 T77719 18266   S1 851652                 23 CHEVY  04SEP 17:00 DCBA         \n 17 T50202 5910    S1 851669                 24 Altima 04SEP 17:00 CBA          \n                                                               MORE ON NEXT PAGE\nCOMMAND:(SEQ#/E/N/B/?)                                                          \n                                                                                \n================================================================================
+
+10/30/2025 12:44:53 PM [INFO] [WaitForPrompt] WaitForPrompt called - Looking for: [COMMAND: (SEQ#] Value: [859269] SendEnter: True Timeout: 2000ms
+
+
+---------------------------
+OK   
+---------------------------
+
+
+
+
+
+
+---------------------------
+BlueZone : MsgBox
+---------------------------
+LogResultWithSource - g_LogBuffer AFTER: 10/30/2025 12:42:13 PM [INFO] [ConnectBlueZone] Connected to BlueZone.
+
+10/30/2025 12:42:37 PM [INFO] [ProcessCSV] 859269 - Processing Sequence: 859269
+
+10/30/2025 12:43:07 PM [DEBUG] [ProcessCSV] CSV raw line sent: '859269'
+
+10/30/2025 12:43:46 PM [DEBUG] [ProcessCSV] Trimmed RO Number: '859269' (Length: 6)
+
+10/30/2025 12:44:15 PM [DEBUG] [LogScreenSnapshot] Entering LogScreenSnapshot for: Main_Start
+
+10/30/2025 12:44:33 PM [DEBUG] [LogScreenSnapshot] ScreenSnapshot(Main_Start) - Full Screen:\n================================================================================\nONSITE PLUS SERVICE            (PFC) POST FINAL CHARGES            30OCT25 12:33\nREVERSED VIDEO LINES REQUIRE POSTING                                            \n                           REPAIR ORDERS TO BE POSTED                           \nSEQ TAG-NO SA#.... DT RO-NO..... CUSTOMER... VEHICLE.. PROMISED... LINES........\n  1 T50727 74663   S1 827134                 23 TESLA  18JAN 17:00 CDBA         \n  2 T55789 7417    S1 836745                 24 KIA SP 16MAY 17:00 CBA          \n  3 T51018 99      S1 844123                 23 TESLA  09JUL 17:00 CBA          \n  4 T54259 18889   S1 847202                 24 CX-90  06AUG 17:00 ABC          \n  5 T56339 72900   S1 847214                 25 ODYSSE 06AUG 17:00 CBA          \n  6 T70389 7417    S1 847229                 22 HONDA  06AUG 17:00 CBA          \n  7 T55137 339     S1 850879                 24 VOLKSW 29AUG 17:00 DCBA         \n  8 T70397 10347   S1 851310                 22 TOYOTA 02SEP 17:00 DCBA         \n  9 T70427 72925   S1 851516                 23 KIA K5 03SEP 17:00 DCBEA        \n 10 T54548 339     S1 851522                 24 Forte  03SEP 17:00 CBAD         \n 11 T54622 72925   S1 851524                 24 CHEVRO 03SEP 17:00 DCBA         \n 12 T50853 72925   S1 851562                 23 HYUNDA 03SEP 17:00 ECDBA        \n 13 T54040 10347   S1 851568                 24 MALIBU 03SEP 17:00 CBDA         \n 14 T52337 18889   S1 851631                 23 MALIBU 04SEP 17:00 EBDCA        \n 15 T53501 613     S1 851648                 24 MALIBU 04SEP 17:00 BCEDA        \n 16 T77719 18266   S1 851652                 23 CHEVY  04SEP 17:00 DCBA         \n 17 T50202 5910    S1 851669                 24 Altima 04SEP 17:00 CBA          \n                                                               MORE ON NEXT PAGE\nCOMMAND:(SEQ#/E/N/B/?)                                                          \n                                                                                \n================================================================================
+
+10/30/2025 12:44:53 PM [INFO] [WaitForPrompt] WaitForPrompt called - Looking for: [COMMAND: (SEQ#] Value: [859269] SendEnter: True Timeout: 2000ms
+
+10/30/2025 12:45:14 PM [DEBUG] [LogScreenSnapshot] Entering LogScreenSnapshot for: WaitForPrompt_Check
+
+
+---------------------------
+OK   
+---------------------------
+
+
+
+
+---------------------------
+BlueZone : MsgBox
+---------------------------
+LogResultWithSource - Message: ScreenSnapshot(WaitForPrompt_Check): ONSITE PLUS SERVICE            (PFC) POST FINAL CHARGES            30OCT25 12:33REVERSED VIDEO LINES REQUIRE POSTING                                                                       REPAIR ORDERS TO BE POSTED                           
+
+g_LogBuffer BEFORE: 10/30/2025 12:42:13 PM [INFO] [ConnectBlueZone] Connected to BlueZone.
+
+10/30/2025 12:42:37 PM [INFO] [ProcessCSV] 859269 - Processing Sequence: 859269
+
+10/30/2025 12:43:07 PM [DEBUG] [ProcessCSV] CSV raw line sent: '859269'
+
+10/30/2025 12:43:46 PM [DEBUG] [ProcessCSV] Trimmed RO Number: '859269' (Length: 6)
+
+10/30/2025 12:44:15 PM [DEBUG] [LogScreenSnapshot] Entering LogScreenSnapshot for: Main_Start
+
+10/30/2025 12:44:33 PM [DEBUG] [LogScreenSnapshot] ScreenSnapshot(Main_Start) - Full Screen:\n================================================================================\nONSITE PLUS SERVICE            (PFC) POST FINAL CHARGES            30OCT25 12:33\nREVERSED VIDEO LINES REQUIRE POSTING                                            \n                           REPAIR ORDERS TO BE POSTED                           \nSEQ TAG-NO SA#.... DT RO-NO..... CUSTOMER... VEHICLE.. PROMISED... LINES........\n  1 T50727 74663   S1 827134                 23 TESLA  18JAN 17:00 CDBA         \n  2 T55789 7417    S1 836745                 24 KIA SP 16MAY 17:00 CBA          \n  3 T51018 99      S1 844123                 23 TESLA  09JUL 17:00 CBA          \n  4 T54259 18889   S1 847202                 24 CX-90  06AUG 17:00 ABC          \n  5 T56339 72900   S1 847214                 25 ODYSSE 06AUG 17:00 CBA          \n  6 T70389 7417    S1 847229                 22 HONDA  06AUG 17:00 CBA          \n  7 T55137 339     S1 850879                 24 VOLKSW 29AUG 17:00 DCBA         \n  8 T70397 10347   S1 851310                 22 TOYOTA 02SEP 17:00 DCBA         \n  9 T70427 72925   S1 851516                 23 KIA K5 03SEP 17:00 DCBEA        \n 10 T54548 339     S1 851522                 24 Forte  03SEP 17:00 CBAD         \n 11 T54622 72925   S1 851524                 24 CHEVRO 03SEP 17:00 DCBA         \n 12 T50853 72925   S1 851562                 23 HYUNDA 03SEP 17:00 ECDBA        \n 13 T54040 10347   S1 851568                 24 MALIBU 03SEP 17:00 CBDA         \n 14 T52337 18889   S1 851631                 23 MALIBU 04SEP 17:00 EBDCA        \n 15 T53501 613     S1 851648                 24 MALIBU 04SEP 17:00 BCEDA        \n 16 T77719 18266   S1 851652                 23 CHEVY  04SEP 17:00 DCBA         \n 17 T50202 5910    S1 851669                 24 Altima 04SEP 17:00 CBA          \n                                                               MORE ON NEXT PAGE\nCOMMAND:(SEQ#/E/N/B/?)                                                          \n                                                                                \n================================================================================
+
+10/30/2025 12:44:53 PM [INFO] [WaitForPrompt] WaitForPrompt called - Looking for: [COMMAND: (SEQ#] Value: [859269] SendEnter: True Timeout: 2000ms
+
+10/30/2025 12:45:14 PM [DEBUG] [LogScreenSnapshot] Entering LogScreenSnapshot for: WaitForPrompt_Check
+
+
+---------------------------
+OK   
+---------------------------
+
+
+---------------------------
+BlueZone : MsgBox
+---------------------------
+LogResultWithSource - g_LogBuffer AFTER: 10/30/2025 12:42:13 PM [INFO] [ConnectBlueZone] Connected to BlueZone.
+
+10/30/2025 12:42:37 PM [INFO] [ProcessCSV] 859269 - Processing Sequence: 859269
+
+10/30/2025 12:43:07 PM [DEBUG] [ProcessCSV] CSV raw line sent: '859269'
+
+10/30/2025 12:43:46 PM [DEBUG] [ProcessCSV] Trimmed RO Number: '859269' (Length: 6)
+
+10/30/2025 12:44:15 PM [DEBUG] [LogScreenSnapshot] Entering LogScreenSnapshot for: Main_Start
+
+10/30/2025 12:44:33 PM [DEBUG] [LogScreenSnapshot] ScreenSnapshot(Main_Start) - Full Screen:\n================================================================================\nONSITE PLUS SERVICE            (PFC) POST FINAL CHARGES            30OCT25 12:33\nREVERSED VIDEO LINES REQUIRE POSTING                                            \n                           REPAIR ORDERS TO BE POSTED                           \nSEQ TAG-NO SA#.... DT RO-NO..... CUSTOMER... VEHICLE.. PROMISED... LINES........\n  1 T50727 74663   S1 827134                 23 TESLA  18JAN 17:00 CDBA         \n  2 T55789 7417    S1 836745                 24 KIA SP 16MAY 17:00 CBA          \n  3 T51018 99      S1 844123                 23 TESLA  09JUL 17:00 CBA          \n  4 T54259 18889   S1 847202                 24 CX-90  06AUG 17:00 ABC          \n  5 T56339 72900   S1 847214                 25 ODYSSE 06AUG 17:00 CBA          \n  6 T70389 7417    S1 847229                 22 HONDA  06AUG 17:00 CBA          \n  7 T55137 339     S1 850879                 24 VOLKSW 29AUG 17:00 DCBA         \n  8 T70397 10347   S1 851310                 22 TOYOTA 02SEP 17:00 DCBA         \n  9 T70427 72925   S1 851516                 23 KIA K5 03SEP 17:00 DCBEA        \n 10 T54548 339     S1 851522                 24 Forte  03SEP 17:00 CBAD         \n 11 T54622 72925   S1 851524                 24 CHEVRO 03SEP 17:00 DCBA         \n 12 T50853 72925   S1 851562                 23 HYUNDA 03SEP 17:00 ECDBA        \n 13 T54040 10347   S1 851568                 24 MALIBU 03SEP 17:00 CBDA         \n 14 T52337 18889   S1 851631                 23 MALIBU 04SEP 17:00 EBDCA        \n 15 T53501 613     S1 851648                 24 MALIBU 04SEP 17:00 BCEDA        \n 16 T77719 18266   S1 851652                 23 CHEVY  04SEP 17:00 DCBA         \n 17 T50202 5910    S1 851669                 24 Altima 04SEP 17:00 CBA          \n                                                               MORE ON NEXT PAGE\nCOMMAND:(SEQ#/E/N/B/?)                                                          \n                                                                                \n================================================================================
+
+10/30/2025 12:44:53 PM [INFO] [WaitForPrompt] WaitForPrompt called - Looking for: [COMMAND: (SEQ#] Value: [859269] SendEnter: True Timeout: 2000ms
+
+10/30/2025 12:45:14 PM [DEBUG] [LogScreenSnapshot] Entering LogScreenSnapshot for: WaitForPrompt_Check
+
+10/30/2025 12:45:52 PM [DEBUG] [LogScreenSnapshot] ScreenSnapshot(WaitForPrompt_Check): ONSITE PLUS SERVICE            (PFC) POST FINAL CHARGES            30OCT25 12:33REVERSED VIDEO LINES REQUIRE POSTING                                                                       REPAIR ORDERS TO BE POSTED                           
+
+
+---------------------------
+OK   
+---------------------------
+
+
+
+---------------------------
+BlueZone : MsgBox
+---------------------------
+LogResultWithSource - Message: Entering IsTextPresent for: 'COMMAND: (SEQ#'
+
+g_LogBuffer BEFORE: 10/30/2025 12:42:13 PM [INFO] [ConnectBlueZone] Connected to BlueZone.
+
+10/30/2025 12:42:37 PM [INFO] [ProcessCSV] 859269 - Processing Sequence: 859269
+
+10/30/2025 12:43:07 PM [DEBUG] [ProcessCSV] CSV raw line sent: '859269'
+
+10/30/2025 12:43:46 PM [DEBUG] [ProcessCSV] Trimmed RO Number: '859269' (Length: 6)
+
+10/30/2025 12:44:15 PM [DEBUG] [LogScreenSnapshot] Entering LogScreenSnapshot for: Main_Start
+
+10/30/2025 12:44:33 PM [DEBUG] [LogScreenSnapshot] ScreenSnapshot(Main_Start) - Full Screen:\n================================================================================\nONSITE PLUS SERVICE            (PFC) POST FINAL CHARGES            30OCT25 12:33\nREVERSED VIDEO LINES REQUIRE POSTING                                            \n                           REPAIR ORDERS TO BE POSTED                           \nSEQ TAG-NO SA#.... DT RO-NO..... CUSTOMER... VEHICLE.. PROMISED... LINES........\n  1 T50727 74663   S1 827134                 23 TESLA  18JAN 17:00 CDBA         \n  2 T55789 7417    S1 836745                 24 KIA SP 16MAY 17:00 CBA          \n  3 T51018 99      S1 844123                 23 TESLA  09JUL 17:00 CBA          \n  4 T54259 18889   S1 847202                 24 CX-90  06AUG 17:00 ABC          \n  5 T56339 72900   S1 847214                 25 ODYSSE 06AUG 17:00 CBA          \n  6 T70389 7417    S1 847229                 22 HONDA  06AUG 17:00 CBA          \n  7 T55137 339     S1 850879                 24 VOLKSW 29AUG 17:00 DCBA         \n  8 T70397 10347   S1 851310                 22 TOYOTA 02SEP 17:00 DCBA         \n  9 T70427 72925   S1 851516                 23 KIA K5 03SEP 17:00 DCBEA        \n 10 T54548 339     S1 851522                 24 Forte  03SEP 17:00 CBAD         \n 11 T54622 72925   S1 851524                 24 CHEVRO 03SEP 17:00 DCBA         \n 12 T50853 72925   S1 851562                 23 HYUNDA 03SEP 17:00 ECDBA        \n 13 T54040 10347   S1 851568                 24 MALIBU 03SEP 17:00 CBDA         \n 14 T52337 18889   S1 851631                 23 MALIBU 04SEP 17:00 EBDCA        \n 15 T53501 613     S1 851648                 24 MALIBU 04SEP 17:00 BCEDA        \n 16 T77719 18266   S1 851652                 23 CHEVY  04SEP 17:00 DCBA         \n 17 T50202 5910    S1 851669                 24 Altima 04SEP 17:00 CBA          \n                                                               MORE ON NEXT PAGE\nCOMMAND:(SEQ#/E/N/B/?)                                                          \n                                                                                \n================================================================================
+
+10/30/2025 12:44:53 PM [INFO] [WaitForPrompt] WaitForPrompt called - Looking for: [COMMAND: (SEQ#] Value: [859269] SendEnter: True Timeout: 2000ms
+
+10/30/2025 12:45:14 PM [DEBUG] [LogScreenSnapshot] Entering LogScreenSnapshot for: WaitForPrompt_Check
+
+10/30/2025 12:45:52 PM [DEBUG] [LogScreenSnapshot] ScreenSnapshot(WaitForPrompt_Check): ONSITE PLUS SERVICE            (PFC) POST FINAL CHARGES            30OCT25 12:33REVERSED VIDEO LINES REQUIRE POSTING                                                                       REPAIR ORDERS TO BE POSTED                           
+
+
+---------------------------
+OK   
+---------------------------
+
+
+
+
+
+
+
+
+---------------------------
+BlueZone : MsgBox
+---------------------------
+LogResultWithSource - g_LogBuffer AFTER: 10/30/2025 12:42:13 PM [INFO] [ConnectBlueZone] Connected to BlueZone.
+
+10/30/2025 12:42:37 PM [INFO] [ProcessCSV] 859269 - Processing Sequence: 859269
+
+10/30/2025 12:43:07 PM [DEBUG] [ProcessCSV] CSV raw line sent: '859269'
+
+10/30/2025 12:43:46 PM [DEBUG] [ProcessCSV] Trimmed RO Number: '859269' (Length: 6)
+
+10/30/2025 12:44:15 PM [DEBUG] [LogScreenSnapshot] Entering LogScreenSnapshot for: Main_Start
+
+10/30/2025 12:44:33 PM [DEBUG] [LogScreenSnapshot] ScreenSnapshot(Main_Start) - Full Screen:\n================================================================================\nONSITE PLUS SERVICE            (PFC) POST FINAL CHARGES            30OCT25 12:33\nREVERSED VIDEO LINES REQUIRE POSTING                                            \n                           REPAIR ORDERS TO BE POSTED                           \nSEQ TAG-NO SA#.... DT RO-NO..... CUSTOMER... VEHICLE.. PROMISED... LINES........\n  1 T50727 74663   S1 827134                 23 TESLA  18JAN 17:00 CDBA         \n  2 T55789 7417    S1 836745                 24 KIA SP 16MAY 17:00 CBA          \n  3 T51018 99      S1 844123                 23 TESLA  09JUL 17:00 CBA          \n  4 T54259 18889   S1 847202                 24 CX-90  06AUG 17:00 ABC          \n  5 T56339 72900   S1 847214                 25 ODYSSE 06AUG 17:00 CBA          \n  6 T70389 7417    S1 847229                 22 HONDA  06AUG 17:00 CBA          \n  7 T55137 339     S1 850879                 24 VOLKSW 29AUG 17:00 DCBA         \n  8 T70397 10347   S1 851310                 22 TOYOTA 02SEP 17:00 DCBA         \n  9 T70427 72925   S1 851516                 23 KIA K5 03SEP 17:00 DCBEA        \n 10 T54548 339     S1 851522                 24 Forte  03SEP 17:00 CBAD         \n 11 T54622 72925   S1 851524                 24 CHEVRO 03SEP 17:00 DCBA         \n 12 T50853 72925   S1 851562                 23 HYUNDA 03SEP 17:00 ECDBA        \n 13 T54040 10347   S1 851568                 24 MALIBU 03SEP 17:00 CBDA         \n 14 T52337 18889   S1 851631                 23 MALIBU 04SEP 17:00 EBDCA        \n 15 T53501 613     S1 851648                 24 MALIBU 04SEP 17:00 BCEDA        \n 16 T77719 18266   S1 851652                 23 CHEVY  04SEP 17:00 DCBA         \n 17 T50202 5910    S1 851669                 24 Altima 04SEP 17:00 CBA          \n                                                               MORE ON NEXT PAGE\nCOMMAND:(SEQ#/E/N/B/?)                                                          \n                                                                                \n================================================================================
+
+10/30/2025 12:44:53 PM [INFO] [WaitForPrompt] WaitForPrompt called - Looking for: [COMMAND: (SEQ#] Value: [859269] SendEnter: True Timeout: 2000ms
+
+10/30/2025 12:45:14 PM [DEBUG] [LogScreenSnapshot] Entering LogScreenSnapshot for: WaitForPrompt_Check
+
+10/30/2025 12:45:52 PM [DEBUG] [LogScreenSnapshot] ScreenSnapshot(WaitForPrompt_Check): ONSITE PLUS SERVICE            (PFC) POST FINAL CHARGES            30OCT25 12:33REVERSED VIDEO LINES REQUIRE POSTING                                                                       REPAIR ORDERS TO BE POSTED                           
+
+10/30/2025 12:46:10 PM [DEBUG] [IsTextPresent] Entering IsTextPresent for: 'COMMAND: (SEQ#'
+
+
+---------------------------
+OK   
+---------------------------
+
+
+
+
+
+
+---------------------------
+BlueZone : MsgBox
+---------------------------
+LogResultWithSource - Message: Screen content checked for: 'COMMAND: (SEQ#'. Result: False
+
+g_LogBuffer BEFORE: 10/30/2025 12:42:13 PM [INFO] [ConnectBlueZone] Connected to BlueZone.
+
+10/30/2025 12:42:37 PM [INFO] [ProcessCSV] 859269 - Processing Sequence: 859269
+
+10/30/2025 12:43:07 PM [DEBUG] [ProcessCSV] CSV raw line sent: '859269'
+
+10/30/2025 12:43:46 PM [DEBUG] [ProcessCSV] Trimmed RO Number: '859269' (Length: 6)
+
+10/30/2025 12:44:15 PM [DEBUG] [LogScreenSnapshot] Entering LogScreenSnapshot for: Main_Start
+
+10/30/2025 12:44:33 PM [DEBUG] [LogScreenSnapshot] ScreenSnapshot(Main_Start) - Full Screen:\n================================================================================\nONSITE PLUS SERVICE            (PFC) POST FINAL CHARGES            30OCT25 12:33\nREVERSED VIDEO LINES REQUIRE POSTING                                            \n                           REPAIR ORDERS TO BE POSTED                           \nSEQ TAG-NO SA#.... DT RO-NO..... CUSTOMER... VEHICLE.. PROMISED... LINES........\n  1 T50727 74663   S1 827134                 23 TESLA  18JAN 17:00 CDBA         \n  2 T55789 7417    S1 836745                 24 KIA SP 16MAY 17:00 CBA          \n  3 T51018 99      S1 844123                 23 TESLA  09JUL 17:00 CBA          \n  4 T54259 18889   S1 847202                 24 CX-90  06AUG 17:00 ABC          \n  5 T56339 72900   S1 847214                 25 ODYSSE 06AUG 17:00 CBA          \n  6 T70389 7417    S1 847229                 22 HONDA  06AUG 17:00 CBA          \n  7 T55137 339     S1 850879                 24 VOLKSW 29AUG 17:00 DCBA         \n  8 T70397 10347   S1 851310                 22 TOYOTA 02SEP 17:00 DCBA         \n  9 T70427 72925   S1 851516                 23 KIA K5 03SEP 17:00 DCBEA        \n 10 T54548 339     S1 851522                 24 Forte  03SEP 17:00 CBAD         \n 11 T54622 72925   S1 851524                 24 CHEVRO 03SEP 17:00 DCBA         \n 12 T50853 72925   S1 851562                 23 HYUNDA 03SEP 17:00 ECDBA        \n 13 T54040 10347   S1 851568                 24 MALIBU 03SEP 17:00 CBDA         \n 14 T52337 18889   S1 851631                 23 MALIBU 04SEP 17:00 EBDCA        \n 15 T53501 613     S1 851648                 24 MALIBU 04SEP 17:00 BCEDA        \n 16 T77719 18266   S1 851652                 23 CHEVY  04SEP 17:00 DCBA         \n 17 T50202 5910    S1 851669                 24 Altima 04SEP 17:00 CBA          \n                                                               MORE ON NEXT PAGE\nCOMMAND:(SEQ#/E/N/B/?)                                                          \n                                                                                \n================================================================================
+
+10/30/2025 12:44:53 PM [INFO] [WaitForPrompt] WaitForPrompt called - Looking for: [COMMAND: (SEQ#] Value: [859269] SendEnter: True Timeout: 2000ms
+
+10/30/2025 12:45:14 PM [DEBUG] [LogScreenSnapshot] Entering LogScreenSnapshot for: WaitForPrompt_Check
+
+10/30/2025 12:45:52 PM [DEBUG] [LogScreenSnapshot] ScreenSnapshot(WaitForPrompt_Check): ONSITE PLUS SERVICE            (PFC) POST FINAL CHARGES            30OCT25 12:33REVERSED VIDEO LINES REQUIRE POSTING                                                                       REPAIR ORDERS TO BE POSTED                           
+
+10/30/2025 12:46:10 PM [DEBUG] [IsTextPresent] Entering IsTextPresent for: 'COMMAND: (SEQ#'
+
+
+---------------------------
+OK   
+---------------------------
+
+
+
+
+---------------------------
+BlueZone : MsgBox
+---------------------------
+LogResultWithSource - g_LogBuffer AFTER: 10/30/2025 12:42:13 PM [INFO] [ConnectBlueZone] Connected to BlueZone.
+
+10/30/2025 12:42:37 PM [INFO] [ProcessCSV] 859269 - Processing Sequence: 859269
+
+10/30/2025 12:43:07 PM [DEBUG] [ProcessCSV] CSV raw line sent: '859269'
+
+10/30/2025 12:43:46 PM [DEBUG] [ProcessCSV] Trimmed RO Number: '859269' (Length: 6)
+
+10/30/2025 12:44:15 PM [DEBUG] [LogScreenSnapshot] Entering LogScreenSnapshot for: Main_Start
+
+10/30/2025 12:44:33 PM [DEBUG] [LogScreenSnapshot] ScreenSnapshot(Main_Start) - Full Screen:\n================================================================================\nONSITE PLUS SERVICE            (PFC) POST FINAL CHARGES            30OCT25 12:33\nREVERSED VIDEO LINES REQUIRE POSTING                                            \n                           REPAIR ORDERS TO BE POSTED                           \nSEQ TAG-NO SA#.... DT RO-NO..... CUSTOMER... VEHICLE.. PROMISED... LINES........\n  1 T50727 74663   S1 827134                 23 TESLA  18JAN 17:00 CDBA         \n  2 T55789 7417    S1 836745                 24 KIA SP 16MAY 17:00 CBA          \n  3 T51018 99      S1 844123                 23 TESLA  09JUL 17:00 CBA          \n  4 T54259 18889   S1 847202                 24 CX-90  06AUG 17:00 ABC          \n  5 T56339 72900   S1 847214                 25 ODYSSE 06AUG 17:00 CBA          \n  6 T70389 7417    S1 847229                 22 HONDA  06AUG 17:00 CBA          \n  7 T55137 339     S1 850879                 24 VOLKSW 29AUG 17:00 DCBA         \n  8 T70397 10347   S1 851310                 22 TOYOTA 02SEP 17:00 DCBA         \n  9 T70427 72925   S1 851516                 23 KIA K5 03SEP 17:00 DCBEA        \n 10 T54548 339     S1 851522                 24 Forte  03SEP 17:00 CBAD         \n 11 T54622 72925   S1 851524                 24 CHEVRO 03SEP 17:00 DCBA         \n 12 T50853 72925   S1 851562                 23 HYUNDA 03SEP 17:00 ECDBA        \n 13 T54040 10347   S1 851568                 24 MALIBU 03SEP 17:00 CBDA         \n 14 T52337 18889   S1 851631                 23 MALIBU 04SEP 17:00 EBDCA        \n 15 T53501 613     S1 851648                 24 MALIBU 04SEP 17:00 BCEDA        \n 16 T77719 18266   S1 851652                 23 CHEVY  04SEP 17:00 DCBA         \n 17 T50202 5910    S1 851669                 24 Altima 04SEP 17:00 CBA          \n                                                               MORE ON NEXT PAGE\nCOMMAND:(SEQ#/E/N/B/?)                                                          \n                                                                                \n================================================================================
+
+10/30/2025 12:44:53 PM [INFO] [WaitForPrompt] WaitForPrompt called - Looking for: [COMMAND: (SEQ#] Value: [859269] SendEnter: True Timeout: 2000ms
+
+10/30/2025 12:45:14 PM [DEBUG] [LogScreenSnapshot] Entering LogScreenSnapshot for: WaitForPrompt_Check
+
+10/30/2025 12:45:52 PM [DEBUG] [LogScreenSnapshot] ScreenSnapshot(WaitForPrompt_Check): ONSITE PLUS SERVICE            (PFC) POST FINAL CHARGES            30OCT25 12:33REVERSED VIDEO LINES REQUIRE POSTING                                                                       REPAIR ORDERS TO BE POSTED                           
+
+10/30/2025 12:46:10 PM [DEBUG] [IsTextPresent] Entering IsTextPresent for: 'COMMAND: (SEQ#'
+
+10/30/2025 12:46:37 PM [DEBUG] [IsTextPresent] Screen content checked for: 'COMMAND: (SEQ#'. Result: False
+
+
+---------------------------
+OK   
+---------------------------
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
