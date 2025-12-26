@@ -284,7 +284,6 @@ Function GetScreenLine(lineNum)
     ' Wait 5 seconds to ensure screen is updated
     If Not bzhao Is Nothing Then bzhao.Pause 500
     On Error Resume Next
-    ' Standardized single-line read: 80 chars, lineNum, col 1
     bzhao.ReadScreen screenContentBuffer, 80, lineNum, 1
     If Err.Number <> 0 Then
         GetScreenLine = ""
@@ -922,12 +921,12 @@ Sub ProcessRONumbers()
 
         If Err.Number <> 0 Then
             lastRoResult = "Error in Main: " & Err.Description
-            ' Prefer the scraped RO for error/result logging when available
             Dim displayId
             If Len(Trim(CStr(currentRODisplay))) > 0 Then
                 displayId = currentRODisplay
             Else
-                displayId = roNumber
+                displayId = "NotFound"
+                currentRODisplay = "NotFound"
             End If
             Dim errorLabel
             errorLabel = sequenceLabel
@@ -940,16 +939,11 @@ Sub ProcessRONumbers()
 
         ' Ensure there's always a final result logged for the RO
         If Len(Trim(CStr(lastRoResult))) = 0 Then lastRoResult = "No result recorded"
-        Dim finalDisplay
-        If Len(Trim(CStr(currentRODisplay))) > 0 Then
-            finalDisplay = currentRODisplay
-        Else
-            finalDisplay = roNumber
-        End If
+        If Len(Trim(CStr(currentRODisplay))) = 0 Then currentRODisplay = "NotFound"
         Dim finalMessage
         finalMessage = sequenceLabel
-        If Len(Trim(CStr(finalDisplay))) > 0 And CStr(finalDisplay) <> CStr(roNumber) Then
-            finalMessage = finalMessage & " (RO " & finalDisplay & ")"
+        If Len(Trim(CStr(currentRODisplay))) > 0 And CStr(currentRODisplay) <> CStr(roNumber) Then
+            finalMessage = finalMessage & " (RO " & currentRODisplay & ")"
         End If
         finalMessage = finalMessage & " - Result: " & lastRoResult
         Call LogCore(finalMessage, "ProcessRONumbers")
@@ -1043,20 +1037,24 @@ Sub Main(roNumber)
     send_enter_key = True
     Call WaitForPrompt("COMMAND:", roNumber, send_enter_key, 10000, "")
     ' Scrape the actual RO number from the screen (top of screen shows 'RO:  123456')
-    Dim actualRO, roStatusAll
+    Dim actualRO
     actualRO = GetROFromScreen()
-    roStatusAll = GetRepairOrderStatus()
     If Len(Trim(CStr(actualRO))) > 0 Then
         currentRODisplay = actualRO
         Call LogInfo("Sent RO to BlueZone", "Main")
         Call LogInfo("RO: " & actualRO, "Main")
     Else
-        currentRODisplay = roNumber
-        Call LogWarn("Could not scrape RO number from screen after opening sequence. Using sequence number as fallback.", "Main")
-        Call LogInfo(roNumber & " - Sent RO to BlueZone - RO: (unknown) - will use sequence number for checks", "Main")
+        currentRODisplay = "NotFound"
+        Call LogWarn("Could not scrape RO number from screen after opening sequence. Setting currentRODisplay to 'NotFound' (was sequence: " & roNumber & ")", "Main")
+        Call LogInfo("Sent RO to BlueZone - RO: NotFound", "Main")
     End If
+    
+    ' Scrape the status early so it's available for the CORE log
+    Call GetRepairOrderStatus()
+    
+    
     ' Log the RO number and status for every sequence, regardless of processing
-    Call LogCore("SEQUENCE: " & roNumber & " | RO: " & currentRODisplay & " | STATUS: '" & roStatusAll & "'", "Main")
+    Call LogCore("SEQUENCE: " & roNumber & " | RO: " & currentRODisplay & " | STATUS: '" & g_LastScrapedStatus & "'", "Main")
     
     ' Check for "closed" response
     If IsTextPresent("Repair Order " & currentRODisplay & " is closed.") Then
@@ -1073,20 +1071,16 @@ Sub Main(roNumber)
     End If
     
     ' Otherwise, assume repair order is open — prefer the scraped RO for logging
-    If Len(Trim(CStr(currentRODisplay))) > 0 Then
-        Call LogInfo("Repair Order Open", "Main")
-    Else
-        Call LogInfo(roNumber & " - Repair Order Open", "Main")
-    End If
+    'Call LogInfo("Repair Order Open (RO: " & currentRODisplay & ")", "Main")
     
     ' Allow time for RO details to fully load before checking status
     'Call WaitMs(2000)
     
     ' After opening an RO, ensure it has the expected READY TO POST status.
     Dim roStatusForRestriction
-    roStatusForRestriction = GetRepairOrderStatus()
+    roStatusForRestriction = g_LastScrapedStatus ' Use cached value from earlier call
     If StrComp(Trim(CStr(roStatusForRestriction)), "READY TO POST", vbTextCompare) <> 0 Then
-        Call LogInfo("RO STATUS: '" & roStatusForRestriction & "' - Skipping processing for this RO.", "Main")
+        'Call LogInfo("RO STATUS: '" & roStatusForRestriction & "' - Skipping processing for this RO.", "Main")
         Call FastText("E")
         Call FastKey("<NumpadEnter>")
         ' Wait for the command prompt to return to ensure we are in a known state
@@ -1094,7 +1088,9 @@ Sub Main(roNumber)
         lastRoResult = "Skipped - Status not READY TO POST"
         Exit Sub
     Else
-        Call LogInfo("RO STATUS: READY TO POST", "Main")
+        Call LogInfo("RO STATUS: " & roStatusForRestriction, "Main")
+        ' Debug pause for READY TO POST ROs only
+        'bzhao.MsgBox "DEBUG: check the RO status and closeout result before continuing.", "Debug Pause", 0
     End If
     
     ' Snapshot the scraped status now to avoid timing races, then detect triggers.
@@ -1415,21 +1411,32 @@ Function GetROFromScreen()
         Exit Function
     End If
 
-    ' Wait 5 seconds to ensure screen is updated
-    'bzhao.Pause 3000
-    Dim screenContentBuffer, screenLength, re, matches
+    ' Poll for screen content with timeout
+    Dim screenContentBuffer, screenLength, re, matches, pollAttempts, maxAttempts
     screenLength = 3 * 80 ' top three lines
-    On Error Resume Next
-    ' Standardized multi-line read: 240 chars, row 1, col 1
-    bzhao.ReadScreen screenContentBuffer, screenLength, 1, 1
-    If Err.Number <> 0 Then
-        Call LogError("GetROFromScreen ReadScreen failed: " & Err.Description, "GetROFromScreen")
-        Err.Clear
-        GetROFromScreen = ""
+    maxAttempts = 10 ' 10 attempts * 500ms = 5 seconds max
+    pollAttempts = 0
+    
+    Do While pollAttempts < maxAttempts
+        bzhao.Pause 500 ' Wait 0.5 seconds
+        pollAttempts = pollAttempts + 1
+        
+        On Error Resume Next
+        bzhao.ReadScreen screenContentBuffer, screenLength, 1, 1
+        If Err.Number <> 0 Then
+            Call LogError("GetROFromScreen ReadScreen failed: " & Err.Description, "GetROFromScreen")
+            Err.Clear
+            GetROFromScreen = ""
+            On Error GoTo 0
+            Exit Function
+        End If
         On Error GoTo 0
-        Exit Function
-    End If
-    On Error GoTo 0
+        
+        ' Check if we got meaningful content (not just spaces)
+        If Len(Trim(screenContentBuffer)) > 0 Then
+            Exit Do ' Found content, break out of polling loop
+        End If
+    Loop
     
     Set re = CreateObject("VBScript.RegExp")
     re.Pattern = "RO:\s*(\d{4,})"
@@ -1440,6 +1447,8 @@ Function GetROFromScreen()
         Set matches = re.Execute(screenContentBuffer)
         GetROFromScreen = matches(0).SubMatches(0)
     Else
+        ' Only trace log if we failed to find RO number after full polling loop
+        Call LogTrace("RO Screen Buffer Content: '" & Replace(Replace(screenContentBuffer, vbCrLf, " "), vbLf, " ") & "'", "GetROFromScreen")
         GetROFromScreen = ""
     End If
 End Function
@@ -1482,47 +1491,53 @@ End Function
 ' Returns an empty string if the prefix isn't present or on read error.
 '-----------------------------------------------------------------------------------
 Function GetRepairOrderStatus()
-    On Error Resume Next
     If bzhao Is Nothing Then
         Call LogWarn("GetRepairOrderStatus: bzhao object not available", "GetRepairOrderStatus")
         GetRepairOrderStatus = ""
         Exit Function
     End If
 
-    ' Wait 1 second to ensure screen is updated
-    bzhao.Pause 500
-    Dim buf, lengthToRead, lineNum, prefix, pos, raw, parsedStatus, foundStatus, i
+    Dim lineText, prefix, pos, fullStatus, coreStatus
+    lineText = GetScreenLine(5)
+    Call LogDebug("GetRepairOrderStatus - line 5: '" & lineText & "'", "GetRepairOrderStatus")
+    
     prefix = "RO STATUS: "
-    foundStatus = ""
-    For i = 1 To 10
-        lengthToRead = 80
-        lineNum = i
-        ' Standardized single-line read: 80 chars, lineNum, col 1
-        On Error Resume Next
-        bzhao.ReadScreen buf, 80, lineNum, 1
-        If Err.Number <> 0 Then
-            Call LogWarn("GetRepairOrderStatus: ReadScreen failed on line " & i & ": " & Err.Description, "GetRepairOrderStatus")
-            Err.Clear
-            On Error GoTo 0
-            Continue
+    pos = InStr(1, lineText, prefix, vbTextCompare)
+    If pos = 0 Then
+        GetRepairOrderStatus = ""
+        g_LastScrapedStatus = ""
+        Call LogDebug("GetRepairOrderStatus - RO STATUS prefix not found", "GetRepairOrderStatus")
+        Exit Function
+    End If
+
+    ' Extract the full status text after the prefix
+    fullStatus = Trim(Mid(lineText, pos + Len(prefix)))
+    
+    ' Extract just the core status (before multiple spaces or "PROMISED:")
+    Dim spacePos, promisedPos, endPos
+    spacePos = InStr(fullStatus, "  ") ' Look for double space
+    promisedPos = InStr(1, fullStatus, "PROMISED:", vbTextCompare)
+    
+    ' Find the earliest delimiter
+    If spacePos > 0 And promisedPos > 0 Then
+        If spacePos < promisedPos Then
+            endPos = spacePos
+        Else
+            endPos = promisedPos
         End If
-        On Error GoTo 0
-        pos = InStr(1, buf, prefix, vbTextCompare)
-        If pos > 0 Then
-            Dim startPos
-            startPos = pos + Len(prefix)
-            raw = Mid(buf, startPos, 15) ' take next 15 chars per spec
-            raw = Replace(raw, vbCrLf, " ")
-            raw = Replace(raw, vbCr, " ")
-            raw = Replace(raw, vbLf, " ")
-            parsedStatus = Trim(raw)
-            foundStatus = parsedStatus
-            Exit For
-        End If
-    Next
-    GetRepairOrderStatus = foundStatus
-    g_LastScrapedStatus = foundStatus
-    Call LogDebug("GetRepairOrderStatus - parsed status: '" & foundStatus & "'", "GetRepairOrderStatus")
+    ElseIf spacePos > 0 Then
+        endPos = spacePos
+    ElseIf promisedPos > 0 Then
+        endPos = promisedPos
+    Else
+        endPos = Len(fullStatus) + 1 ' Use entire string
+    End If
+    
+    coreStatus = Trim(Left(fullStatus, endPos - 1))
+    GetRepairOrderStatus = coreStatus
+    g_LastScrapedStatus = coreStatus
+    Call LogDebug("GetRepairOrderStatus - parsed status: '" & coreStatus & "'", "GetRepairOrderStatus")
+    
 End Function
 
 
@@ -1633,6 +1648,8 @@ Sub ProcessLineItems()
         ' Use the new state machine method for all prompt handling
         Call LogInfo("Processing line item " & lineLetterChar & " using ProcessSingleLine_Dynamic", "ProcessLineItems")
         Call LogDetailed("INFO", "Processing line item " & lineLetterChar & " using ProcessPromptSequence", "ProcessLineItems")
+        ' Add a 2 second delay before processing each line item
+        Call WaitMs(2000)
 
         Call ProcessPromptSequence(lineItemPrompts)
     Next
