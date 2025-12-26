@@ -1,7 +1,7 @@
 Option Explicit
 
-' Rolling log configuration
-Const MAX_LOG_SIZE = 1048576 ' 1MB in bytes (1024 * 1024)
+' Rolling log configuration (will be loaded from config.ini)
+Dim MAX_LOG_SIZE
 
 ' Diagnostic: Display top 10 lines and highlight RO STATUS line
 Sub Diagnostic_FindROStatusLine()
@@ -738,6 +738,9 @@ Sub InitializeConfig()
     ' --- Now load other settings ---
     g_DefaultWait = GetIniSetting("Settings", "DefaultWait", 1000)
     g_PromptWait = GetIniSetting("Settings", "PromptWait", 5000)
+    
+    ' Load log rotation size setting (default 1MB = 1048576 bytes)
+    MAX_LOG_SIZE = CLng(GetIniSetting("Settings", "LogRotationSize", "1048576"))
     
     Dim startSequenceNumberValue, endSequenceNumberValue
     startSequenceNumberValue = GetIniSetting("Processing", "StartSequenceNumber", "")
