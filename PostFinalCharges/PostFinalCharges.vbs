@@ -1,5 +1,8 @@
 Option Explicit
 
+' Rolling log configuration
+Const MAX_LOG_SIZE = 1048576 ' 1MB in bytes (1024 * 1024)
+
 ' Diagnostic: Display top 10 lines and highlight RO STATUS line
 Sub Diagnostic_FindROStatusLine()
     Dim i, lineText, msg, found
@@ -1282,7 +1285,6 @@ Sub WriteLogEntry(level, message, source)
         Exit Sub
     End If
 
-    'Dim logFolder
     logFolder = logFSO.GetParentFolderName(LOG_FILE_PATH)
     If Len(logFolder) > 0 Then
         Call EnsureFolderExists(logFSO, logFolder)
@@ -1292,6 +1294,9 @@ Sub WriteLogEntry(level, message, source)
         End If
     End If
 
+    ' Check if log rotation is needed before writing
+    Call CheckAndRotateLog(logFSO, LOG_FILE_PATH)
+
     Set logFile = logFSO.OpenTextFile(LOG_FILE_PATH, 8, True)
     If Err.Number <> 0 Then
         Err.Clear
@@ -1299,6 +1304,8 @@ Sub WriteLogEntry(level, message, source)
             LOG_FILE_PATH = LEGACY_LOG_PATH
             logFolder = logFSO.GetParentFolderName(LOG_FILE_PATH)
             If Len(logFolder) > 0 Then Call EnsureFolderExists(logFSO, logFolder)
+            ' Check rotation for legacy path too
+            Call CheckAndRotateLog(logFSO, LOG_FILE_PATH)
             Set logFile = logFSO.OpenTextFile(LOG_FILE_PATH, 8, True)
             If Err.Number <> 0 Then
                 Err.Clear
@@ -1319,6 +1326,49 @@ Sub WriteLogEntry(level, message, source)
     logFile.Close
     Set logFile = Nothing
     Set logFSO = Nothing
+    On Error GoTo 0
+End Sub
+
+'-----------------------------------------------------------------------------------
+' **PROCEDURE NAME:** CheckAndRotateLog
+' **DATE CREATED:** 2025-12-26
+' **AUTHOR:** GitHub Copilot
+' 
+' **FUNCTIONALITY:**
+' Checks if the log file exceeds MAX_LOG_SIZE and performs rotation if needed.
+' Renames current log to .old and creates a new log file.
+' 
+' **PARAMETERS:**
+' fso (Object): FileSystemObject instance
+' logPath (String): Full path to the log file to check
+'-----------------------------------------------------------------------------------
+Sub CheckAndRotateLog(fso, logPath)
+    On Error Resume Next
+    
+    ' Check if log file exists and get its size
+    If fso.FileExists(logPath) Then
+        Dim logFile
+        Set logFile = fso.GetFile(logPath)
+        
+        ' If file size exceeds limit, rotate the log
+        If logFile.Size > MAX_LOG_SIZE Then
+            Dim oldLogPath
+            oldLogPath = logPath & ".old"
+            
+            ' Remove existing .old file if it exists
+            If fso.FileExists(oldLogPath) Then
+                fso.DeleteFile oldLogPath, True
+            End If
+            
+            ' Rename current log to .old
+            fso.MoveFile logPath, oldLogPath
+            
+            ' Note: New log file will be created automatically when next write occurs
+        End If
+    End If
+    
+    ' Clear any errors that occurred during rotation
+    If Err.Number <> 0 Then Err.Clear
     On Error GoTo 0
 End Sub
 
@@ -1536,7 +1586,7 @@ Function GetRepairOrderStatus()
     coreStatus = Trim(Left(fullStatus, endPos - 1))
     GetRepairOrderStatus = coreStatus
     g_LastScrapedStatus = coreStatus
-    Call LogDebug("GetRepairOrderStatus - parsed status: '" & coreStatus & "'", "GetRepairOrderStatus")
+    'Call LogDebug("GetRepairOrderStatus - parsed status: '" & coreStatus & "'", "GetRepairOrderStatus")
     
 End Function
 
