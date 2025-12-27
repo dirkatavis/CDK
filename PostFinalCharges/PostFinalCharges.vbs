@@ -42,7 +42,7 @@ Dim g_EnableDetailedLogging
 Dim g_LastScrapedStatus
 Dim g_BaseScriptPath
 Dim g_ShouldAbort, g_AbortReason
-Dim g_StartSequenceNumber, g_EndSequenceNumber
+Dim g_StartSequenceNumber, g_EndSequenceNumber, g_CurrentSequenceNumber
 Dim MainPromptLine
 Dim LEGACY_CSV_PATH, LEGACY_LOG_PATH, LEGACY_DIAG_LOG_PATH, LEGACY_COMMONLIB_PATH
 ' Current minimum logging level (configurable)
@@ -124,7 +124,7 @@ Function CreateLineItemPromptDictionary()
     ' Handle end-of-sequence error
     Call AddPromptToDict(dict, "SEQUENCE NUMBER \d+ DOES NOT EXIST", "", "", True)
     Call AddPromptToDict(dict, "OPERATION CODE FOR LINE", "I", "<NumpadEnter>", False)
-    Call AddPromptToDict(dict, "COMMAND:\(SEQ#/E/N/B/\?\)", "", "", False)
+    Call AddPromptToDict(dict, "COMMAND:\(SEQ#/E/N/B/\?\)", "N", "<NumpadEnter>", True)
     Call AddPromptToDict(dict, "COMMAND:", "", "", True)
     Call AddPromptToDict(dict, "This OpCode was performed in the last 270 days.", "", "", False)
     Call AddPromptToDict(dict, "LINE CODE X IS NOT ON FILE", "", "<Enter>", True)
@@ -151,7 +151,8 @@ Function CreateCloseoutPromptDictionary()
     Dim dict
     Set dict = CreateObject("Scripting.Dictionary")
 
-    Call AddPromptToDict(dict, "COMMAND:", "", "", True) ' Success
+    Call AddPromptToDict(dict, "COMMAND:\(SEQ#/E/N/B/\?\)", "", "<NumpadEnter>", True)
+    Call AddPromptToDict(dict, "COMMAND:", "", "", True) ' Simple command for other cases
     Call AddPromptToDict(dict, "ALL LABOR POSTED", "Y", "<NumpadEnter>", False)
     Call AddPromptToDict(dict, "MILEAGE OUT", "", "<NumpadEnter>", False)
     Call AddPromptToDict(dict, "Current Mileage less than Previous Mileage", "Y", "<NumpadEnter>", False)
@@ -240,7 +241,7 @@ Sub ProcessPromptSequence(prompts)
         ' --- If a prompt was found, handle it ---
         If bestMatchLength > 0 Then
             Set promptDetails = prompts.Item(bestMatchKey)
-            Call LogInfo("Matched most specific prompt: '" & bestMatchKey & "'", "ProcessPromptSequence")
+            Call LogTrace("Matched most specific prompt: '" & bestMatchKey & "'", "ProcessPromptSequence")
             Call LogTrace("Prompt details: ResponseText='" & promptDetails.ResponseText & "', KeyPress='" & promptDetails.KeyPress & "', IsSuccess=" & promptDetails.IsSuccess, "ProcessPromptSequence")
 
             If promptDetails.ResponseText <> "" Then
@@ -261,15 +262,15 @@ Sub ProcessPromptSequence(prompts)
                 Call WaitMs(500)
                 clearElapsed = (Timer - clearStart) * 1000
                 If clearElapsed < 0 Then clearElapsed = clearElapsed + 86400000 ' Handle midnight rollover
-                If clearElapsed > 5000 Then ' 5-second timeout
-                    Call LogWarn("Prompt '" & bestMatchKey & "' did not clear within 5 seconds.", "ProcessPromptSequence")
+                If clearElapsed > g_PromptWait Then ' Configurable prompt timeout
+                    Call LogWarn("Prompt '" & bestMatchKey & "' took longer than " & (g_PromptWait/1000) & " seconds to clear.", "ProcessPromptSequence")
                     Exit Do
                 End If
             Loop
 
             If promptDetails.IsSuccess Then
                 finished = True
-                Call LogInfo("Success prompt reached: " & bestMatchKey, "ProcessPromptSequence")
+                Call LogDebug("Success prompt reached: " & bestMatchKey, "ProcessPromptSequence")
                 Call LogTrace("Exiting ProcessPromptSequence on success.", "ProcessPromptSequence")
             End If
             ' The loop will now naturally restart and rescan for the next prompt
@@ -1106,14 +1107,14 @@ Sub Main(roNumber)
     trigger = FindTrigger()
     If trigger <> "" Then
         Call LogInfo("Trigger found: " & trigger & " - Proceeding to Closeout", "Main")
-        Call Closeout_Ro()
+        Call Closeout_Ro(g_CurrentSequenceNumber + 1)
         ' Closeout_Ro should set lastRoResult appropriately
     Else
         ' If no trigger text found, but the scraped RO status is READY TO POST,
         ' proceed to closeout anyway (status supersedes trigger text).
         If StrComp(roStatusForDecision, "READY TO POST", vbTextCompare) = 0 Then
             Call LogInfo("No closeout trigger text found, but RO STATUS is READY TO POST — proceeding to Closeout", "Main")
-            Call Closeout_Ro()
+            Call Closeout_Ro(g_CurrentSequenceNumber + 1)
         Else
             Call LogInfo("No Closeout Text Found - Skipping Closeout", "Main")
             Call FastText("E")
@@ -1699,8 +1700,18 @@ Sub ProcessLineItems()
             Exit For ' Exit the For loop.
         End If
         ' Use the new state machine method for all prompt handling
-        Call LogInfo("Processing line item " & lineLetterChar & " using ProcessSingleLine_Dynamic", "ProcessLineItems")
-        Call LogDetailed("INFO", "Processing line item " & lineLetterChar & " using ProcessPromptSequence", "ProcessLineItems")
+        Call LogDebug("Processing line item " & lineLetterChar & " using ProcessSingleLine_Dynamic", "ProcessLineItems")
+        ' Logs a detailed informational message indicating that a line item is being processed using the ProcessPromptSequence function.
+        ' Parameters:
+        '   "DEBUG"                - The log level, indicating this is a debug message.
+        '   "Processing line item " & lineLetterChar & " using ProcessPromptSequence"
+        '                         - The message describing which line item is being processed and the method used.
+        '   "ProcessLineItems"    - The context or source of the log entry, specifying the function where the log is generated.
+        '
+        ' Note:
+        '   Use LogDetailed to record significant processing steps or milestones for traceability.
+        '   Use LogDebug for lower-level, verbose output intended for debugging purposes.
+        Call LogDetailed("DEBUG", "Processing line item " & lineLetterChar & " using ProcessPromptSequence", "ProcessLineItems")
         ' Add a 2 second delay before processing each line item
         Call WaitMs(2000)
 
@@ -1719,7 +1730,7 @@ End Sub
 ' This involves first processing each line item, and then navigating through 
 ' final prompts to approve and close the RO.
 '-----------------------------------------------------------------------------------
-Sub Closeout_Ro()
+Sub Closeout_Ro(nextSequenceNumber)
     ' Process all line items before proceeding to final closeout.
     Call ProcessLineItems
 
@@ -1796,6 +1807,24 @@ Sub Closeout_Ro()
     ' Use the state machine for the rest of the closeout prompts
     Dim closeoutPrompts
     Set closeoutPrompts = CreateCloseoutPromptDictionary()
+    
+    ' Update the COMMAND: prompt to send the next sequence number
+    Dim commandRegexKey
+    commandRegexKey = "COMMAND:\(SEQ#/E/N/B/\?\)"
+    
+    If closeoutPrompts.Exists(commandRegexKey) Then
+        Dim commandPrompt
+        Set commandPrompt = closeoutPrompts.Item(commandRegexKey)
+        If nextSequenceNumber <= g_EndSequenceNumber Then
+            commandPrompt.ResponseText = CStr(nextSequenceNumber)
+            Call LogInfo("Sending next sequence number: " & nextSequenceNumber, "Closeout_Ro")
+        Else
+            commandPrompt.ResponseText = "E"
+            Call LogInfo("End of sequence range reached, sending 'E' to exit", "Closeout_Ro")
+        End If
+    Else
+        Call LogError("COMMAND regex key not found in closeout dictionary", "Closeout_Ro")
+    End If
     ' Add a 5 second delay before processing the final closeout prompts
     ' Wait for the continue prompt using WaitForTextSilent directly.
     Dim continuePromptTimeout
