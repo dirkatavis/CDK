@@ -124,7 +124,6 @@ Function CreateLineItemPromptDictionary()
     ' Handle end-of-sequence error
     Call AddPromptToDict(dict, "SEQUENCE NUMBER \d+ DOES NOT EXIST", "", "", True)
     Call AddPromptToDict(dict, "OPERATION CODE FOR LINE", "I", "<NumpadEnter>", False)
-    Call AddPromptToDict(dict, "COMMAND:\(SEQ#/E/N/B/\?\)", "N", "<NumpadEnter>", True)
     Call AddPromptToDict(dict, "COMMAND:", "", "", True)
     Call AddPromptToDict(dict, "This OpCode was performed in the last 270 days.", "", "", False)
     Call AddPromptToDict(dict, "LINE CODE X IS NOT ON FILE", "", "<Enter>", True)
@@ -151,7 +150,6 @@ Function CreateCloseoutPromptDictionary()
     Dim dict
     Set dict = CreateObject("Scripting.Dictionary")
 
-    Call AddPromptToDict(dict, "COMMAND:\(SEQ#/E/N/B/\?\)", "", "<NumpadEnter>", True)
     Call AddPromptToDict(dict, "COMMAND:", "", "", True) ' Simple command for other cases
     Call AddPromptToDict(dict, "ALL LABOR POSTED", "Y", "<NumpadEnter>", False)
     Call AddPromptToDict(dict, "MILEAGE OUT", "", "<NumpadEnter>", False)
@@ -244,12 +242,31 @@ Sub ProcessPromptSequence(prompts)
             Call LogTrace("Matched most specific prompt: '" & bestMatchKey & "'", "ProcessPromptSequence")
             Call LogTrace("Prompt details: ResponseText='" & promptDetails.ResponseText & "', KeyPress='" & promptDetails.KeyPress & "', IsSuccess=" & promptDetails.IsSuccess, "ProcessPromptSequence")
 
+            ' DEBUG: Add special handling for COMMAND prompts
+            Dim isCommandPrompt
+            isCommandPrompt = (InStr(1, bestMatchKey, "COMMAND", vbTextCompare) > 0)
+            
+            If isCommandPrompt Then
+                Call LogInfo("COMMAND prompt detected - sending E response", "ProcessPromptSequence")
+                Call WaitMs(3000) ' 3-second debug pause before sending response
+                Call LogTrace("3-second observation pause completed", "ProcessPromptSequence")
+            End If
+
             If promptDetails.ResponseText <> "" Then
                 Call LogTrace("Sending ResponseText: '" & promptDetails.ResponseText & "'", "ProcessPromptSequence")
                 Call FastText(promptDetails.ResponseText)
             End If
             Call LogTrace("Sending KeyPress: '" & promptDetails.KeyPress & "'", "ProcessPromptSequence")
+            bzhao.Pause 2000 ' Short pause before sending key
             Call FastKey(promptDetails.KeyPress)
+            
+            bzhao.Pause 2000 ' Short pause before sending key
+
+            
+            If isCommandPrompt Then
+                Call WaitMs(3000) ' 3-second debug pause after sending response
+                Call LogTrace("3-second observation pause after COMMAND response completed", "ProcessPromptSequence")
+            End If
 
             ' TRACE: Log screen snapshot after key send
             Call LogScreenSnapshot("AfterKeySend")
@@ -762,7 +779,7 @@ Sub InitializeConfig()
     LOG_FILE_PATH = ResolvePath("PostFinalCharges.log", LEGACY_LOG_PATH, False)
     g_LongWait = 2000
     g_SendRetryCount = 2
-    g_DelayBetweenTextAndEnterMs = 2000
+    g_DelayBetweenTextAndEnterMs = 500
     'POLL_INTERVAL_MS = 150
     POST_PROMPT_WAIT_MS = 150
     g_EnableDiagnosticLogging = False
@@ -899,6 +916,7 @@ Sub ProcessRONumbers()
     End If
 
     For roNumber = g_StartSequenceNumber To g_EndSequenceNumber
+        g_CurrentSequenceNumber = roNumber
         lineCount = lineCount + 1
         'WaitMs(2000)
         Call LogROHeader(roNumber)
@@ -1042,7 +1060,7 @@ Sub Main(roNumber)
     Dim send_enter_key
 
     send_enter_key = True
-    Call WaitForPrompt("COMMAND:", roNumber, send_enter_key, 10000, "")
+    Call WaitForPrompt("COMMAND:", roNumber, send_enter_key, 500, "")
     ' Scrape the actual RO number from the screen (top of screen shows 'RO:  123456')
     Dim actualRO
     actualRO = GetROFromScreen()
@@ -1107,14 +1125,14 @@ Sub Main(roNumber)
     trigger = FindTrigger()
     If trigger <> "" Then
         Call LogInfo("Trigger found: " & trigger & " - Proceeding to Closeout", "Main")
-        Call Closeout_Ro(g_CurrentSequenceNumber + 1)
+        Call Closeout_Ro()
         ' Closeout_Ro should set lastRoResult appropriately
     Else
         ' If no trigger text found, but the scraped RO status is READY TO POST,
         ' proceed to closeout anyway (status supersedes trigger text).
         If StrComp(roStatusForDecision, "READY TO POST", vbTextCompare) = 0 Then
             Call LogInfo("No closeout trigger text found, but RO STATUS is READY TO POST — proceeding to Closeout", "Main")
-            Call Closeout_Ro(g_CurrentSequenceNumber + 1)
+            Call Closeout_Ro()
         Else
             Call LogInfo("No Closeout Text Found - Skipping Closeout", "Main")
             Call FastText("E")
@@ -1472,7 +1490,7 @@ Function GetROFromScreen()
     pollAttempts = 0
     
     Do While pollAttempts < maxAttempts
-        bzhao.Pause 500 ' Wait 0.5 seconds
+        bzhao.Pause 150 ' Wait 0.15 seconds
         pollAttempts = pollAttempts + 1
         
         On Error Resume Next
@@ -1526,7 +1544,7 @@ End Function
 Function IsStatusReady()
     ' Use GetRepairOrderStatus() to scrape the exact RO status from the screen
     ' Caller may choose to add waits before calling if needed
-    bzhao.pause 500 ' brief pause to ensure screen is stable
+    bzhao.pause 150 ' brief pause to ensure screen is stable
     Dim roStatus
     roStatus = GetRepairOrderStatus()
     Call LogDebug("IsStatusReady - scraped status: '" & roStatus & "'", "IsStatusReady")
@@ -1730,7 +1748,7 @@ End Sub
 ' This involves first processing each line item, and then navigating through 
 ' final prompts to approve and close the RO.
 '-----------------------------------------------------------------------------------
-Sub Closeout_Ro(nextSequenceNumber)
+Sub Closeout_Ro()
     ' Process all line items before proceeding to final closeout.
     Call ProcessLineItems
 
@@ -1808,23 +1826,9 @@ Sub Closeout_Ro(nextSequenceNumber)
     Dim closeoutPrompts
     Set closeoutPrompts = CreateCloseoutPromptDictionary()
     
-    ' Update the COMMAND: prompt to send the next sequence number
-    Dim commandRegexKey
-    commandRegexKey = "COMMAND:\(SEQ#/E/N/B/\?\)"
-    
-    If closeoutPrompts.Exists(commandRegexKey) Then
-        Dim commandPrompt
-        Set commandPrompt = closeoutPrompts.Item(commandRegexKey)
-        If nextSequenceNumber <= g_EndSequenceNumber Then
-            commandPrompt.ResponseText = CStr(nextSequenceNumber)
-            Call LogInfo("Sending next sequence number: " & nextSequenceNumber, "Closeout_Ro")
-        Else
-            commandPrompt.ResponseText = "E"
-            Call LogInfo("End of sequence range reached, sending 'E' to exit", "Closeout_Ro")
-        End If
-    Else
-        Call LogError("COMMAND regex key not found in closeout dictionary", "Closeout_Ro")
-    End If
+    ' For the COMMAND: prompt, we should typically respond with "N" to continue
+    ' The sequence numbering is handled by the main loop in ProcessRONumbers
+    Call LogInfo("Using standard 'N' response for COMMAND prompt - sequence handled by main loop", "Closeout_Ro")
     ' Add a 5 second delay before processing the final closeout prompts
     ' Wait for the continue prompt using WaitForTextSilent directly.
     Dim continuePromptTimeout
@@ -1840,7 +1844,8 @@ Sub Closeout_Ro(nextSequenceNumber)
     Call ProcessPromptSequence(closeoutPrompts)
 
     ' Give the terminal a short moment to surface any follow-up messages before scanning for errors.
-    'Call WaitMs(2000)
+    Call LogTrace("Waiting briefly before checking for closeout errors", "Closeout_Ro") 
+    Call WaitMs(500)  ' Reduced from 2000ms: Give screen time to update after sending E
     If HandleCloseoutErrors() Then Exit Sub
 
     lastRoResult = "Successfully closed"
@@ -1949,11 +1954,14 @@ End Function
 ' (Boolean) Returns True if an error was detected and handled, False otherwise.
 '-----------------------------------------------------------------------------------
 Function HandleCloseoutErrors()
+    Call LogTrace("Scanning screen for closeout errors", "HandleCloseoutErrors")
+    
     Dim errorMap, key
     Set errorMap = GetCloseoutErrorMap()
     
     For Each key In errorMap.Keys
         If IsTextPresent(key) Then
+            Call LogError("Closeout error detected: " & key, "HandleCloseoutErrors")
             ' Try to extract the detailed message shown on the screen near the key
             Dim detailedMsg
             detailedMsg = ExtractMessageNear(key)
@@ -1985,6 +1993,7 @@ Function HandleCloseoutErrors()
         End If
     Next
     
+    Call LogTrace("No closeout errors found", "HandleCloseoutErrors")
     HandleCloseoutErrors = False
 End Function
 
@@ -2335,31 +2344,6 @@ Sub UpdateDiagnosticLog(actionName)
     Set logFile = Nothing
     Set logFSO = Nothing
     Err.Clear
-End Sub
-
-'-----------------------------------------------------------------------------------
-' **PROCEDURE NAME:** WaitForContinuePrompt
-' **DATE CREATED:** 2025-12-23
-' **AUTHOR:** GitHub Copilot
-' 
-' **FUNCTIONALITY:**
-' Waits until the COMMAND:(SEQ#/E/N/B/?) prompt appears, with a delay.
-'-----------------------------------------------------------------------------------
-Sub WaitForContinuePrompt()
-    Dim promptText, timeoutMs, startTime, elapsedMs
-    promptText = "COMMAND:(SEQ#/E/N/B/?)"
-    timeoutMs = 10000 ' 10 seconds, adjust as needed
-    startTime = Timer
-    Do
-        If IsTextPresent(promptText) Then
-            Exit Sub
-        End If
-        Call WaitMs(120)
-        elapsedMs = (Timer - startTime) * 1000
-        If elapsedMs < 0 Then elapsedMs = elapsedMs + 86400000 ' Handle midnight rollover
-    Loop While elapsedMs < timeoutMs
-    ' If not found, log and continue
-    Call LogWarn("Timeout waiting for continue prompt: " & promptText, "WaitForContinuePrompt")
 End Sub
 
 Sub StartScript()
