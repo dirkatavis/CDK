@@ -81,6 +81,7 @@ Class Prompt
     Public ResponseText
     Public KeyPress
     Public IsSuccess
+    Public AcceptDefault
 End Class
 
 ' Helper to create a Prompt object and add it to the dictionary
@@ -91,6 +92,19 @@ Sub AddPromptToDict(dict, trigger, response, key, isSuccess)
     p.ResponseText = response
     p.KeyPress = key
     p.IsSuccess = isSuccess
+    p.AcceptDefault = False
+    dict.Add trigger, p
+End Sub
+
+' Extended helper to create a Prompt object with AcceptDefault support
+Sub AddPromptToDictEx(dict, trigger, response, key, isSuccess, acceptDefault)
+    Dim p
+    Set p = New Prompt
+    p.TriggerText = trigger
+    p.ResponseText = response
+    p.KeyPress = key
+    p.IsSuccess = isSuccess
+    p.AcceptDefault = acceptDefault
     dict.Add trigger, p
 End Sub
 
@@ -98,7 +112,6 @@ End Sub
 Function CreateLineItemPromptDictionary()
     Dim dict
     Set dict = CreateObject("Scripting.Dictionary")
-    Call AddPromptToDictEx(dict, "TECHNICIAN \([A-Za-z0-9]+\)\?", "99", "<NumpadEnter>", False, True)
     ' Handle end-of-sequence error
     Call AddPromptToDict(dict, "SEQUENCE NUMBER \d+ DOES NOT EXIST", "", "", True)
     Call AddPromptToDict(dict, "OPERATION CODE FOR LINE", "I", "<NumpadEnter>", False)
@@ -108,10 +121,12 @@ Function CreateLineItemPromptDictionary()
     Call AddPromptToDict(dict, "LINE CODE X IS NOT ON FILE", "", "<Enter>", True)
     Call AddPromptToDict(dict, "LABOR TYPE FOR LINE", "", "<NumpadEnter>", False)
     Call AddPromptToDict(dict, "DESC:", "", "<NumpadEnter>", False)
+    Call AddPromptToDict(dict, "Enter a technician number", "", "<F3>", False)
     Call AddPromptToDictEx(dict, "TECHNICIAN \(\d+\)", "99", "<NumpadEnter>", False, True)
     Call AddPromptToDictEx(dict, "TECHNICIAN?", "99", "<NumpadEnter>", False, True)
-    Call AddPromptToDict(dict, "Enter a technician number", "", "<F3>", False)
+    Call AddPromptToDictEx(dict, "TECHNICIAN \([A-Za-z0-9]+\)\?", "99", "<NumpadEnter>", False, True)
     Call AddPromptToDictEx(dict, "ACTUAL HOURS \(\d+\)", "0", "<NumpadEnter>", False, True)
+    Call AddPromptToDict(dict, "SOLD HOURS?", "0", "<NumpadEnter>", False)
     Call AddPromptToDictEx(dict, "SOLD HOURS \([0-9]+\)\?", "0", "<NumpadEnter>", False, True)
     Call AddPromptToDict(dict, "ADD A LABOR OPERATION \(N\)\?", "N", "<NumpadEnter>", True)
     Call AddPromptToDict(dict, "Is this a comeback \(Y/N\)\.\.\.", "Y", "<NumpadEnter>", False)
@@ -224,8 +239,8 @@ Sub ProcessPromptSequence(prompts)
             ' Check if this prompt should accept default values and if one is present
             Dim shouldAcceptDefault
             shouldAcceptDefault = False
-            If promptDetails.Exists("AcceptDefault") Then
-                shouldAcceptDefault = promptDetails.AcceptDefault And HasDefaultValueInPrompt(bestMatchKey, buf)
+            If promptDetails.AcceptDefault Then
+                shouldAcceptDefault = HasDefaultValueInPrompt(bestMatchKey, buf)
                 If shouldAcceptDefault Then
                     Call LogInfo("Default value detected in prompt - accepting by sending only key press", "ProcessPromptSequence")
                 End If
@@ -295,16 +310,22 @@ Function IsPromptInConfig(promptText, promptsDict)
             isRegex = True
         End If
         If isRegex Then
+            On Error Resume Next
             Set re = CreateObject("VBScript.RegExp")
             re.Pattern = key
             re.IgnoreCase = True
             re.Global = False
-            If re.Test(promptText) Then
-                IsPromptInConfig = True
-                Exit Function
+            If Err.Number = 0 Then
+                If re.Test(promptText) Then
+                    IsPromptInConfig = True
+                    Exit Function
+                End If
             End If
+            Err.Clear
+            On Error GoTo 0
         Else
-            If InStr(1, promptText, key, vbTextCompare) > 0 Then
+            ' For non-regex patterns, check for exact match or substring match
+            If StrComp(Trim(promptText), Trim(key), vbTextCompare) = 0 Or InStr(1, promptText, key, vbTextCompare) > 0 Then
                 IsPromptInConfig = True
                 Exit Function
             End If
