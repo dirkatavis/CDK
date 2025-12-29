@@ -390,6 +390,13 @@ Function WaitForScreenTransition(expectedText, timeoutMs, description)
         End If
     Loop
     
+    ' Log explicit result for clarity at point of return
+    If found Then
+        Call LogTrace("Successfully found " & description & " within " & Int(waitElapsed) & "ms", "WaitForScreenTransition")
+    Else
+        Call LogTrace("Failed to find " & description & " (timeout after " & Int(waitElapsed) & "ms)", "WaitForScreenTransition")
+    End If
+    
     WaitForScreenTransition = found
 End Function
 
