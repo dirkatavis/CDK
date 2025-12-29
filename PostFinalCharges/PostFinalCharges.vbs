@@ -1951,6 +1951,16 @@ Sub ClosePreAssignedRos()
                 ' Send administrative Tech ID and Enter
                 Call WaitForPrompt("TECHNICIAN FINISHING WORK", "99", True, g_PromptWait, "")
                 Call WaitMs(200) ' Reduced from 500ms to 200ms
+                
+                ' Check for line completion confirmation prompt
+                Call WaitMs(300) ' Brief wait for completion prompt to appear
+                Dim completionResponse
+                completionResponse = GetScreenLine(24)
+                If InStr(1, completionResponse, "IS LINE '" & lineCode & "' COMPLETED (Y/N):", vbTextCompare) > 0 Then
+                    Call LogDebug("Line completion prompt for " & lineCode & " - sending Y", "ClosePreAssignedRos")
+                    Call WaitForPrompt("IS LINE '" & lineCode & "' COMPLETED (Y/N):", "Y", True, g_PromptWait, "")
+                    Call WaitMs(200)
+                End If
                 lineComplete = True
                 
             ElseIf InStr(1, response, "LINE CODE " & lineCode & " IS NOT ON FILE", vbTextCompare) > 0 Then
