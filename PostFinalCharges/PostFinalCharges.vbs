@@ -1963,6 +1963,12 @@ Sub ClosePreAssignedRos()
                 End If
                 lineComplete = True
                 
+            ElseIf InStr(1, response, "IS LINE '" & lineCode & "' COMPLETED (Y/N):", vbTextCompare) > 0 Then
+                Call LogDebug("Direct line completion prompt for " & lineCode & " - sending Y", "ClosePreAssignedRos")
+                Call WaitForPrompt("IS LINE '" & lineCode & "' COMPLETED (Y/N):", "Y", True, g_PromptWait, "")
+                Call WaitMs(200)
+                lineComplete = True
+                
             ElseIf InStr(1, response, "LINE CODE " & lineCode & " IS NOT ON FILE", vbTextCompare) > 0 Then
                 Call LogInfo("Line " & lineCode & " not on file - exiting FNL loop", "ClosePreAssignedRos")
                 Exit For ' Exit the main loop completely
