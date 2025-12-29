@@ -1,28 +1,5 @@
 Option Explicit
 
-' Rolling log configuration (will be loaded from config.ini)
-Dim MAX_LOG_SIZE
-
-' Diagnostic: Display top 10 lines and highlight RO STATUS line
-Sub Diagnostic_FindROStatusLine()
-    Dim i, lineText, msg, found
-    found = False
-    For i = 1 To 10
-        lineText = GetScreenLine(i)
-        If InStr(1, lineText, "RO STATUS:", vbTextCompare) > 0 Then
-            msg = "*** RO STATUS FOUND ***\nLine " & i & ": '" & lineText & "'"
-            found = True
-        Else
-            msg = "Line " & i & ": '" & lineText & "'"
-        End If
-        MsgBox msg, vbOKOnly, "Screen Line " & i
-    Next
-    If Not found Then
-        MsgBox "RO STATUS: not found in top 10 lines.", vbExclamation, "RO STATUS Not Found"
-    End If
-End Sub
-
-
 
 ' Global script variables
 Dim CSV_FILE_PATH, LOG_FILE_PATH
@@ -32,6 +9,7 @@ Dim bzhao
 Dim lastRoResult
 Dim currentRODisplay
 Dim commonLibLoaded
+'Dim WAIT_BETWEEN_RETRIES, RETRY_COUNT, TEXT_VERIFY_DELAY, TIMEOUT_MS, POLL_INTERVAL_MS, CLOSEOUT_WAIT, CLOSEOUT_LONG_WAIT
 Dim POST_PROMPT_WAIT_MS
 Dim DEBUG_LOGGING
 Dim g_IsTestMode
@@ -42,7 +20,7 @@ Dim g_EnableDetailedLogging
 Dim g_LastScrapedStatus
 Dim g_BaseScriptPath
 Dim g_ShouldAbort, g_AbortReason
-Dim g_StartSequenceNumber, g_EndSequenceNumber, g_CurrentSequenceNumber
+Dim g_StartSequenceNumber, g_EndSequenceNumber
 Dim MainPromptLine
 Dim LEGACY_CSV_PATH, LEGACY_LOG_PATH, LEGACY_DIAG_LOG_PATH, LEGACY_COMMONLIB_PATH
 ' Current minimum logging level (configurable)
@@ -103,6 +81,7 @@ Class Prompt
     Public ResponseText
     Public KeyPress
     Public IsSuccess
+    Public AcceptDefault
 End Class
 
 ' Helper to create a Prompt object and add it to the dictionary
@@ -113,6 +92,19 @@ Sub AddPromptToDict(dict, trigger, response, key, isSuccess)
     p.ResponseText = response
     p.KeyPress = key
     p.IsSuccess = isSuccess
+    p.AcceptDefault = False
+    dict.Add trigger, p
+End Sub
+
+' Extended helper to create a Prompt object with AcceptDefault support
+Sub AddPromptToDictEx(dict, trigger, response, key, isSuccess, acceptDefault)
+    Dim p
+    Set p = New Prompt
+    p.TriggerText = trigger
+    p.ResponseText = response
+    p.KeyPress = key
+    p.IsSuccess = isSuccess
+    p.AcceptDefault = acceptDefault
     dict.Add trigger, p
 End Sub
 
@@ -120,20 +112,21 @@ End Sub
 Function CreateLineItemPromptDictionary()
     Dim dict
     Set dict = CreateObject("Scripting.Dictionary")
-    Call AddPromptToDict(dict, "TECHNICIAN \([A-Za-z0-9]+\)\?", "99", "<NumpadEnter>", False)
-    ' Handle end-of-sequence error
     Call AddPromptToDict(dict, "SEQUENCE NUMBER \d+ DOES NOT EXIST", "", "", True)
     Call AddPromptToDict(dict, "OPERATION CODE FOR LINE", "I", "<NumpadEnter>", False)
+    Call AddPromptToDict(dict, "COMMAND:\(SEQ#/E/N/B/\?\)", "", "", False)
     Call AddPromptToDict(dict, "COMMAND:", "", "", True)
     Call AddPromptToDict(dict, "This OpCode was performed in the last 270 days.", "", "", False)
     Call AddPromptToDict(dict, "LINE CODE X IS NOT ON FILE", "", "<Enter>", True)
     Call AddPromptToDict(dict, "LABOR TYPE FOR LINE", "", "<NumpadEnter>", False)
     Call AddPromptToDict(dict, "DESC:", "", "<NumpadEnter>", False)
-    Call AddPromptToDict(dict, "TECHNICIAN \(\d+\)", "99", "<NumpadEnter>", False)
-    Call AddPromptToDict(dict, "TECHNICIAN?", "99", "<NumpadEnter>", False)
     Call AddPromptToDict(dict, "Enter a technician number", "", "<F3>", False)
-    Call AddPromptToDict(dict, "ACTUAL HOURS \(\d+\)", "0", "<NumpadEnter>", False)
-    Call AddPromptToDict(dict, "SOLD HOURS \(\d+\)\?", "0", "<NumpadEnter>", False)
+    Call AddPromptToDictEx(dict, "TECHNICIAN \(\d+\)", "99", "<NumpadEnter>", False, True)
+    Call AddPromptToDictEx(dict, "TECHNICIAN?", "99", "<NumpadEnter>", False, True)
+    Call AddPromptToDictEx(dict, "ACTUAL HOURS \(\d+\)", "0", "<NumpadEnter>", False, True)
+    Call AddPromptToDictEx(dict, "TECHNICIAN \([A-Za-z0-9]+\)\?", "99", "<NumpadEnter>", False, True)
+    Call AddPromptToDict(dict, "SOLD HOURS?", "0", "<NumpadEnter>", False)
+    Call AddPromptToDictEx(dict, "SOLD HOURS \([0-9]+\)\?", "0", "<NumpadEnter>", False, True)
     Call AddPromptToDict(dict, "ADD A LABOR OPERATION \(N\)\?", "N", "<NumpadEnter>", True)
     Call AddPromptToDict(dict, "Is this a comeback \(Y/N\)\.\.\.", "Y", "<NumpadEnter>", False)
     Call AddPromptToDict(dict, "NOT ON FILE", "", "<Enter>", True)
@@ -150,7 +143,7 @@ Function CreateCloseoutPromptDictionary()
     Dim dict
     Set dict = CreateObject("Scripting.Dictionary")
 
-    Call AddPromptToDict(dict, "COMMAND:", "", "", True) ' Simple command for other cases
+    Call AddPromptToDict(dict, "COMMAND:", "", "", True) ' Success
     Call AddPromptToDict(dict, "ALL LABOR POSTED", "Y", "<NumpadEnter>", False)
     Call AddPromptToDict(dict, "MILEAGE OUT", "", "<NumpadEnter>", False)
     Call AddPromptToDict(dict, "Current Mileage less than Previous Mileage", "Y", "<NumpadEnter>", False)
@@ -239,34 +232,25 @@ Sub ProcessPromptSequence(prompts)
         ' --- If a prompt was found, handle it ---
         If bestMatchLength > 0 Then
             Set promptDetails = prompts.Item(bestMatchKey)
-            Call LogTrace("Matched most specific prompt: '" & bestMatchKey & "'", "ProcessPromptSequence")
+            Call LogInfo("Matched most specific prompt: '" & bestMatchKey & "'", "ProcessPromptSequence")
             Call LogTrace("Prompt details: ResponseText='" & promptDetails.ResponseText & "', KeyPress='" & promptDetails.KeyPress & "', IsSuccess=" & promptDetails.IsSuccess, "ProcessPromptSequence")
 
-            ' DEBUG: Add special handling for COMMAND prompts
-            Dim isCommandPrompt
-            isCommandPrompt = (InStr(1, bestMatchKey, "COMMAND", vbTextCompare) > 0)
-            
-            If isCommandPrompt Then
-                Call LogInfo("COMMAND prompt detected - sending E response", "ProcessPromptSequence")
-                Call WaitMs(3000) ' 3-second debug pause before sending response
-                Call LogTrace("3-second observation pause completed", "ProcessPromptSequence")
+            ' Check if this prompt should accept default values and if one is present
+            Dim shouldAcceptDefault
+            shouldAcceptDefault = False
+            If promptDetails.AcceptDefault Then
+                shouldAcceptDefault = HasDefaultValueInPrompt(bestMatchKey, buf)
+                If shouldAcceptDefault Then
+                    Call LogInfo("Default value detected in prompt - accepting by sending only key press", "ProcessPromptSequence")
+                End If
             End If
 
-            If promptDetails.ResponseText <> "" Then
+            If promptDetails.ResponseText <> "" And Not shouldAcceptDefault Then
                 Call LogTrace("Sending ResponseText: '" & promptDetails.ResponseText & "'", "ProcessPromptSequence")
                 Call FastText(promptDetails.ResponseText)
             End If
             Call LogTrace("Sending KeyPress: '" & promptDetails.KeyPress & "'", "ProcessPromptSequence")
-            bzhao.Pause 2000 ' Short pause before sending key
             Call FastKey(promptDetails.KeyPress)
-            
-            bzhao.Pause 2000 ' Short pause before sending key
-
-            
-            If isCommandPrompt Then
-                Call WaitMs(3000) ' 3-second debug pause after sending response
-                Call LogTrace("3-second observation pause after COMMAND response completed", "ProcessPromptSequence")
-            End If
 
             ' TRACE: Log screen snapshot after key send
             Call LogScreenSnapshot("AfterKeySend")
@@ -279,15 +263,15 @@ Sub ProcessPromptSequence(prompts)
                 Call WaitMs(500)
                 clearElapsed = (Timer - clearStart) * 1000
                 If clearElapsed < 0 Then clearElapsed = clearElapsed + 86400000 ' Handle midnight rollover
-                If clearElapsed > g_PromptWait Then ' Configurable prompt timeout
-                    Call LogWarn("Prompt '" & bestMatchKey & "' took longer than " & (g_PromptWait/1000) & " seconds to clear.", "ProcessPromptSequence")
+                If clearElapsed > 5000 Then ' 5-second timeout
+                    Call LogWarn("Prompt '" & bestMatchKey & "' did not clear within 5 seconds.", "ProcessPromptSequence")
                     Exit Do
                 End If
             Loop
 
             If promptDetails.IsSuccess Then
                 finished = True
-                Call LogDebug("Success prompt reached: " & bestMatchKey, "ProcessPromptSequence")
+                Call LogInfo("Success prompt reached: " & bestMatchKey, "ProcessPromptSequence")
                 Call LogTrace("Exiting ProcessPromptSequence on success.", "ProcessPromptSequence")
             End If
             ' The loop will now naturally restart and rescan for the next prompt
@@ -302,8 +286,6 @@ End Sub
 ' Helper to get the text from any line of the screen (1-based)
 Function GetScreenLine(lineNum)
     Dim screenContentBuffer, lineText
-    ' Wait 5 seconds to ensure screen is updated
-    If Not bzhao Is Nothing Then bzhao.Pause 500
     On Error Resume Next
     bzhao.ReadScreen screenContentBuffer, 80, lineNum, 1
     If Err.Number <> 0 Then
@@ -317,75 +299,6 @@ Function GetScreenLine(lineNum)
 End Function
 
 
-
-'-----------------------------------------------------------------------------------
-' **FUNCTION NAME:** ScrapeScreenLines
-' **DATE CREATED:** 2025-12-24
-' **AUTHOR:** GitHub Copilot
-' 
-' **FUNCTIONALITY:**
-' Returns an array of lines from the screen, from startLine to endLine (1-based, inclusive).
-' Trims each line and skips empty lines if skipEmpty is True.
-' 
-' **PARAMETERS:**
-' startLine (Integer): First line to scrape (1-based)
-' endLine (Integer): Last line to scrape (1-based)
-' skipEmpty (Boolean): If True, skip empty lines
-' 
-' **RETURN VALUE:**
-' (Array) Array of strings, each representing a line from the screen.
-'-----------------------------------------------------------------------------------
-Function ScrapeScreenLines(startLine, endLine, skipEmpty)
-    Dim i, lineText, result(), count
-    count = 0
-    ReDim result(endLine - startLine) ' Max possible size
-    For i = startLine To endLine
-        lineText = GetScreenLine(i)
-        lineText = Trim(lineText)
-        If (Not skipEmpty) Or (Len(lineText) > 0) Then
-            result(count) = lineText
-            count = count + 1
-        End If
-    Next
-    If count = 0 Then
-        ScrapeScreenLines = Array()
-    ElseIf count < (endLine - startLine + 1) Then
-        ReDim Preserve result(count - 1)
-        ScrapeScreenLines = result
-    Else
-        ScrapeScreenLines = result
-    End If
-End Function
-
-' Wrapper for default usage: scrape all lines, skip empty
-Function ScrapeAllScreenLines()
-    ScrapeAllScreenLines = ScrapeScreenLines(1, 24, True)
-End Function
-
-
-' Diagnostic: Display lines 1–10 using GetScreenLine and SafeMsg
-Sub Diagnostic_DisplayScreenLines()
-    Dim i, lineText, msg
-    For i = 1 To 10
-        lineText = GetScreenLine(i)
-        msg = "Line " & i & ": '" & lineText & "'"
-        Call SafeMsg(msg, False, "Screen Line Diagnostic")
-    Next
-End Sub
-
-
-' Diagnostic: Display top 5 lines using MsgBox, one per line
-Sub Diagnostic_MsgBoxTop5Lines()
-    Dim i, lineText, msg
-    For i = 1 To 5
-        lineText = GetScreenLine(i)
-        msg = "Line " & i & ": '" & lineText & "'"
-        MsgBox msg, vbOKOnly, "Screen Line " & i
-    Next
-End Sub
-
-
-
 ' Helper to check if a prompt is in the prompts dictionary
 Function IsPromptInConfig(promptText, promptsDict)
     Dim key
@@ -396,16 +309,22 @@ Function IsPromptInConfig(promptText, promptsDict)
             isRegex = True
         End If
         If isRegex Then
+            On Error Resume Next
             Set re = CreateObject("VBScript.RegExp")
             re.Pattern = key
             re.IgnoreCase = True
             re.Global = False
-            If re.Test(promptText) Then
-                IsPromptInConfig = True
-                Exit Function
+            If Err.Number = 0 Then
+                If re.Test(promptText) Then
+                    IsPromptInConfig = True
+                    Exit Function
+                End If
             End If
+            Err.Clear
+            On Error GoTo 0
         Else
-            If InStr(1, promptText, key, vbTextCompare) > 0 Then
+            ' For non-regex patterns, check for exact match or substring match
+            If StrComp(Trim(promptText), Trim(key), vbTextCompare) = 0 Or InStr(1, promptText, key, vbTextCompare) > 0 Then
                 IsPromptInConfig = True
                 Exit Function
             End If
@@ -414,12 +333,54 @@ Function IsPromptInConfig(promptText, promptsDict)
     IsPromptInConfig = False
 End Function
 
-
-
-
-
-
-
+' Checks if a prompt contains a default value in parentheses that should be accepted
+Function HasDefaultValueInPrompt(promptPattern, screenContent)
+    HasDefaultValueInPrompt = False
+    
+    ' Look for patterns like TECHNICIAN(12345)? or ACTUAL HOURS (8) in the screen content
+    ' Use regex to find the actual prompt text and check if it has a non-empty value in parentheses
+    On Error Resume Next
+    Dim re, matches, match, parenContent
+    Set re = CreateObject("VBScript.RegExp")
+    
+    ' Common patterns that indicate a default value is present:
+    ' TECHNICIAN(12345)? - has a value in parentheses
+    ' ACTUAL HOURS (8) - has a value in parentheses
+    ' SOLD HOURS (10)? - has a value in parentheses
+    
+    ' Extract the base pattern and look for it with actual values
+    If InStr(promptPattern, "TECHNICIAN") > 0 Then
+        re.Pattern = "TECHNICIAN\s*\(([A-Za-z0-9]+)\)"
+    ElseIf InStr(promptPattern, "ACTUAL HOURS") > 0 Then
+        re.Pattern = "ACTUAL HOURS\s*\(([0-9]+)\)"
+    ElseIf InStr(promptPattern, "SOLD HOURS") > 0 Then
+        re.Pattern = "SOLD HOURS\s*\(([0-9]+)\)"
+    Else
+        ' Generic pattern for any prompt with parentheses containing a value
+        re.Pattern = "\([A-Za-z0-9]+\)"
+    End If
+    
+    re.IgnoreCase = True
+    re.Global = False
+    
+    If Err.Number = 0 Then
+        Set matches = re.Execute(screenContent)
+        If matches.Count > 0 Then
+            Set match = matches(0)
+            If match.SubMatches.Count > 0 Then
+                parenContent = Trim(match.SubMatches(0))
+                ' If there's content in parentheses and it's not empty or just question marks
+                If Len(parenContent) > 0 And parenContent <> "?" And parenContent <> "" Then
+                    HasDefaultValueInPrompt = True
+                    Call LogTrace("Found default value in prompt: " & parenContent, "HasDefaultValueInPrompt")
+                End If
+            End If
+        End If
+    End If
+    
+    If Err.Number <> 0 Then Err.Clear
+    On Error GoTo 0
+End Function
 
 ' Bootstrap defaults so logging works before config initialization
 g_BaseScriptPath = ""
@@ -757,9 +718,6 @@ Sub InitializeConfig()
     g_DefaultWait = GetIniSetting("Settings", "DefaultWait", 1000)
     g_PromptWait = GetIniSetting("Settings", "PromptWait", 5000)
     
-    ' Load log rotation size setting (default 1MB = 1048576 bytes)
-    MAX_LOG_SIZE = CLng(GetIniSetting("Settings", "LogRotationSize", "1048576"))
-    
     Dim startSequenceNumberValue, endSequenceNumberValue
     startSequenceNumberValue = GetIniSetting("Processing", "StartSequenceNumber", "")
     endSequenceNumberValue = GetIniSetting("Processing", "EndSequenceNumber", "")
@@ -779,7 +737,7 @@ Sub InitializeConfig()
     LOG_FILE_PATH = ResolvePath("PostFinalCharges.log", LEGACY_LOG_PATH, False)
     g_LongWait = 2000
     g_SendRetryCount = 2
-    g_DelayBetweenTextAndEnterMs = 500
+    g_DelayBetweenTextAndEnterMs = 2000
     'POLL_INTERVAL_MS = 150
     POST_PROMPT_WAIT_MS = 150
     g_EnableDiagnosticLogging = False
@@ -916,7 +874,6 @@ Sub ProcessRONumbers()
     End If
 
     For roNumber = g_StartSequenceNumber To g_EndSequenceNumber
-        g_CurrentSequenceNumber = roNumber
         lineCount = lineCount + 1
         'WaitMs(2000)
         Call LogROHeader(roNumber)
@@ -946,12 +903,12 @@ Sub ProcessRONumbers()
 
         If Err.Number <> 0 Then
             lastRoResult = "Error in Main: " & Err.Description
+            ' Prefer the scraped RO for error/result logging when available
             Dim displayId
             If Len(Trim(CStr(currentRODisplay))) > 0 Then
                 displayId = currentRODisplay
             Else
-                displayId = "NotFound"
-                currentRODisplay = "NotFound"
+                displayId = roNumber
             End If
             Dim errorLabel
             errorLabel = sequenceLabel
@@ -964,11 +921,16 @@ Sub ProcessRONumbers()
 
         ' Ensure there's always a final result logged for the RO
         If Len(Trim(CStr(lastRoResult))) = 0 Then lastRoResult = "No result recorded"
-        If Len(Trim(CStr(currentRODisplay))) = 0 Then currentRODisplay = "NotFound"
+        Dim finalDisplay
+        If Len(Trim(CStr(currentRODisplay))) > 0 Then
+            finalDisplay = currentRODisplay
+        Else
+            finalDisplay = roNumber
+        End If
         Dim finalMessage
         finalMessage = sequenceLabel
-        If Len(Trim(CStr(currentRODisplay))) > 0 And CStr(currentRODisplay) <> CStr(roNumber) Then
-            finalMessage = finalMessage & " (RO " & currentRODisplay & ")"
+        If Len(Trim(CStr(finalDisplay))) > 0 And CStr(finalDisplay) <> CStr(roNumber) Then
+            finalMessage = finalMessage & " (RO " & finalDisplay & ")"
         End If
         finalMessage = finalMessage & " - Result: " & lastRoResult
         Call LogCore(finalMessage, "ProcessRONumbers")
@@ -1060,26 +1022,22 @@ Sub Main(roNumber)
     Dim send_enter_key
 
     send_enter_key = True
-    Call WaitForPrompt("COMMAND:", roNumber, send_enter_key, 500, "")
+    Call WaitForPrompt("COMMAND:", roNumber, send_enter_key, 10000, "")
     ' Scrape the actual RO number from the screen (top of screen shows 'RO:  123456')
     Dim actualRO
     actualRO = GetROFromScreen()
     If Len(Trim(CStr(actualRO))) > 0 Then
         currentRODisplay = actualRO
-        Call LogInfo("Sent RO to BlueZone", "Main")
-        Call LogInfo("RO: " & actualRO, "Main")
     Else
-        currentRODisplay = "NotFound"
-        Call LogWarn("Could not scrape RO number from screen after opening sequence. Setting currentRODisplay to 'NotFound' (was sequence: " & roNumber & ")", "Main")
-        Call LogInfo("Sent RO to BlueZone - RO: NotFound", "Main")
+        currentRODisplay = roNumber
     End If
     
-    ' Scrape the status early so it's available for the CORE log
-    Call GetRepairOrderStatus()
-    
-    
-    ' Log the RO number and status for every sequence, regardless of processing
-    Call LogCore("SEQUENCE: " & roNumber & " | RO: " & currentRODisplay & " | STATUS: '" & g_LastScrapedStatus & "'", "Main")
+    If Len(Trim(CStr(currentRODisplay))) > 0 Then
+        Call LogInfo("Sent RO to BlueZone", "Main")
+    Else
+        ' No scraped RO available; log against the sequence number and note unknown RO
+        Call LogInfo(roNumber & " - Sent RO to BlueZone - RO: (unknown) - will use sequence number for checks", "Main")
+    End If
     
     ' Check for "closed" response
     If IsTextPresent("Repair Order " & currentRODisplay & " is closed.") Then
@@ -1096,42 +1054,33 @@ Sub Main(roNumber)
     End If
     
     ' Otherwise, assume repair order is open — prefer the scraped RO for logging
-    'Call LogInfo("Repair Order Open (RO: " & currentRODisplay & ")", "Main")
+    If Len(Trim(CStr(currentRODisplay))) > 0 Then
+        Call LogInfo("Repair Order Open", "Main")
+    Else
+        Call LogInfo(roNumber & " - Repair Order Open", "Main")
+    End If
     
     ' Allow time for RO details to fully load before checking status
     'Call WaitMs(2000)
     
-    ' After opening an RO, ensure it has the expected READY TO POST or PREASSIGNED status.
-    Dim roStatusForRestriction
-    roStatusForRestriction = g_LastScrapedStatus ' Use cached value from earlier call
-    If StrComp(Trim(CStr(roStatusForRestriction)), "READY TO POST", vbTextCompare) <> 0 And StrComp(Trim(CStr(roStatusForRestriction)), "PREASSIGNED", vbTextCompare) <> 0 Then
-        'Call LogInfo("RO STATUS: '" & roStatusForRestriction & "' - Skipping processing for this RO.", "Main")
+    ' After opening an RO, ensure it has the expected READY TO POST status.
+    If Not IsStatusReady() Then
+        ' Call LogCore("RO STATUS not READY TO POST - exiting (E) and moving to next", "Main") ' Redundant, removed
         Call FastText("E")
         Call FastKey("<NumpadEnter>")
         ' Wait for the command prompt to return to ensure we are in a known state
         Call WaitForPrompt("COMMAND:", "", False, 5000, "")
-        lastRoResult = "Skipped - Status not READY TO POST or PREASSIGNED"
+
+        lastRoResult = "Skipped - Status not ready"
         Exit Sub
     Else
-        Call LogInfo("RO STATUS: " & roStatusForRestriction, "Main")
-        ' Debug pause for READY TO POST or PREASSIGNED ROs only
-        'bzhao.MsgBox "DEBUG: check the RO status and closeout result before continuing.", "Debug Pause", 0
+        Call LogInfo("RO STATUS: READY TO POST", "Main")
     End If
     
     ' Snapshot the scraped status now to avoid timing races, then detect triggers.
     Dim trigger, roStatusForDecision
     roStatusForDecision = Trim(CStr(g_LastScrapedStatus))
     Call LogDebug("Pre-trigger check - scraped status: '" & roStatusForDecision & "'", "Main")
-    
-    ' Handle PREASSIGNED status ROs with FNL loop first
-    If StrComp(roStatusForDecision, "PREASSIGNED", vbTextCompare) = 0 Then
-        Call LogInfo("RO STATUS is PREASSIGNED - Processing with FNL loop", "Main")
-        Call ClosePreAssignedRos()
-        ' ClosePreAssignedRos should set lastRoResult appropriately
-        Exit Sub
-    End If
-    
-    ' Handle READY TO POST status ROs with existing logic
     trigger = FindTrigger()
     If trigger <> "" Then
         Call LogInfo("Trigger found: " & trigger & " - Proceeding to Closeout", "Main")
@@ -1317,6 +1266,7 @@ Sub WriteLogEntry(level, message, source)
         Exit Sub
     End If
 
+    'Dim logFolder
     logFolder = logFSO.GetParentFolderName(LOG_FILE_PATH)
     If Len(logFolder) > 0 Then
         Call EnsureFolderExists(logFSO, logFolder)
@@ -1326,9 +1276,6 @@ Sub WriteLogEntry(level, message, source)
         End If
     End If
 
-    ' Check if log rotation is needed before writing
-    Call CheckAndRotateLog(logFSO, LOG_FILE_PATH)
-
     Set logFile = logFSO.OpenTextFile(LOG_FILE_PATH, 8, True)
     If Err.Number <> 0 Then
         Err.Clear
@@ -1336,8 +1283,6 @@ Sub WriteLogEntry(level, message, source)
             LOG_FILE_PATH = LEGACY_LOG_PATH
             logFolder = logFSO.GetParentFolderName(LOG_FILE_PATH)
             If Len(logFolder) > 0 Then Call EnsureFolderExists(logFSO, logFolder)
-            ' Check rotation for legacy path too
-            Call CheckAndRotateLog(logFSO, LOG_FILE_PATH)
             Set logFile = logFSO.OpenTextFile(LOG_FILE_PATH, 8, True)
             If Err.Number <> 0 Then
                 Err.Clear
@@ -1358,49 +1303,6 @@ Sub WriteLogEntry(level, message, source)
     logFile.Close
     Set logFile = Nothing
     Set logFSO = Nothing
-    On Error GoTo 0
-End Sub
-
-'-----------------------------------------------------------------------------------
-' **PROCEDURE NAME:** CheckAndRotateLog
-' **DATE CREATED:** 2025-12-26
-' **AUTHOR:** GitHub Copilot
-' 
-' **FUNCTIONALITY:**
-' Checks if the log file exceeds MAX_LOG_SIZE and performs rotation if needed.
-' Renames current log to .old and creates a new log file.
-' 
-' **PARAMETERS:**
-' fso (Object): FileSystemObject instance
-' logPath (String): Full path to the log file to check
-'-----------------------------------------------------------------------------------
-Sub CheckAndRotateLog(fso, logPath)
-    On Error Resume Next
-    
-    ' Check if log file exists and get its size
-    If fso.FileExists(logPath) Then
-        Dim logFile
-        Set logFile = fso.GetFile(logPath)
-        
-        ' If file size exceeds limit, rotate the log
-        If logFile.Size > MAX_LOG_SIZE Then
-            Dim oldLogPath
-            oldLogPath = logPath & ".old"
-            
-            ' Remove existing .old file if it exists
-            If fso.FileExists(oldLogPath) Then
-                fso.DeleteFile oldLogPath, True
-            End If
-            
-            ' Rename current log to .old
-            fso.MoveFile logPath, oldLogPath
-            
-            ' Note: New log file will be created automatically when next write occurs
-        End If
-    End If
-    
-    ' Clear any errors that occurred during rotation
-    If Err.Number <> 0 Then Err.Clear
     On Error GoTo 0
 End Sub
 
@@ -1493,32 +1395,18 @@ Function GetROFromScreen()
         Exit Function
     End If
 
-    ' Poll for screen content with timeout
-    Dim screenContentBuffer, screenLength, re, matches, pollAttempts, maxAttempts
+    Dim screenContentBuffer, screenLength, re, matches
     screenLength = 3 * 80 ' top three lines
-    maxAttempts = 10 ' 10 attempts * 500ms = 5 seconds max
-    pollAttempts = 0
-    
-    Do While pollAttempts < maxAttempts
-        bzhao.Pause 150 ' Wait 0.15 seconds
-        pollAttempts = pollAttempts + 1
-        
-        On Error Resume Next
-        bzhao.ReadScreen screenContentBuffer, screenLength, 1, 1
-        If Err.Number <> 0 Then
-            Call LogError("GetROFromScreen ReadScreen failed: " & Err.Description, "GetROFromScreen")
-            Err.Clear
-            GetROFromScreen = ""
-            On Error GoTo 0
-            Exit Function
-        End If
+    On Error Resume Next
+    bzhao.ReadScreen screenContentBuffer, screenLength, 1, 1
+    If Err.Number <> 0 Then
+        Call LogError("GetROFromScreen ReadScreen failed: " & Err.Description, "GetROFromScreen")
+        Err.Clear
+        GetROFromScreen = ""
         On Error GoTo 0
-        
-        ' Check if we got meaningful content (not just spaces)
-        If Len(Trim(screenContentBuffer)) > 0 Then
-            Exit Do ' Found content, break out of polling loop
-        End If
-    Loop
+        Exit Function
+    End If
+    On Error GoTo 0
     
     Set re = CreateObject("VBScript.RegExp")
     re.Pattern = "RO:\s*(\d{4,})"
@@ -1529,8 +1417,6 @@ Function GetROFromScreen()
         Set matches = re.Execute(screenContentBuffer)
         GetROFromScreen = matches(0).SubMatches(0)
     Else
-        ' Only trace log if we failed to find RO number after full polling loop
-        Call LogTrace("RO Screen Buffer Content: '" & Replace(Replace(screenContentBuffer, vbCrLf, " "), vbLf, " ") & "'", "GetROFromScreen")
         GetROFromScreen = ""
     End If
 End Function
@@ -1554,10 +1440,9 @@ End Function
 Function IsStatusReady()
     ' Use GetRepairOrderStatus() to scrape the exact RO status from the screen
     ' Caller may choose to add waits before calling if needed
-    bzhao.pause 150 ' brief pause to ensure screen is stable
+    bzhao.pause 1000 ' brief pause to ensure screen is stable
     Dim roStatus
     roStatus = GetRepairOrderStatus()
-    Call LogDebug("IsStatusReady - scraped status: '" & roStatus & "'", "IsStatusReady")
     ' Return True only when the scraped status exactly equals "READY TO POST"
     IsStatusReady = (StrComp(Trim(CStr(roStatus)), "READY TO POST", vbTextCompare) = 0)
 End Function
@@ -1573,53 +1458,50 @@ End Function
 ' Returns an empty string if the prefix isn't present or on read error.
 '-----------------------------------------------------------------------------------
 Function GetRepairOrderStatus()
+    On Error Resume Next
     If bzhao Is Nothing Then
         Call LogWarn("GetRepairOrderStatus: bzhao object not available", "GetRepairOrderStatus")
         GetRepairOrderStatus = ""
         Exit Function
     End If
 
-    Dim lineText, prefix, pos, fullStatus, coreStatus
-    lineText = GetScreenLine(5)
-    Call LogDebug("GetRepairOrderStatus - line 5: '" & lineText & "'", "GetRepairOrderStatus")
-    
-    prefix = "RO STATUS: "
-    pos = InStr(1, lineText, prefix, vbTextCompare)
-    If pos = 0 Then
+    Dim buf, lengthToRead, lineNum, colNum
+    lengthToRead = 30
+    lineNum = 5
+    colNum = 1
+    bzhao.ReadScreen buf, lengthToRead, lineNum, colNum
+    If Err.Number <> 0 Then
+        Call LogWarn("GetRepairOrderStatus: ReadScreen failed: " & Err.Description, "GetRepairOrderStatus")
+        Err.Clear
         GetRepairOrderStatus = ""
-        g_LastScrapedStatus = ""
-        Call LogDebug("GetRepairOrderStatus - RO STATUS prefix not found", "GetRepairOrderStatus")
+        On Error GoTo 0
+        Exit Function
+    End If
+    On Error GoTo 0
+
+    Call LogDebug("GetRepairOrderStatus - raw buffer: '" & Replace(buf, vbCrLf, " ") & "'", "GetRepairOrderStatus")
+
+    Dim prefix, pos, raw
+    prefix = "RO STATUS: "
+    pos = InStr(1, buf, prefix, vbTextCompare)
+    If pos = 0 Then
+        ' Not found in this slice
+        GetRepairOrderStatus = ""
         Exit Function
     End If
 
-    ' Extract the full status text after the prefix
-    fullStatus = Trim(Mid(lineText, pos + Len(prefix)))
-    
-    ' Extract just the core status (before multiple spaces or "PROMISED:")
-    Dim spacePos, promisedPos, endPos
-    spacePos = InStr(fullStatus, "  ") ' Look for double space
-    promisedPos = InStr(1, fullStatus, "PROMISED:", vbTextCompare)
-    
-    ' Find the earliest delimiter
-    If spacePos > 0 And promisedPos > 0 Then
-        If spacePos < promisedPos Then
-            endPos = spacePos
-        Else
-            endPos = promisedPos
-        End If
-    ElseIf spacePos > 0 Then
-        endPos = spacePos
-    ElseIf promisedPos > 0 Then
-        endPos = promisedPos
-    Else
-        endPos = Len(fullStatus) + 1 ' Use entire string
-    End If
-    
-    coreStatus = Trim(Left(fullStatus, endPos - 1))
-    GetRepairOrderStatus = coreStatus
-    g_LastScrapedStatus = coreStatus
-    'Call LogDebug("GetRepairOrderStatus - parsed status: '" & coreStatus & "'", "GetRepairOrderStatus")
-    
+    Dim startPos
+    startPos = pos + Len(prefix)
+    raw = Mid(buf, startPos, 15) ' take next 15 chars per spec
+    raw = Replace(raw, vbCrLf, " ")
+    raw = Replace(raw, vbCr, " ")
+    raw = Replace(raw, vbLf, " ")
+    Dim parsedStatus
+    parsedStatus = Trim(raw)
+    GetRepairOrderStatus = parsedStatus
+    ' Save parsed status for later logging by the caller
+    g_LastScrapedStatus = parsedStatus
+    Call LogDebug("GetRepairOrderStatus - parsed status: '" & parsedStatus & "'", "GetRepairOrderStatus")
 End Function
 
 
@@ -1728,20 +1610,8 @@ Sub ProcessLineItems()
             Exit For ' Exit the For loop.
         End If
         ' Use the new state machine method for all prompt handling
-        Call LogDebug("Processing line item " & lineLetterChar & " using ProcessSingleLine_Dynamic", "ProcessLineItems")
-        ' Logs a detailed informational message indicating that a line item is being processed using the ProcessPromptSequence function.
-        ' Parameters:
-        '   "DEBUG"                - The log level, indicating this is a debug message.
-        '   "Processing line item " & lineLetterChar & " using ProcessPromptSequence"
-        '                         - The message describing which line item is being processed and the method used.
-        '   "ProcessLineItems"    - The context or source of the log entry, specifying the function where the log is generated.
-        '
-        ' Note:
-        '   Use LogDetailed to record significant processing steps or milestones for traceability.
-        '   Use LogDebug for lower-level, verbose output intended for debugging purposes.
-        Call LogDetailed("DEBUG", "Processing line item " & lineLetterChar & " using ProcessPromptSequence", "ProcessLineItems")
-        ' Add a 2 second delay before processing each line item
-        Call WaitMs(2000)
+        Call LogInfo("Processing line item " & lineLetterChar & " using ProcessSingleLine_Dynamic", "ProcessLineItems")
+        Call LogDetailed("INFO", "Processing line item " & lineLetterChar & " using ProcessPromptSequence", "ProcessLineItems")
 
         Call ProcessPromptSequence(lineItemPrompts)
     Next
@@ -1835,10 +1705,6 @@ Sub Closeout_Ro()
     ' Use the state machine for the rest of the closeout prompts
     Dim closeoutPrompts
     Set closeoutPrompts = CreateCloseoutPromptDictionary()
-    
-    ' For the COMMAND: prompt, we should typically respond with "N" to continue
-    ' The sequence numbering is handled by the main loop in ProcessRONumbers
-    Call LogInfo("Using standard 'N' response for COMMAND prompt - sequence handled by main loop", "Closeout_Ro")
     ' Add a 5 second delay before processing the final closeout prompts
     ' Wait for the continue prompt using WaitForTextSilent directly.
     Dim continuePromptTimeout
@@ -1854,8 +1720,7 @@ Sub Closeout_Ro()
     Call ProcessPromptSequence(closeoutPrompts)
 
     ' Give the terminal a short moment to surface any follow-up messages before scanning for errors.
-    Call LogTrace("Waiting briefly before checking for closeout errors", "Closeout_Ro") 
-    Call WaitMs(500)  ' Reduced from 2000ms: Give screen time to update after sending E
+    'Call WaitMs(2000)
     If HandleCloseoutErrors() Then Exit Sub
 
     lastRoResult = "Successfully closed"
@@ -1897,104 +1762,6 @@ Sub HandleOptionalComebackPrompt()
         Call LogDebug("No comeback prompt detected within " & CStr(2000 / 1000) & " seconds", "HandleOptionalComebackPrompt")
         Call LogDebug("Comeback prompt not found - final screen snapshot: " & GetScreenSnapshot(24), "HandleOptionalComebackPrompt")
     End If
-End Sub
-
-'-----------------------------------------------------------------------------------
-' **PROCEDURE NAME:** ClosePreAssignedRos
-' **DATE CREATED:** 2025-12-29
-' **AUTHOR:** GitHub Copilot
-' 
-' **FUNCTIONALITY:**
-' Processes PREASSIGNED status ROs by iterating through labor lines A-K using FNL commands.
-' Uses Line 24 scraper to handle different terminal responses:
-' - "Line [X] is already finished." -> Continue to next line
-' - "TECHNICIAN FINISHING WORK ?" -> Send Tech ID 99 + Enter, continue
-' - "LINE CODE [X] IS NOT ON FILE" -> Exit loop and proceed to FC
-' - Any other response -> Log error and pause for manual intervention
-' After completing the FNL loop, hands off to existing Final Close routine.
-'-----------------------------------------------------------------------------------
-Sub ClosePreAssignedRos()
-    Call LogInfo("Starting PREASSIGNED RO processing with FNL loop", "ClosePreAssignedRos")
-    
-    ' Local scope variables for the FNL loop - optimized for performance
-    Dim currentLine, lineCode, maxRetries, retryCount
-    Dim fnlCommand, response, lineComplete
-    maxRetries = 2  ' Reduced from 3 to 2 for faster failure
-    
-    ' Iterate through lines A to K
-    For currentLine = 65 To 75  ' ASCII: A=65, K=75
-        lineCode = Chr(currentLine)
-        lineComplete = False
-        retryCount = 0
-        
-        ' Build FNL command for current line
-        fnlCommand = "FNL " & lineCode
-        
-        Do While Not lineComplete And retryCount <= maxRetries
-            retryCount = retryCount + 1
-            
-            ' Send FNL command for current line
-            Call WaitForPrompt("COMMAND:", fnlCommand, True, g_PromptWait, "")
-            Call WaitMs(300) ' Reduced from 1000ms to 300ms for faster response
-            
-            ' Scrape Line 24 for the response
-            response = GetScreenLine(24)
-            Call LogTrace("Line 24 response for FNL " & lineCode & ": '" & response & "'", "ClosePreAssignedRos")
-            
-            ' Handle different terminal responses
-            If InStr(1, response, "Line " & lineCode & " is already finished.", vbTextCompare) > 0 Then
-                Call LogDebug("Line " & lineCode & " already finished", "ClosePreAssignedRos")
-                lineComplete = True
-                
-            ElseIf InStr(1, response, "TECHNICIAN FINISHING WORK", vbTextCompare) > 0 Then
-                Call LogDebug("Sending Tech ID 99 for line " & lineCode, "ClosePreAssignedRos")
-                ' Send administrative Tech ID and Enter
-                Call WaitForPrompt("TECHNICIAN FINISHING WORK", "99", True, g_PromptWait, "")
-                Call WaitMs(200) ' Reduced from 500ms to 200ms
-                
-                ' Check for line completion confirmation prompt
-                Call WaitMs(300) ' Brief wait for completion prompt to appear
-                Dim completionResponse
-                completionResponse = GetScreenLine(24)
-                If InStr(1, completionResponse, "IS LINE '" & lineCode & "' COMPLETED (Y/N):", vbTextCompare) > 0 Then
-                    Call LogDebug("Line completion prompt for " & lineCode & " - sending Y", "ClosePreAssignedRos")
-                    Call WaitForPrompt("IS LINE '" & lineCode & "' COMPLETED (Y/N):", "Y", True, g_PromptWait, "")
-                    Call WaitMs(200)
-                End If
-                lineComplete = True
-                
-            ElseIf InStr(1, response, "IS LINE '" & lineCode & "' COMPLETED (Y/N):", vbTextCompare) > 0 Then
-                Call LogDebug("Direct line completion prompt for " & lineCode & " - sending Y", "ClosePreAssignedRos")
-                Call WaitForPrompt("IS LINE '" & lineCode & "' COMPLETED (Y/N):", "Y", True, g_PromptWait, "")
-                Call WaitMs(200)
-                lineComplete = True
-                
-            ElseIf InStr(1, response, "LINE CODE " & lineCode & " IS NOT ON FILE", vbTextCompare) > 0 Then
-                Call LogInfo("Line " & lineCode & " not on file - exiting FNL loop", "ClosePreAssignedRos")
-                Exit For ' Exit the main loop completely
-                
-            Else
-                ' Non-standard response - log error and handle manually
-                Call LogError("Non-standard response for FNL " & lineCode & " (attempt " & retryCount & "): '" & response & "'", "ClosePreAssignedRos")
-                
-                If retryCount > maxRetries Then
-                    Call LogError("Maximum retry attempts reached for line " & lineCode & ". Pausing for manual intervention.", "ClosePreAssignedRos")
-                    If Not bzhao Is Nothing Then
-                        bzhao.MsgBox "Error processing line " & lineCode & " in PREASSIGNED RO " & currentRODisplay & vbCrLf & vbCrLf & "Terminal response: " & response & vbCrLf & vbCrLf & "Please investigate and click OK to continue.", "Manual Intervention Required", 0
-                    End If
-                    lastRoResult = "Failed - Manual intervention required for line " & lineCode
-                    Exit Sub
-                Else
-                    Call LogWarn("Retrying line " & lineCode & " (attempt " & retryCount & " of " & maxRetries & ")", "ClosePreAssignedRos")
-                    Call WaitMs(300) ' Reduced from 1000ms to 300ms
-                End If
-            End If
-        Loop
-    Next
-    
-    ' After completing FNL loop, proceed to Final Close
-    Call LogInfo("FNL loop completed - proceeding to Final Close (FC) routine", "ClosePreAssignedRos")
-    Call Closeout_Ro()
 End Sub
 
 ' Helper: return the first matching trigger string or empty if none found.
@@ -2062,14 +1829,11 @@ End Function
 ' (Boolean) Returns True if an error was detected and handled, False otherwise.
 '-----------------------------------------------------------------------------------
 Function HandleCloseoutErrors()
-    Call LogTrace("Scanning screen for closeout errors", "HandleCloseoutErrors")
-    
     Dim errorMap, key
     Set errorMap = GetCloseoutErrorMap()
     
     For Each key In errorMap.Keys
         If IsTextPresent(key) Then
-            Call LogError("Closeout error detected: " & key, "HandleCloseoutErrors")
             ' Try to extract the detailed message shown on the screen near the key
             Dim detailedMsg
             detailedMsg = ExtractMessageNear(key)
@@ -2101,7 +1865,6 @@ Function HandleCloseoutErrors()
         End If
     Next
     
-    Call LogTrace("No closeout errors found", "HandleCloseoutErrors")
     HandleCloseoutErrors = False
 End Function
 
@@ -2452,6 +2215,31 @@ Sub UpdateDiagnosticLog(actionName)
     Set logFile = Nothing
     Set logFSO = Nothing
     Err.Clear
+End Sub
+
+'-----------------------------------------------------------------------------------
+' **PROCEDURE NAME:** WaitForContinuePrompt
+' **DATE CREATED:** 2025-12-23
+' **AUTHOR:** GitHub Copilot
+' 
+' **FUNCTIONALITY:**
+' Waits until the COMMAND:(SEQ#/E/N/B/?) prompt appears, with a delay.
+'-----------------------------------------------------------------------------------
+Sub WaitForContinuePrompt()
+    Dim promptText, timeoutMs, startTime, elapsedMs
+    promptText = "COMMAND:(SEQ#/E/N/B/?)"
+    timeoutMs = 10000 ' 10 seconds, adjust as needed
+    startTime = Timer
+    Do
+        If IsTextPresent(promptText) Then
+            Exit Sub
+        End If
+        Call WaitMs(120)
+        elapsedMs = (Timer - startTime) * 1000
+        If elapsedMs < 0 Then elapsedMs = elapsedMs + 86400000 ' Handle midnight rollover
+    Loop While elapsedMs < timeoutMs
+    ' If not found, log and continue
+    Call LogWarn("Timeout waiting for continue prompt: " & promptText, "WaitForContinuePrompt")
 End Sub
 
 Sub StartScript()
