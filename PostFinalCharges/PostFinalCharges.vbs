@@ -1916,18 +1916,16 @@ End Sub
 Sub ClosePreAssignedRos()
     Call LogInfo("Starting PREASSIGNED RO processing with FNL loop", "ClosePreAssignedRos")
     
-    ' Local scope variables for the FNL loop
+    ' Local scope variables for the FNL loop - optimized for performance
     Dim currentLine, lineCode, maxRetries, retryCount
     Dim fnlCommand, response, lineComplete
-    maxRetries = 3
+    maxRetries = 2  ' Reduced from 3 to 2 for faster failure
     
     ' Iterate through lines A to K
     For currentLine = 65 To 75  ' ASCII: A=65, K=75
         lineCode = Chr(currentLine)
         lineComplete = False
         retryCount = 0
-        
-        Call LogInfo("Processing line " & lineCode, "ClosePreAssignedRos")
         
         ' Build FNL command for current line
         fnlCommand = "FNL " & lineCode
@@ -1937,22 +1935,22 @@ Sub ClosePreAssignedRos()
             
             ' Send FNL command for current line
             Call WaitForPrompt("COMMAND:", fnlCommand, True, g_PromptWait, "")
-            Call WaitMs(1000) ' Allow response to appear
+            Call WaitMs(300) ' Reduced from 1000ms to 300ms for faster response
             
             ' Scrape Line 24 for the response
             response = GetScreenLine(24)
-            Call LogDebug("Line 24 response for FNL " & lineCode & ": '" & response & "'", "ClosePreAssignedRos")
+            Call LogTrace("Line 24 response for FNL " & lineCode & ": '" & response & "'", "ClosePreAssignedRos")
             
             ' Handle different terminal responses
             If InStr(1, response, "Line " & lineCode & " is already finished.", vbTextCompare) > 0 Then
-                Call LogInfo("Line " & lineCode & " already finished - continuing to next line", "ClosePreAssignedRos")
+                Call LogDebug("Line " & lineCode & " already finished", "ClosePreAssignedRos")
                 lineComplete = True
                 
             ElseIf InStr(1, response, "TECHNICIAN FINISHING WORK", vbTextCompare) > 0 Then
-                Call LogInfo("Technician finishing work prompt for line " & lineCode & " - sending Tech ID 99", "ClosePreAssignedRos")
+                Call LogDebug("Sending Tech ID 99 for line " & lineCode, "ClosePreAssignedRos")
                 ' Send administrative Tech ID and Enter
                 Call WaitForPrompt("TECHNICIAN FINISHING WORK", "99", True, g_PromptWait, "")
-                Call WaitMs(500)
+                Call WaitMs(200) ' Reduced from 500ms to 200ms
                 lineComplete = True
                 
             ElseIf InStr(1, response, "LINE CODE " & lineCode & " IS NOT ON FILE", vbTextCompare) > 0 Then
@@ -1972,7 +1970,7 @@ Sub ClosePreAssignedRos()
                     Exit Sub
                 Else
                     Call LogWarn("Retrying line " & lineCode & " (attempt " & retryCount & " of " & maxRetries & ")", "ClosePreAssignedRos")
-                    Call WaitMs(1000) ' Wait before retry
+                    Call WaitMs(300) ' Reduced from 1000ms to 300ms
                 End If
             End If
         Loop
