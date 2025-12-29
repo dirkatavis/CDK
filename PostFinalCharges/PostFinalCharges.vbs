@@ -1101,20 +1101,20 @@ Sub Main(roNumber)
     ' Allow time for RO details to fully load before checking status
     'Call WaitMs(2000)
     
-    ' After opening an RO, ensure it has the expected READY TO POST status.
+    ' After opening an RO, ensure it has the expected READY TO POST or PREASSIGNED status.
     Dim roStatusForRestriction
     roStatusForRestriction = g_LastScrapedStatus ' Use cached value from earlier call
-    If StrComp(Trim(CStr(roStatusForRestriction)), "READY TO POST", vbTextCompare) <> 0 Then
+    If StrComp(Trim(CStr(roStatusForRestriction)), "READY TO POST", vbTextCompare) <> 0 And StrComp(Trim(CStr(roStatusForRestriction)), "PREASSIGNED", vbTextCompare) <> 0 Then
         'Call LogInfo("RO STATUS: '" & roStatusForRestriction & "' - Skipping processing for this RO.", "Main")
         Call FastText("E")
         Call FastKey("<NumpadEnter>")
         ' Wait for the command prompt to return to ensure we are in a known state
         Call WaitForPrompt("COMMAND:", "", False, 5000, "")
-        lastRoResult = "Skipped - Status not READY TO POST"
+        lastRoResult = "Skipped - Status not READY TO POST or PREASSIGNED"
         Exit Sub
     Else
         Call LogInfo("RO STATUS: " & roStatusForRestriction, "Main")
-        ' Debug pause for READY TO POST ROs only
+        ' Debug pause for READY TO POST or PREASSIGNED ROs only
         'bzhao.MsgBox "DEBUG: check the RO status and closeout result before continuing.", "Debug Pause", 0
     End If
     
@@ -1122,6 +1122,16 @@ Sub Main(roNumber)
     Dim trigger, roStatusForDecision
     roStatusForDecision = Trim(CStr(g_LastScrapedStatus))
     Call LogDebug("Pre-trigger check - scraped status: '" & roStatusForDecision & "'", "Main")
+    
+    ' Handle PREASSIGNED status ROs with FNL loop first
+    If StrComp(roStatusForDecision, "PREASSIGNED", vbTextCompare) = 0 Then
+        Call LogInfo("RO STATUS is PREASSIGNED - Processing with FNL loop", "Main")
+        Call ClosePreAssignedRos()
+        ' ClosePreAssignedRos should set lastRoResult appropriately
+        Exit Sub
+    End If
+    
+    ' Handle READY TO POST status ROs with existing logic
     trigger = FindTrigger()
     If trigger <> "" Then
         Call LogInfo("Trigger found: " & trigger & " - Proceeding to Closeout", "Main")
@@ -1887,6 +1897,90 @@ Sub HandleOptionalComebackPrompt()
         Call LogDebug("No comeback prompt detected within " & CStr(2000 / 1000) & " seconds", "HandleOptionalComebackPrompt")
         Call LogDebug("Comeback prompt not found - final screen snapshot: " & GetScreenSnapshot(24), "HandleOptionalComebackPrompt")
     End If
+End Sub
+
+'-----------------------------------------------------------------------------------
+' **PROCEDURE NAME:** ClosePreAssignedRos
+' **DATE CREATED:** 2025-12-29
+' **AUTHOR:** GitHub Copilot
+' 
+' **FUNCTIONALITY:**
+' Processes PREASSIGNED status ROs by iterating through labor lines A-K using FNL commands.
+' Uses Line 24 scraper to handle different terminal responses:
+' - "Line [X] is already finished." -> Continue to next line
+' - "TECHNICIAN FINISHING WORK ?" -> Send Tech ID 99 + Enter, continue
+' - "LINE CODE [X] IS NOT ON FILE" -> Exit loop and proceed to FC
+' - Any other response -> Log error and pause for manual intervention
+' After completing the FNL loop, hands off to existing Final Close routine.
+'-----------------------------------------------------------------------------------
+Sub ClosePreAssignedRos()
+    Call LogInfo("Starting PREASSIGNED RO processing with FNL loop", "ClosePreAssignedRos")
+    
+    ' Local scope variables for the FNL loop
+    Dim currentLine, lineCode, maxRetries, retryCount
+    Dim fnlCommand, response, lineComplete
+    maxRetries = 3
+    
+    ' Iterate through lines A to K
+    For currentLine = 65 To 75  ' ASCII: A=65, K=75
+        lineCode = Chr(currentLine)
+        lineComplete = False
+        retryCount = 0
+        
+        Call LogInfo("Processing line " & lineCode, "ClosePreAssignedRos")
+        
+        ' Build FNL command for current line
+        fnlCommand = "FNL " & lineCode
+        
+        Do While Not lineComplete And retryCount <= maxRetries
+            retryCount = retryCount + 1
+            
+            ' Send FNL command for current line
+            Call WaitForPrompt("COMMAND:", fnlCommand, True, g_PromptWait, "")
+            Call WaitMs(1000) ' Allow response to appear
+            
+            ' Scrape Line 24 for the response
+            response = GetScreenLine(24)
+            Call LogDebug("Line 24 response for FNL " & lineCode & ": '" & response & "'", "ClosePreAssignedRos")
+            
+            ' Handle different terminal responses
+            If InStr(1, response, "Line " & lineCode & " is already finished.", vbTextCompare) > 0 Then
+                Call LogInfo("Line " & lineCode & " already finished - continuing to next line", "ClosePreAssignedRos")
+                lineComplete = True
+                
+            ElseIf InStr(1, response, "TECHNICIAN FINISHING WORK", vbTextCompare) > 0 Then
+                Call LogInfo("Technician finishing work prompt for line " & lineCode & " - sending Tech ID 99", "ClosePreAssignedRos")
+                ' Send administrative Tech ID and Enter
+                Call WaitForPrompt("TECHNICIAN FINISHING WORK", "99", True, g_PromptWait, "")
+                Call WaitMs(500)
+                lineComplete = True
+                
+            ElseIf InStr(1, response, "LINE CODE " & lineCode & " IS NOT ON FILE", vbTextCompare) > 0 Then
+                Call LogInfo("Line " & lineCode & " not on file - exiting FNL loop", "ClosePreAssignedRos")
+                Exit For ' Exit the main loop completely
+                
+            Else
+                ' Non-standard response - log error and handle manually
+                Call LogError("Non-standard response for FNL " & lineCode & " (attempt " & retryCount & "): '" & response & "'", "ClosePreAssignedRos")
+                
+                If retryCount > maxRetries Then
+                    Call LogError("Maximum retry attempts reached for line " & lineCode & ". Pausing for manual intervention.", "ClosePreAssignedRos")
+                    If Not bzhao Is Nothing Then
+                        bzhao.MsgBox "Error processing line " & lineCode & " in PREASSIGNED RO " & currentRODisplay & vbCrLf & vbCrLf & "Terminal response: " & response & vbCrLf & vbCrLf & "Please investigate and click OK to continue.", "Manual Intervention Required", 0
+                    End If
+                    lastRoResult = "Failed - Manual intervention required for line " & lineCode
+                    Exit Sub
+                Else
+                    Call LogWarn("Retrying line " & lineCode & " (attempt " & retryCount & " of " & maxRetries & ")", "ClosePreAssignedRos")
+                    Call WaitMs(1000) ' Wait before retry
+                End If
+            End If
+        Loop
+    Next
+    
+    ' After completing FNL loop, proceed to Final Close
+    Call LogInfo("FNL loop completed - proceeding to Final Close (FC) routine", "ClosePreAssignedRos")
+    Call Closeout_Ro()
 End Sub
 
 ' Helper: return the first matching trigger string or empty if none found.
