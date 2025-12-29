@@ -190,6 +190,18 @@ Sub ProcessPromptSequence(prompts)
         Dim lineToCheck, lineText, linesToCheck
         linesToCheck = Array(23, 24, 22, 1, 2, 3, 4, 5, 20, 21) ' Reordered: most likely prompt locations first
         
+        ' Performance optimization: create RegExp object once and reuse it
+        Dim re
+        On Error Resume Next
+        Set re = CreateObject("VBScript.RegExp")
+        re.IgnoreCase = True
+        re.Global = False
+        If Err.Number <> 0 Then
+            Set re = Nothing
+            Err.Clear
+        End If
+        On Error GoTo 0
+        
         ' Performance optimization: early exit when we find a good match
         Dim foundMatch
         foundMatch = False
@@ -199,7 +211,7 @@ Sub ProcessPromptSequence(prompts)
             If Len(lineText) > 0 Then
                 ' Check each prompt key against this line
                 For Each promptKey In prompts.Keys
-                    Dim isRegex, re, regexError, currentMatchFound
+                    Dim isRegex, regexError, currentMatchFound
                     isRegex = False
                     regexError = False
                     currentMatchFound = False
@@ -208,12 +220,9 @@ Sub ProcessPromptSequence(prompts)
                     If Left(promptKey, 1) = "^" Or InStr(promptKey, "(") > 0 Or InStr(promptKey, "[") > 0 Or InStr(promptKey, ".*") > 0 Or InStr(promptKey, "\\d") > 0 Then
                         isRegex = True
                     End If
-                    If isRegex Then
+                    If isRegex And Not re Is Nothing Then
                         On Error Resume Next
-                        Set re = CreateObject("VBScript.RegExp")
-                        re.Pattern = promptKey
-                        re.IgnoreCase = True
-                        re.Global = False
+                        re.Pattern = promptKey ' Reuse existing RegExp object
                         If Err.Number <> 0 Then
                             regexError = True
                             Err.Clear
