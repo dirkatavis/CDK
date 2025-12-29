@@ -344,7 +344,6 @@ Sub ProcessPromptSequence(prompts)
             End If
         End If
     Loop
-    Loop
 End Sub
 
 '-----------------------------------------------------------------------------------
