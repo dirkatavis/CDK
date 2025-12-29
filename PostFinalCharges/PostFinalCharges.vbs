@@ -186,18 +186,24 @@ Sub ProcessPromptSequence(prompts)
         bestMatchLength = 0
         
         ' Use single line scanning instead of full screen scrape to avoid false positives
-        ' Check key lines where prompts typically appear
+        ' Check key lines where prompts typically appear, optimized for early exit
         Dim lineToCheck, lineText, linesToCheck
-        linesToCheck = Array(1, 2, 3, 4, 5, 20, 21, 22, 23, 24) ' Common prompt locations
+        linesToCheck = Array(23, 24, 22, 1, 2, 3, 4, 5, 20, 21) ' Reordered: most likely prompt locations first
+        
+        ' Performance optimization: early exit when we find a good match
+        Dim foundMatch
+        foundMatch = False
         
         For Each lineToCheck In linesToCheck
             lineText = GetScreenLine(lineToCheck)
             If Len(lineText) > 0 Then
                 ' Check each prompt key against this line
                 For Each promptKey In prompts.Keys
-                    Dim isRegex, re, regexError
+                    Dim isRegex, re, regexError, currentMatchFound
                     isRegex = False
                     regexError = False
+                    currentMatchFound = False
+                    
                     ' Heuristic: treat as regex if starts with ^ or contains ( or [ or .*
                     If Left(promptKey, 1) = "^" Or InStr(promptKey, "(") > 0 Or InStr(promptKey, "[") > 0 Or InStr(promptKey, ".*") > 0 Or InStr(promptKey, "\\d") > 0 Then
                         isRegex = True
@@ -218,6 +224,7 @@ Sub ProcessPromptSequence(prompts)
                                 If Len(promptKey) > bestMatchLength Then
                                     bestMatchKey = promptKey
                                     bestMatchLength = Len(promptKey)
+                                    currentMatchFound = True
                                 End If
                             End If
                         End If
@@ -230,10 +237,20 @@ Sub ProcessPromptSequence(prompts)
                             If Len(promptKey) > bestMatchLength Then
                                 bestMatchKey = promptKey
                                 bestMatchLength = Len(promptKey)
+                                currentMatchFound = True
                             End If
                         End If
                     End If
+                    
+                    ' Early exit optimization: if we found a reasonably long match, stop scanning
+                    If currentMatchFound And bestMatchLength >= 10 Then
+                        foundMatch = True
+                        Exit For ' Exit prompt loop
+                    End If
                 Next
+                
+                ' Early exit optimization: if we found a good match, stop checking other lines
+                If foundMatch Then Exit For ' Exit line loop
             End If
         Next
 
