@@ -166,6 +166,16 @@ Sub ProcessPromptSequence(prompts)
     sequenceStartTime = Timer
 
     Do While Not finished
+        ' Check for timeout first to ensure it's respected even when stuck in sub-operations
+        sequenceElapsed = (Timer - sequenceStartTime) * 1000
+        If sequenceElapsed < 0 Then sequenceElapsed = sequenceElapsed + 86400000 ' Handle midnight rollover
+        If sequenceElapsed > 30000 Then ' 30-second timeout
+            Call LogError("ProcessPromptSequence timed out after 30 seconds", "ProcessPromptSequence")
+            SafeMsg "ProcessPromptSequence timed out after 30 seconds.\nAutomation stopped.", True, "Sequence Timeout"
+            g_ShouldAbort = True
+            Exit Sub
+        End If
+        
         ' TRACE: Log screen snapshot and main prompt line before each scan
         Call LogTrace("Screen snapshot before prompt scan:", "ProcessPromptSequence")
         Call LogScreenSnapshot("BeforePromptScan")
@@ -308,16 +318,6 @@ Sub ProcessPromptSequence(prompts)
                 Call WaitMs(250)
             End If
         End If
-        
-        ' Check for timeout to prevent infinite loops
-        sequenceElapsed = (Timer - sequenceStartTime) * 1000
-        If sequenceElapsed < 0 Then sequenceElapsed = sequenceElapsed + 86400000 ' Handle midnight rollover
-        If sequenceElapsed > 30000 Then ' 30-second timeout
-            Call LogError("ProcessPromptSequence timed out after 30 seconds. Last detected prompt: '" & bestMatchKey & "'", "ProcessPromptSequence")
-            SafeMsg "ProcessPromptSequence timed out after 30 seconds.\nMainPromptLine: " & mainPromptText & "\nAutomation stopped.", True, "Sequence Timeout"
-            g_ShouldAbort = True
-            Exit Sub
-        End If
     Loop
 End Sub
 
@@ -365,6 +365,13 @@ Function WaitForScreenTransition(expectedText, timeoutMs, description)
         End If
     Loop
     
+    ' Log explicit result for clarity at point of return
+    If found Then
+        Call LogTrace("Successfully found " & description & " within " & Int(waitElapsed) & "ms", "WaitForScreenTransition")
+    Else
+        Call LogTrace("Failed to find " & description & " (timeout after " & Int(waitElapsed) & "ms)", "WaitForScreenTransition")
+    End If
+    
     WaitForScreenTransition = found
 End Function
 
@@ -392,9 +399,9 @@ Function IsPromptInConfig(promptText, promptsDict)
     ' Special handling for COMMAND prompts that may show the last entered command
     ' e.g., "COMMAND: R A" should match "COMMAND:" in the dictionary
     If InStr(1, trimmedPromptText, "COMMAND:", vbTextCompare) = 1 Then
-        ' Check if any COMMAND-related keys exist in the dictionary
+        ' Check if any COMMAND-related keys exist in the dictionary (also starting with COMMAND:)
         For Each key In promptsDict.Keys
-            If InStr(1, key, "COMMAND:", vbTextCompare) > 0 Then
+            If InStr(1, key, "COMMAND:", vbTextCompare) = 1 Then
                 IsPromptInConfig = True
                 Exit Function
             End If
@@ -1783,12 +1790,20 @@ Sub ProcessLineItems()
         lineScreenLoaded = WaitForScreenTransition(expectedLineText, 3000, "line " & lineLetterChar & " screen")
         
         If Not lineScreenLoaded Then
-            Call LogInfo("Line " & lineLetterChar & " screen did not load properly - may not exist", "ProcessLineItems")
+            Call LogError("CRITICAL: Line " & lineLetterChar & " screen failed to load within timeout - screen state uncertain", "ProcessLineItems")
+            Call LogError("Cannot safely continue processing with unknown screen state. Exiting line processing.", "ProcessLineItems")
+            ' Press Enter to attempt clearing any pending screen state
+            Call FastKey("<Enter>")
+            Exit For ' Exit the For loop due to critical screen loading failure
         End If
         
         ' Check if the line exists. If not, we are done with line processing.
         If IsTextPresent("LINE CODE " & lineLetterChar & " IS NOT ON FILE") Then
-            Call LogInfo("Finished processing line items. No more lines found after " & Chr(i-1), "ProcessLineItems")
+            If i = 65 Then ' First line (A) not found
+                Call LogInfo("Finished processing line items. No line A found - no line items to process", "ProcessLineItems")
+            Else ' Subsequent line not found
+                Call LogInfo("Finished processing line items. No more lines found after " & Chr(i-1), "ProcessLineItems")
+            End If
             ' Press Enter to clear the "NOT ON FILE" message from the screen.
             Call FastKey("<Enter>")
             Exit For ' Exit the For loop.
