@@ -1836,7 +1836,11 @@ Sub ProcessLineItems()
         
         ' Check if the line exists. If not, we are done with line processing.
         If IsTextPresent("LINE CODE " & lineLetterChar & " IS NOT ON FILE") Then
-            Call LogInfo("Finished processing line items. No more lines found after " & Chr(i-1), "ProcessLineItems")
+            If i = 65 Then ' First line (A) not found
+                Call LogInfo("Finished processing line items. No line A found - no line items to process", "ProcessLineItems")
+            Else ' Subsequent line not found
+                Call LogInfo("Finished processing line items. No more lines found after " & Chr(i-1), "ProcessLineItems")
+            End If
             ' Press Enter to clear the "NOT ON FILE" message from the screen.
             Call FastKey("<Enter>")
             Exit For ' Exit the For loop.
