@@ -424,9 +424,9 @@ Function IsPromptInConfig(promptText, promptsDict)
     ' Special handling for COMMAND prompts that may show the last entered command
     ' e.g., "COMMAND: R A" should match "COMMAND:" in the dictionary
     If InStr(1, trimmedPromptText, "COMMAND:", vbTextCompare) = 1 Then
-        ' Check if any COMMAND-related keys exist in the dictionary
+        ' Check if any COMMAND-related keys exist in the dictionary (also starting with COMMAND:)
         For Each key In promptsDict.Keys
-            If InStr(1, key, "COMMAND:", vbTextCompare) > 0 Then
+            If InStr(1, key, "COMMAND:", vbTextCompare) = 1 Then
                 IsPromptInConfig = True
                 Exit Function
             End If
