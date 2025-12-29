@@ -1826,7 +1826,11 @@ Sub ProcessLineItems()
         lineScreenLoaded = WaitForScreenTransition(expectedLineText, 3000, "line " & lineLetterChar & " screen")
         
         If Not lineScreenLoaded Then
-            Call LogInfo("Line " & lineLetterChar & " screen did not load properly - may not exist", "ProcessLineItems")
+            Call LogError("CRITICAL: Line " & lineLetterChar & " screen failed to load within timeout - screen state uncertain", "ProcessLineItems")
+            Call LogError("Cannot safely continue processing with unknown screen state. Exiting line processing.", "ProcessLineItems")
+            ' Press Enter to attempt clearing any pending screen state
+            Call FastKey("<Enter>")
+            Exit For ' Exit the For loop due to critical screen loading failure
         End If
         
         ' Check if the line exists. If not, we are done with line processing.
