@@ -171,6 +171,16 @@ Sub ProcessPromptSequence(prompts)
     sequenceStartTime = Timer
 
     Do While Not finished
+        ' Check for timeout first to ensure it's respected even when stuck in sub-operations
+        sequenceElapsed = (Timer - sequenceStartTime) * 1000
+        If sequenceElapsed < 0 Then sequenceElapsed = sequenceElapsed + 86400000 ' Handle midnight rollover
+        If sequenceElapsed > 30000 Then ' 30-second timeout
+            Call LogError("ProcessPromptSequence timed out after 30 seconds", "ProcessPromptSequence")
+            SafeMsg "ProcessPromptSequence timed out after 30 seconds.\nAutomation stopped.", True, "Sequence Timeout"
+            g_ShouldAbort = True
+            Exit Sub
+        End If
+        
         ' TRACE: Log screen snapshot and main prompt line before each scan
         Call LogTrace("Screen snapshot before prompt scan:", "ProcessPromptSequence")
         Call LogScreenSnapshot("BeforePromptScan")
@@ -333,16 +343,7 @@ Sub ProcessPromptSequence(prompts)
                 Call WaitMs(250)
             End If
         End If
-        
-        ' Check for timeout to prevent infinite loops
-        sequenceElapsed = (Timer - sequenceStartTime) * 1000
-        If sequenceElapsed < 0 Then sequenceElapsed = sequenceElapsed + 86400000 ' Handle midnight rollover
-        If sequenceElapsed > 30000 Then ' 30-second timeout
-            Call LogError("ProcessPromptSequence timed out after 30 seconds. Last detected prompt: '" & bestMatchKey & "'", "ProcessPromptSequence")
-            SafeMsg "ProcessPromptSequence timed out after 30 seconds.\nMainPromptLine: " & mainPromptText & "\nAutomation stopped.", True, "Sequence Timeout"
-            g_ShouldAbort = True
-            Exit Sub
-        End If
+    Loop
     Loop
 End Sub
 
