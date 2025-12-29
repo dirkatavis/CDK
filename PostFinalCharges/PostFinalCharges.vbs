@@ -25,6 +25,8 @@ Dim MainPromptLine
 Dim LEGACY_CSV_PATH, LEGACY_LOG_PATH, LEGACY_DIAG_LOG_PATH, LEGACY_COMMONLIB_PATH
 ' Current minimum logging level (configurable)
 Dim g_CurrentLogLevel
+' Cached valid closeout statuses (loaded once from config)
+Dim g_CachedValidCloseoutStatuses, g_ValidStatusesCached
 
 MainPromptLine = 23
 
@@ -43,6 +45,9 @@ Const LEGACY_BASE_PATH = "C:\Temp\Code\Scripts\VBScript\CDK\PostFinalCharges"
 
 ' --- EARLY LOGGING: Force TRACE level for startup logs ---
 g_CurrentLogLevel = 5 ' LOG_LEVEL_TRACE (ensure all TRACE logs are written at startup)
+
+' Initialize cache variables
+g_ValidStatusesCached = False
 
 
 
@@ -1547,19 +1552,26 @@ End Function
 ' **FUNCTION NAME:** GetValidCloseoutStatuses
 ' **DATE CREATED:** 2025-12-29
 ' **AUTHOR:** GitHub Copilot
+' **MODIFIED:** 2025-12-29 - Added caching to avoid repeated config file I/O
 ' 
 ' **FUNCTIONALITY:**
 ' Returns an array of RO statuses that are valid for proceeding with closeout.
-' Reads from config.ini [Processing] ValidCloseoutStatuses setting.
-' Falls back to default statuses if not configured.
+' Reads from config.ini [Processing] ValidCloseoutStatuses setting on first call,
+' then caches the result for subsequent calls to avoid repeated file I/O.
 ' 
 ' **RETURN VALUE:**
 ' (Array) Array of valid status strings for closeout processing
 '-----------------------------------------------------------------------------------
 Function GetValidCloseoutStatuses()
+    ' Use cached value if already loaded
+    If g_ValidStatusesCached Then
+        GetValidCloseoutStatuses = g_CachedValidCloseoutStatuses
+        Exit Function
+    End If
+    
     Dim configStatuses, statusArray, i
     
-    ' Read from config.ini with fallback to defaults
+    ' Read from config.ini with fallback to defaults (only done once)
     configStatuses = GetIniSetting("Processing", "ValidCloseoutStatuses", "READY TO POST,PREASSIGNED")
     
     ' Parse comma-separated values and trim whitespace
@@ -1568,8 +1580,12 @@ Function GetValidCloseoutStatuses()
         statusArray(i) = Trim(statusArray(i))
     Next
     
-    ' Log the configured statuses for transparency
-    Call LogInfo("Valid closeout statuses: " & configStatuses, "GetValidCloseoutStatuses")
+    ' Cache the result for future calls
+    g_CachedValidCloseoutStatuses = statusArray
+    g_ValidStatusesCached = True
+    
+    ' Log the configured statuses for transparency (only on first load)
+    Call LogInfo("Valid closeout statuses loaded and cached: " & configStatuses, "GetValidCloseoutStatuses")
     
     GetValidCloseoutStatuses = statusArray
 End Function
