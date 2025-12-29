@@ -203,8 +203,9 @@ Sub ProcessPromptSequence(prompts)
         On Error GoTo 0
         
         ' Performance optimization: early exit when we find a good match
-        Dim foundMatch
+        Dim foundMatch, bestMatchLineContent
         foundMatch = False
+        bestMatchLineContent = "" ' Store line content where best match was found
         
         For Each lineToCheck In linesToCheck
             lineText = GetScreenLine(lineToCheck)
@@ -233,6 +234,7 @@ Sub ProcessPromptSequence(prompts)
                                 If Len(promptKey) > bestMatchLength Then
                                     bestMatchKey = promptKey
                                     bestMatchLength = Len(promptKey)
+                                    bestMatchLineContent = lineText ' Store the line content for later use
                                     currentMatchFound = True
                                 End If
                             End If
@@ -246,6 +248,7 @@ Sub ProcessPromptSequence(prompts)
                             If Len(promptKey) > bestMatchLength Then
                                 bestMatchKey = promptKey
                                 bestMatchLength = Len(promptKey)
+                                bestMatchLineContent = lineText ' Store the line content for later use
                                 currentMatchFound = True
                             End If
                         End If
@@ -273,17 +276,8 @@ Sub ProcessPromptSequence(prompts)
             Dim shouldAcceptDefault
             shouldAcceptDefault = False
             If promptDetails.AcceptDefault Then
-                ' Find the line that contains the matched prompt for default value checking
-                Dim matchedLineContent
-                matchedLineContent = ""
-                For Each lineToCheck In linesToCheck
-                    lineText = GetScreenLine(lineToCheck)
-                    If InStr(1, lineText, bestMatchKey, vbTextCompare) > 0 Then
-                        matchedLineContent = lineText
-                        Exit For
-                    End If
-                Next
-                shouldAcceptDefault = HasDefaultValueInPrompt(bestMatchKey, matchedLineContent)
+                ' Use the stored line content from where the best match was found (no re-scanning needed)
+                shouldAcceptDefault = HasDefaultValueInPrompt(bestMatchKey, bestMatchLineContent)
                 If shouldAcceptDefault Then
                     Call LogInfo("Default value detected in prompt - accepting by sending only key press", "ProcessPromptSequence")
                 End If
