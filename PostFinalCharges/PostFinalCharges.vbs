@@ -116,7 +116,7 @@ Function CreateLineItemPromptDictionary()
     Call AddPromptToDict(dict, "SEQUENCE NUMBER \d+ DOES NOT EXIST", "", "", True)
     Call AddPromptToDict(dict, "OPERATION CODE FOR LINE", "I", "<NumpadEnter>", False)
     Call AddPromptToDict(dict, "COMMAND:\(SEQ#/E/N/B/\?\)", "", "", False)
-    Call AddPromptToDict(dict, "COMMAND:", "", "", True)
+    ' COMMAND: prompt removed - handled by legacy WaitForPrompt in ProcessLineItems
     Call AddPromptToDict(dict, "This OpCode was performed in the last 270 days.", "", "", False)
     Call AddPromptToDict(dict, "LINE CODE X IS NOT ON FILE", "", "<Enter>", True)
     Call AddPromptToDict(dict, "LABOR TYPE FOR LINE", "", "<NumpadEnter>", False)
@@ -129,6 +129,8 @@ Function CreateLineItemPromptDictionary()
     Call AddPromptToDict(dict, "SOLD HOURS?", "0", "<NumpadEnter>", False)
     Call AddPromptToDictEx(dict, "SOLD HOURS \([0-9]+\)\?", "0", "<NumpadEnter>", False, True)
     Call AddPromptToDict(dict, "ADD A LABOR OPERATION \(N\)\?", "N", "<NumpadEnter>", True)
+    ' Note: COMMAND: success condition removed - handled by checking MainPromptLine specifically
+    ' to avoid false positives when COMMAND appears elsewhere on screen
     Call AddPromptToDict(dict, "Is this a comeback \(Y/N\)\.\.\.", "Y", "<NumpadEnter>", False)
     Call AddPromptToDict(dict, "NOT ON FILE", "", "<Enter>", True)
     Call AddPromptToDict(dict, "NOT AVAILABLE", "", "<Enter>", True)
@@ -159,15 +161,19 @@ End Function
 ' Generic state machine to process a sequence of prompts from a given dictionary.
 Sub ProcessPromptSequence(prompts)
     Dim finished, promptKey, promptDetails, bestMatchKey, bestMatchLength
+    Dim sequenceStartTime, sequenceElapsed
     finished = False
+    sequenceStartTime = Timer
 
     Do While Not finished
         ' TRACE: Log screen snapshot and main prompt line before each scan
         Call LogTrace("Screen snapshot before prompt scan:", "ProcessPromptSequence")
         Call LogScreenSnapshot("BeforePromptScan")
+        
         Dim mainPromptText
         mainPromptText = GetScreenLine(MainPromptLine)
         Call LogTrace("MainPromptLine text: '" & mainPromptText & "'", "ProcessPromptSequence")
+        
         If Len(mainPromptText) > 0 And Not IsPromptInConfig(mainPromptText, prompts) Then
             Call LogError("Unknown prompt on line " & MainPromptLine & ": '" & mainPromptText & "' - aborting script.", "ProcessPromptSequence")
             SafeMsg "Unknown prompt detected on line " & MainPromptLine & ": '" & mainPromptText & "\nAutomation stopped for manual review.", True, "Unknown Prompt Error"
@@ -178,55 +184,56 @@ Sub ProcessPromptSequence(prompts)
         ' --- Find the longest (most specific) matching prompt ---
         bestMatchKey = ""
         bestMatchLength = 0
-        Dim screenSnapshot
-        screenSnapshot = ""
-        ' Read the whole screen buffer for regex matching
-        On Error Resume Next
-        Dim buf
-        bzhao.ReadScreen buf, 1920, 1, 1 ' 24x80
-        If Err.Number <> 0 Then
-            buf = ""
-            Err.Clear
-        End If
-        On Error GoTo 0
-        For Each promptKey In prompts.Keys
-            Dim isRegex, re, regexError
-            isRegex = False
-            regexError = False
-            ' Heuristic: treat as regex if starts with ^ or contains ( or [ or .*
-            If Left(promptKey, 1) = "^" Or InStr(promptKey, "(") > 0 Or InStr(promptKey, "[") > 0 Or InStr(promptKey, ".*") > 0 Or InStr(promptKey, "\\d") > 0 Then
-                isRegex = True
-            End If
-            If isRegex Then
-                On Error Resume Next
-                Set re = CreateObject("VBScript.RegExp")
-                re.Pattern = promptKey
-                re.IgnoreCase = True
-                re.Global = False
-                If Err.Number <> 0 Then
-                    regexError = True
-                    Err.Clear
-                End If
-                If Not regexError Then
-                    If re.Test(buf) Then
-                        Call LogTrace("Regex PromptKey detected: '" & promptKey & "'", "ProcessPromptSequence")
-                        If Len(promptKey) > bestMatchLength Then
-                            bestMatchKey = promptKey
-                            bestMatchLength = Len(promptKey)
+        
+        ' Use single line scanning instead of full screen scrape to avoid false positives
+        ' Check key lines where prompts typically appear
+        Dim lineToCheck, lineText, linesToCheck
+        linesToCheck = Array(1, 2, 3, 4, 5, 20, 21, 22, 23, 24) ' Common prompt locations
+        
+        For Each lineToCheck In linesToCheck
+            lineText = GetScreenLine(lineToCheck)
+            If Len(lineText) > 0 Then
+                ' Check each prompt key against this line
+                For Each promptKey In prompts.Keys
+                    Dim isRegex, re, regexError
+                    isRegex = False
+                    regexError = False
+                    ' Heuristic: treat as regex if starts with ^ or contains ( or [ or .*
+                    If Left(promptKey, 1) = "^" Or InStr(promptKey, "(") > 0 Or InStr(promptKey, "[") > 0 Or InStr(promptKey, ".*") > 0 Or InStr(promptKey, "\\d") > 0 Then
+                        isRegex = True
+                    End If
+                    If isRegex Then
+                        On Error Resume Next
+                        Set re = CreateObject("VBScript.RegExp")
+                        re.Pattern = promptKey
+                        re.IgnoreCase = True
+                        re.Global = False
+                        If Err.Number <> 0 Then
+                            regexError = True
+                            Err.Clear
+                        End If
+                        If Not regexError Then
+                            If re.Test(lineText) Then
+                                Call LogTrace("Regex PromptKey detected on line " & lineToCheck & ": '" & promptKey & "' in '" & lineText & "'", "ProcessPromptSequence")
+                                If Len(promptKey) > bestMatchLength Then
+                                    bestMatchKey = promptKey
+                                    bestMatchLength = Len(promptKey)
+                                End If
+                            End If
+                        End If
+                        On Error GoTo 0
+                    End If
+                    ' If not regex or regex failed, fall back to plain text
+                    If Not isRegex Or regexError Then
+                        If InStr(1, lineText, promptKey, vbTextCompare) > 0 Then
+                            Call LogTrace("PromptKey detected on line " & lineToCheck & ": '" & promptKey & "' in '" & lineText & "'", "ProcessPromptSequence")
+                            If Len(promptKey) > bestMatchLength Then
+                                bestMatchKey = promptKey
+                                bestMatchLength = Len(promptKey)
+                            End If
                         End If
                     End If
-                End If
-                On Error GoTo 0
-            End If
-            ' If not regex or regex failed, fall back to plain text
-            If Not isRegex Or regexError Then
-                If IsTextPresent(promptKey) Then
-                    Call LogTrace("PromptKey detected: '" & promptKey & "'", "ProcessPromptSequence")
-                    If Len(promptKey) > bestMatchLength Then
-                        bestMatchKey = promptKey
-                        bestMatchLength = Len(promptKey)
-                    End If
-                End If
+                Next
             End If
         Next
 
@@ -240,7 +247,17 @@ Sub ProcessPromptSequence(prompts)
             Dim shouldAcceptDefault
             shouldAcceptDefault = False
             If promptDetails.AcceptDefault Then
-                shouldAcceptDefault = HasDefaultValueInPrompt(bestMatchKey, buf)
+                ' Find the line that contains the matched prompt for default value checking
+                Dim matchedLineContent
+                matchedLineContent = ""
+                For Each lineToCheck In linesToCheck
+                    lineText = GetScreenLine(lineToCheck)
+                    If InStr(1, lineText, bestMatchKey, vbTextCompare) > 0 Then
+                        matchedLineContent = lineText
+                        Exit For
+                    End If
+                Next
+                shouldAcceptDefault = HasDefaultValueInPrompt(bestMatchKey, matchedLineContent)
                 If shouldAcceptDefault Then
                     Call LogInfo("Default value detected in prompt - accepting by sending only key press", "ProcessPromptSequence")
                 End If
@@ -279,10 +296,77 @@ Sub ProcessPromptSequence(prompts)
         Else
             ' No prompt found, wait a moment before trying again
             Call LogTrace("No prompt found in current scan.", "ProcessPromptSequence")
-            Call WaitMs(250)
+            Call LogTrace("Prompts being searched for: " & Join(prompts.Keys, ", "), "ProcessPromptSequence")
+            
+            ' Check if we're back at the COMMAND prompt by examining MainPromptLine specifically
+            ' This prevents false positives when "COMMAND" appears elsewhere on screen
+            If InStr(1, mainPromptText, "COMMAND:", vbTextCompare) > 0 Then
+                Call LogInfo("Detected return to COMMAND prompt on MainPromptLine - line processing complete", "ProcessPromptSequence")
+                Call LogTrace("Exiting ProcessPromptSequence - back at command prompt.", "ProcessPromptSequence")
+                finished = True
+            Else
+                Call WaitMs(250)
+            End If
+        End If
+        
+        ' Check for timeout to prevent infinite loops
+        sequenceElapsed = (Timer - sequenceStartTime) * 1000
+        If sequenceElapsed < 0 Then sequenceElapsed = sequenceElapsed + 86400000 ' Handle midnight rollover
+        If sequenceElapsed > 30000 Then ' 30-second timeout
+            Call LogError("ProcessPromptSequence timed out after 30 seconds. Last detected prompt: '" & bestMatchKey & "'", "ProcessPromptSequence")
+            SafeMsg "ProcessPromptSequence timed out after 30 seconds.\nMainPromptLine: " & mainPromptText & "\nAutomation stopped.", True, "Sequence Timeout"
+            g_ShouldAbort = True
+            Exit Sub
         End If
     Loop
 End Sub
+
+'-----------------------------------------------------------------------------------
+' **FUNCTION NAME:** WaitForScreenTransition
+' **DATE CREATED:** 2025-12-29
+' **AUTHOR:** GitHub Copilot
+' 
+' **FUNCTIONALITY:**
+' Generic function to wait for a screen transition by looking for specific text.
+' Provides consistent waiting behavior across all screen transitions.
+' 
+' **PARAMETERS:**
+' expectedText (String): The text to look for that indicates the target screen has loaded
+' timeoutMs (Integer): Maximum time to wait in milliseconds (default: 3000)
+' description (String): Description of what we're waiting for (for logging)
+' 
+' **RETURN VALUE:**
+' (Boolean) Returns True if the expected text was found, False if timeout occurred
+'-----------------------------------------------------------------------------------
+Function WaitForScreenTransition(expectedText, timeoutMs, description)
+    If timeoutMs <= 0 Then timeoutMs = 3000 ' Default 3 second timeout
+    If Len(description) = 0 Then description = "screen transition"
+    
+    Dim waitStart, waitElapsed, found
+    waitStart = Timer
+    found = False
+    
+    Call LogTrace("Waiting for " & description & " - looking for: '" & expectedText & "'", "WaitForScreenTransition")
+    
+    Do
+        If IsTextPresent(expectedText) Then
+            found = True
+            Call LogTrace(description & " detected - found: '" & expectedText & "'", "WaitForScreenTransition")
+            Exit Do
+        End If
+        
+        Call WaitMs(50) ' Fast polling for quick detection
+        waitElapsed = (Timer - waitStart) * 1000
+        If waitElapsed < 0 Then waitElapsed = waitElapsed + 86400000 ' Handle midnight rollover
+        
+        If waitElapsed > timeoutMs Then
+            Call LogWarn("Timeout waiting for " & description & " after " & timeoutMs & "ms. Expected: '" & expectedText & "'", "WaitForScreenTransition")
+            Exit Do
+        End If
+    Loop
+    
+    WaitForScreenTransition = found
+End Function
 
 ' Helper to get the text from any line of the screen (1-based)
 Function GetScreenLine(lineNum)
@@ -302,7 +386,21 @@ End Function
 
 ' Helper to check if a prompt is in the prompts dictionary
 Function IsPromptInConfig(promptText, promptsDict)
-    Dim key
+    Dim key, trimmedPromptText
+    trimmedPromptText = Trim(promptText)
+    
+    ' Special handling for COMMAND prompts that may show the last entered command
+    ' e.g., "COMMAND: R A" should match "COMMAND:" in the dictionary
+    If InStr(1, trimmedPromptText, "COMMAND:", vbTextCompare) = 1 Then
+        ' Check if any COMMAND-related keys exist in the dictionary
+        For Each key In promptsDict.Keys
+            If InStr(1, key, "COMMAND:", vbTextCompare) > 0 Then
+                IsPromptInConfig = True
+                Exit Function
+            End If
+        Next
+    End If
+    
     For Each key In promptsDict.Keys
         Dim isRegex, re
         isRegex = False
@@ -316,7 +414,7 @@ Function IsPromptInConfig(promptText, promptsDict)
             re.IgnoreCase = True
             re.Global = False
             If Err.Number = 0 Then
-                If re.Test(promptText) Then
+                If re.Test(trimmedPromptText) Then
                     IsPromptInConfig = True
                     Exit Function
                 End If
@@ -325,7 +423,7 @@ Function IsPromptInConfig(promptText, promptsDict)
             On Error GoTo 0
         Else
             ' For non-regex patterns, check for exact match or substring match
-            If StrComp(Trim(promptText), Trim(key), vbTextCompare) = 0 Or InStr(1, promptText, key, vbTextCompare) > 0 Then
+            If StrComp(trimmedPromptText, Trim(key), vbTextCompare) = 0 Or InStr(1, trimmedPromptText, key, vbTextCompare) > 0 Then
                 IsPromptInConfig = True
                 Exit Function
             End If
@@ -1075,7 +1173,9 @@ Sub Main(roNumber)
         lastRoResult = "Skipped - Status not ready"
         Exit Sub
     Else
-        Call LogInfo("RO STATUS: READY TO POST", "Main")
+        Dim currentStatus
+        currentStatus = Trim(CStr(g_LastScrapedStatus))
+        Call LogInfo("RO STATUS: " & currentStatus & " (Ready for processing)", "Main")
     End If
     
     ' Snapshot the scraped status now to avoid timing races, then detect triggers.
@@ -1085,14 +1185,14 @@ Sub Main(roNumber)
     trigger = FindTrigger()
     If trigger <> "" Then
         Call LogInfo("Trigger found: " & trigger & " - Proceeding to Closeout", "Main")
-        Call Closeout_Ro()
+        Call Closeout_Ro(roStatusForDecision)
         ' Closeout_Ro should set lastRoResult appropriately
     Else
-        ' If no trigger text found, but the scraped RO status is READY TO POST,
+        ' If no trigger text found, but the scraped RO status is valid for closeout,
         ' proceed to closeout anyway (status supersedes trigger text).
-        If StrComp(roStatusForDecision, "READY TO POST", vbTextCompare) = 0 Then
-            Call LogInfo("No closeout trigger text found, but RO STATUS is READY TO POST — proceeding to Closeout", "Main")
-            Call Closeout_Ro()
+        If IsValidCloseoutStatus(roStatusForDecision) Then
+            Call LogInfo("No closeout trigger text found, but RO STATUS is " & roStatusForDecision & " — proceeding to Closeout", "Main")
+            Call Closeout_Ro(roStatusForDecision)
         Else
             Call LogInfo("No Closeout Text Found - Skipping Closeout", "Main")
             Call FastText("E")
@@ -1424,28 +1524,99 @@ End Function
 
 
 '-----------------------------------------------------------------------------------
-' **PROCEDURE NAME:** IsStatusReady
+' **FUNCTION NAME:** GetValidCloseoutStatuses
+' **DATE CREATED:** 2025-12-29
+' **AUTHOR:** GitHub Copilot
+' 
+' **FUNCTIONALITY:**
+' Returns an array of RO statuses that are valid for proceeding with closeout.
+' Reads from config.ini [Processing] ValidCloseoutStatuses setting.
+' Falls back to default statuses if not configured.
+' 
+' **RETURN VALUE:**
+' (Array) Array of valid status strings for closeout processing
+'-----------------------------------------------------------------------------------
+Function GetValidCloseoutStatuses()
+    Dim configStatuses, statusArray, i
+    
+    ' Read from config.ini with fallback to defaults
+    configStatuses = GetIniSetting("Processing", "ValidCloseoutStatuses", "READY TO POST,PREASSIGNED")
+    
+    ' Parse comma-separated values and trim whitespace
+    statusArray = Split(configStatuses, ",")
+    For i = 0 To UBound(statusArray)
+        statusArray(i) = Trim(statusArray(i))
+    Next
+    
+    ' Log the configured statuses for transparency
+    Call LogInfo("Valid closeout statuses: " & configStatuses, "GetValidCloseoutStatuses")
+    
+    GetValidCloseoutStatuses = statusArray
+End Function
+
+'-----------------------------------------------------------------------------------
+' **FUNCTION NAME:** IsValidCloseoutStatus
+' **DATE CREATED:** 2025-12-29
+' **AUTHOR:** GitHub Copilot
+' 
+' **FUNCTIONALITY:**
+' Helper function to check if a given status string is valid for closeout.
+' 
+' **PARAMETERS:**
+' statusToCheck (String): The status string to validate
+' 
+' **RETURN VALUE:**
+' (Boolean) Returns True if the status is valid for closeout, False otherwise.
+'-----------------------------------------------------------------------------------
+Function IsValidCloseoutStatus(statusToCheck)
+    Dim validStatuses, i, trimmedStatus
+    validStatuses = GetValidCloseoutStatuses()
+    trimmedStatus = Trim(CStr(statusToCheck))
+    
+    For i = 0 To UBound(validStatuses)
+        If StrComp(trimmedStatus, validStatuses(i), vbTextCompare) = 0 Then
+            IsValidCloseoutStatus = True
+            Exit Function
+        End If
+    Next
+    
+    IsValidCloseoutStatus = False
+End Function
+
+'-----------------------------------------------------------------------------------
+' **FUNCTION NAME:** IsStatusReady
 ' **DATE CREATED:** 2025-11-04
 ' **AUTHOR:** Dirk Steele
-' 
+' **MODIFIED:** 2025-12-29 - Refactored to use centralized status list
 ' 
 ' **FUNCTIONALITY:**
 ' Checks if the current screen indicates that the Repair Order status is
-' "READY TO POST". It performs an exact, case-insensitive search for this
-' specific string to ensure the RO is in the correct state to proceed.
-' 
+' valid for closeout processing. Uses GetValidCloseoutStatuses() to determine
+' which statuses are acceptable.
 ' 
 ' **RETURN VALUE:**
-' (Boolean) Returns True if the status is "READY TO POST", False otherwise.
+' (Boolean) Returns True if the status is valid for closeout, False otherwise.
 '-----------------------------------------------------------------------------------
 Function IsStatusReady()
     ' Use GetRepairOrderStatus() to scrape the exact RO status from the screen
     ' Caller may choose to add waits before calling if needed
     bzhao.pause 1000 ' brief pause to ensure screen is stable
-    Dim roStatus
+    Dim roStatus, validStatuses, i
     roStatus = GetRepairOrderStatus()
-    ' Return True only when the scraped status exactly equals "READY TO POST"
-    IsStatusReady = (StrComp(Trim(CStr(roStatus)), "READY TO POST", vbTextCompare) = 0)
+    validStatuses = GetValidCloseoutStatuses()
+    
+    Dim trimmedStatus
+    trimmedStatus = Trim(CStr(roStatus))
+    
+    ' Check if current status matches any valid closeout status
+    For i = 0 To UBound(validStatuses)
+        If StrComp(trimmedStatus, validStatuses(i), vbTextCompare) = 0 Then
+            IsStatusReady = True
+            Exit Function
+        End If
+    Next
+    
+    IsStatusReady = False
 End Function
 
 '-----------------------------------------------------------------------------------
@@ -1601,20 +1772,35 @@ Sub ProcessLineItems()
 
     For i = 65 To 90 ' ASCII for A to Z
         lineLetterChar = Chr(i)
+        Call LogInfo("Attempting to navigate to line item " & lineLetterChar, "ProcessLineItems")
+        
         ' Wait for the COMMAND prompt and then enter "R" + the current line letter.
         Call WaitForPrompt("COMMAND:", "R " & lineLetterChar, True, g_PromptWait, "")
+        
+        ' Wait for the specific line item screen to appear using generic transition function
+        Dim expectedLineText, lineScreenLoaded
+        expectedLineText = "LINE " & lineLetterChar & " STORY :"
+        lineScreenLoaded = WaitForScreenTransition(expectedLineText, 3000, "line " & lineLetterChar & " screen")
+        
+        If Not lineScreenLoaded Then
+            Call LogInfo("Line " & lineLetterChar & " screen did not load properly - may not exist", "ProcessLineItems")
+        End If
+        
         ' Check if the line exists. If not, we are done with line processing.
         If IsTextPresent("LINE CODE " & lineLetterChar & " IS NOT ON FILE") Then
-            Call LogInfo("Finished processing line items. No more lines found.", "ProcessLineItems")
+            Call LogInfo("Finished processing line items. No more lines found after " & Chr(i-1), "ProcessLineItems")
             ' Press Enter to clear the "NOT ON FILE" message from the screen.
             Call FastKey("<Enter>")
             Exit For ' Exit the For loop.
         End If
-        ' Use the new state machine method for all prompt handling
-        Call LogInfo("Processing line item " & lineLetterChar & " using ProcessSingleLine_Dynamic", "ProcessLineItems")
+        
+        Call LogInfo("Successfully navigated to line item " & lineLetterChar & ", now processing prompts", "ProcessLineItems")
         Call LogDetailed("INFO", "Processing line item " & lineLetterChar & " using ProcessPromptSequence", "ProcessLineItems")
 
+        ' Process all prompts for this line item using the new state machine
         Call ProcessPromptSequence(lineItemPrompts)
+        
+        Call LogInfo("Completed processing line item " & lineLetterChar, "ProcessLineItems")
     Next
 End Sub
 
@@ -1622,14 +1808,76 @@ End Sub
 ' **PROCEDURE NAME:** Closeout_Ro
 ' **DATE CREATED:** 2025-11-04
 ' **AUTHOR:** Dirk Steele
-' 
+' **MODIFIED:** 2025-12-29 - Added status-aware closeout logic
 ' 
 ' **FUNCTIONALITY:**
 ' Automates the sequence of steps required to close out a Repair Order (RO).
-' This involves first processing each line item, and then navigating through 
-' final prompts to approve and close the RO.
+' Routes to status-specific closeout procedures based on the RO status.
+' 
+' **PARAMETERS:**
+' roStatus (String): The RO status to determine closeout procedure
 '-----------------------------------------------------------------------------------
-Sub Closeout_Ro()
+Sub Closeout_Ro(roStatus)
+    Call LogInfo("Starting closeout procedure for status: " & roStatus, "Closeout_Ro")
+    
+    ' Check if status-specific closeout is enabled
+    Dim useStatusSpecific
+    useStatusSpecific = GetIniSetting("Processing", "UseStatusSpecificCloseout", "true")
+    
+    If LCase(Trim(useStatusSpecific)) = "true" Then
+        ' Route to status-specific closeout logic
+        Select Case UCase(Trim(roStatus))
+            Case "READY TO POST"
+                Call Closeout_ReadyToPost()
+            Case "PREASSIGNED"
+                Call Closeout_Preassigned()
+            Case Else
+                ' Default/fallback closeout for unknown statuses
+                Call LogWarn("Unknown status '" & roStatus & "' - using default closeout procedure", "Closeout_Ro")
+                Call Closeout_Default()
+        End Select
+    Else
+        Call LogInfo("Using default closeout procedure (status-specific disabled)", "Closeout_Ro")
+        Call Closeout_Default()
+    End If
+End Sub
+
+'-----------------------------------------------------------------------------------
+' **PROCEDURE NAME:** Closeout_ReadyToPost
+' **DATE CREATED:** 2025-12-29
+' **AUTHOR:** GitHub Copilot
+' 
+' **FUNCTIONALITY:**
+' Handles closeout procedure specifically for "READY TO POST" status ROs.
+'-----------------------------------------------------------------------------------
+Sub Closeout_ReadyToPost()
+    Call LogInfo("Executing READY TO POST closeout procedure", "Closeout_ReadyToPost")
+    Call Closeout_Default() ' Use standard procedure for now
+End Sub
+
+'-----------------------------------------------------------------------------------
+' **PROCEDURE NAME:** Closeout_Preassigned
+' **DATE CREATED:** 2025-12-29
+' **AUTHOR:** GitHub Copilot
+' 
+' **FUNCTIONALITY:**
+' Handles closeout procedure specifically for "PREASSIGNED" status ROs.
+' May have different steps or prompts compared to standard closeout.
+'-----------------------------------------------------------------------------------
+Sub Closeout_Preassigned()
+    Call LogInfo("Executing PREASSIGNED closeout procedure", "Closeout_Preassigned")
+    Call Closeout_Default() ' Use standard procedure for now - can be customized
+End Sub
+
+'-----------------------------------------------------------------------------------
+' **PROCEDURE NAME:** Closeout_Default
+' **DATE CREATED:** 2025-12-29
+' **AUTHOR:** GitHub Copilot
+' 
+' **FUNCTIONALITY:**
+' The standard/default closeout procedure. Contains the original closeout logic.
+'-----------------------------------------------------------------------------------
+Sub Closeout_Default()
     ' Process all line items before proceeding to final closeout.
     Call ProcessLineItems
 
