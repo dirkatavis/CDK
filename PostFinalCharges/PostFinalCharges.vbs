@@ -116,7 +116,7 @@ Function CreateLineItemPromptDictionary()
     ' Handle end-of-sequence error
     Call AddPromptToDict(dict, "SEQUENCE NUMBER \d+ DOES NOT EXIST", "", "", True)
     Call AddPromptToDict(dict, "OPERATION CODE FOR LINE", "I", "<NumpadEnter>", False)
-    Call AddPromptToDict(dict, "COMMAND:\(SEQ#/E/N/B/\?\)", "", "", False)
+    Call AddPromptToDict(dict, "COMMAND:\(SEQ#/E/N/B/\?\)", "", "", True)
     ' COMMAND: prompt removed - handled by legacy WaitForPrompt in ProcessLineItems
     Call AddPromptToDict(dict, "This OpCode was performed in the last 270 days.", "", "", False)
     Call AddPromptToDict(dict, "LINE CODE X IS NOT ON FILE", "", "<Enter>", True)
@@ -127,8 +127,9 @@ Function CreateLineItemPromptDictionary()
     Call AddPromptToDictEx(dict, "TECHNICIAN?", "99", "<NumpadEnter>", False, True)
     Call AddPromptToDictEx(dict, "TECHNICIAN \([A-Za-z0-9]+\)\?", "99", "<NumpadEnter>", False, True)
     Call AddPromptToDictEx(dict, "ACTUAL HOURS \(\d+\)", "0", "<NumpadEnter>", False, True)
-    Call AddPromptToDict(dict, "SOLD HOURS?", "0", "<NumpadEnter>", False)
-    Call AddPromptToDictEx(dict, "SOLD HOURS \([0-9]+\)\?", "0", "<NumpadEnter>", False, True)
+    ' SOLD HOURS: Handle both cases - with parentheses (accept default) and without (send "0")
+    ' Pattern matches both "SOLD HOURS?" and "SOLD HOURS (10)?" - accepts default if present, sends "0" if not
+    Call AddPromptToDictEx(dict, "SOLD HOURS( \([0-9]+\))?\?", "0", "<NumpadEnter>", False, True)
     Call AddPromptToDict(dict, "ADD A LABOR OPERATION \(N\)\?", "N", "<NumpadEnter>", True)
     ' Note: COMMAND: success condition removed - handled by checking MainPromptLine specifically
     ' to avoid false positives when COMMAND appears elsewhere on screen
@@ -292,15 +293,15 @@ Sub ProcessPromptSequence(prompts)
                 Call WaitMs(500)
                 clearElapsed = (Timer - clearStart) * 1000
                 If clearElapsed < 0 Then clearElapsed = clearElapsed + 86400000 ' Handle midnight rollover
-                If clearElapsed > 5000 Then ' 5-second timeout
-                    Call LogWarn("Prompt '" & bestMatchKey & "' did not clear within 5 seconds.", "ProcessPromptSequence")
+                If clearElapsed > POST_PROMPT_WAIT_MS Then ' Configurable prompt clear timeout
+                    Call LogWarn("Prompt '" & bestMatchKey & "' did not clear within " & POST_PROMPT_WAIT_MS & " ms.", "ProcessPromptSequence")
                     Exit Do
                 End If
             Loop
 
             If promptDetails.IsSuccess Then
                 finished = True
-                Call LogInfo("Success prompt reached: " & bestMatchKey, "ProcessPromptSequence")
+                Call LogDebug("Success prompt reached: " & bestMatchKey, "ProcessPromptSequence")
                 Call LogTrace("Exiting ProcessPromptSequence on success.", "ProcessPromptSequence")
             End If
             ' The loop will now naturally restart and rescan for the next prompt
@@ -444,29 +445,15 @@ End Function
 Function HasDefaultValueInPrompt(promptPattern, screenContent)
     HasDefaultValueInPrompt = False
     
-    ' Look for patterns like TECHNICIAN(12345)? or ACTUAL HOURS (8) in the screen content
-    ' Use regex to find the actual prompt text and check if it has a non-empty value in parentheses
+    ' Use a more robust approach - look for any text followed by parentheses containing alphanumeric content
+    ' This handles all prompt types without hardcoding specific patterns
     On Error Resume Next
     Dim re, matches, match, parenContent
     Set re = CreateObject("VBScript.RegExp")
     
-    ' Common patterns that indicate a default value is present:
-    ' TECHNICIAN(12345)? - has a value in parentheses
-    ' ACTUAL HOURS (8) - has a value in parentheses
-    ' SOLD HOURS (10)? - has a value in parentheses
-    
-    ' Extract the base pattern and look for it with actual values
-    If InStr(promptPattern, "TECHNICIAN") > 0 Then
-        re.Pattern = "TECHNICIAN\s*\(([A-Za-z0-9]+)\)"
-    ElseIf InStr(promptPattern, "ACTUAL HOURS") > 0 Then
-        re.Pattern = "ACTUAL HOURS\s*\(([0-9]+)\)"
-    ElseIf InStr(promptPattern, "SOLD HOURS") > 0 Then
-        re.Pattern = "SOLD HOURS\s*\(([0-9]+)\)"
-    Else
-        ' Generic pattern for any prompt with parentheses containing a value
-        re.Pattern = "\([A-Za-z0-9]+\)"
-    End If
-    
+    ' Universal pattern: any word followed by parentheses containing non-empty alphanumeric content
+    ' Examples: TECHNICIAN(12345), ACTUAL HOURS (8), SOLD HOURS (10)
+    re.Pattern = "[A-Z][A-Z\s]*\s*\(([A-Za-z0-9]+)\)"
     re.IgnoreCase = True
     re.Global = False
     
@@ -1690,7 +1677,8 @@ Function GetRepairOrderStatus()
     prefix = "RO STATUS: "
     pos = InStr(1, buf, prefix, vbTextCompare)
     If pos = 0 Then
-        ' Not found in this slice
+        ' Not found in this slice - clear stale status
+        g_LastScrapedStatus = ""
         GetRepairOrderStatus = ""
         Exit Function
     End If
@@ -1834,8 +1822,8 @@ Sub ProcessLineItems()
             Call FastKey("<Enter>")
             Exit For ' Exit the For loop.
         End If
-        
-        Call LogInfo("Successfully navigated to line item " & lineLetterChar & ", now processing prompts", "ProcessLineItems")
+        ' Use the new state machine method for all prompt handling
+        Call LogDebug("Processing line item " & lineLetterChar & " using ProcessSingleLine_Dynamic", "ProcessLineItems")
         Call LogDetailed("INFO", "Processing line item " & lineLetterChar & " using ProcessPromptSequence", "ProcessLineItems")
 
         ' Process all prompts for this line item using the new state machine
