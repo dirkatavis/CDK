@@ -1547,7 +1547,7 @@ Function GetValidCloseoutStatuses()
     Dim configStatuses, statusArray, i
     
     ' Read from config.ini with fallback to defaults
-    configStatuses = GetIniSetting("Processing", "ValidCloseoutStatuses", "READY TO POST,PREASSIGNED")
+    configStatuses = GetIniSetting("Processing", "ValidCloseoutStatuses", "READY TO POST,PREASSIGNED,OPENED")
     
     ' Parse comma-separated values and trim whitespace
     statusArray = Split(configStatuses, ",")
@@ -1846,6 +1846,8 @@ Sub Closeout_Ro(roStatus)
                 Call Closeout_ReadyToPost()
             Case "PREASSIGNED"
                 Call Closeout_Preassigned()
+            Case "OPENED"
+                Call Closeout_Open()
             Case Else
                 ' Default/fallback closeout for unknown statuses
                 Call LogWarn("Unknown status '" & roStatus & "' - using default closeout procedure", "Closeout_Ro")
@@ -1885,6 +1887,211 @@ Sub Closeout_Preassigned()
 End Sub
 
 '-----------------------------------------------------------------------------------
+' **PROCEDURE NAME:** Closeout_Open
+' **DATE CREATED:** 2025-12-30
+' **AUTHOR:** GitHub Copilot
+' 
+' **FUNCTIONALITY:**
+' Handles closeout procedure specifically for "OPEN" status ROs.
+' For OPEN status, individual lines (A, B, C, etc.) need to be closed out
+' using "FNL X" commands, followed by "R X" processes, and finally "FC".
+'-----------------------------------------------------------------------------------
+Sub Closeout_Open()
+    Call LogInfo("Executing OPEN closeout procedure", "Closeout_Open")
+    
+    ' For OPEN status ROs, we need to process lines differently
+    ' First, close any open lines using FNL X commands
+    Call ProcessOpenStatusLines()
+    
+    ' After closing individual lines, perform standard line processing
+    Call ProcessLineItems()
+    
+    ' Finally, send the Final Closeout (FC) command
+    Call LogInfo("Sending final closeout command after OPEN status processing", "Closeout_Open")
+    WaitForPrompt "COMMAND:", "FC", True, g_PromptWait, ""
+    If HandleCloseoutErrors() Then Exit Sub
+
+    ' Continue with standard final closeout prompts
+    Call ProcessFinalCloseoutPrompts()
+End Sub
+
+'-----------------------------------------------------------------------------------
+' **PROCEDURE NAME:** ProcessOpenStatusLines
+' **DATE CREATED:** 2025-12-30
+' **AUTHOR:** GitHub Copilot
+' 
+' **FUNCTIONALITY:**
+' Processes individual lines (A-Z) for OPEN status ROs by sending FNL X commands
+' to close open lines, followed by R X processes for each line that exists.
+' Stops when encountering "NOT ON FILE" errors.
+'-----------------------------------------------------------------------------------
+Sub ProcessOpenStatusLines()
+    Call LogInfo("Starting OPEN status line processing with FNL commands", "ProcessOpenStatusLines")
+    
+    Dim lineLetterChar, i
+    For i = 65 To 90 ' ASCII for A to Z
+        lineLetterChar = Chr(i)
+        Call LogInfo("Processing OPEN status for line " & lineLetterChar, "ProcessOpenStatusLines")
+        
+        ' First, try to send FNL (Final Line) command for this line
+        Call WaitForPrompt("COMMAND:", "FNL " & lineLetterChar, True, g_PromptWait, "")
+        
+        ' Check if the line exists by looking for "NOT ON FILE" error
+        If IsTextPresent("LINE CODE " & lineLetterChar & " IS NOT ON FILE") Then
+            If i = 65 Then ' First line (A) not found
+                Call LogInfo("No line A found - no open lines to process with FNL commands", "ProcessOpenStatusLines")
+            Else ' Subsequent line not found
+                Call LogInfo("No more open lines found after " & Chr(i-1) & " - FNL processing complete", "ProcessOpenStatusLines")
+            End If
+            ' Press Enter to clear the "NOT ON FILE" message from the screen
+            Call FastKey("<Enter>")
+            Exit For ' Exit the For loop
+        End If
+        
+        ' Check for "Line X is already finished" message
+        If IsTextPresent("LINE " & lineLetterChar & " IS ALREADY FINISHED") Then
+            Call LogInfo("Line " & lineLetterChar & " is already finished, moving to next line", "ProcessOpenStatusLines")
+            Call FastKey("<Enter>")
+        Else
+            ' Check for technician prompt after FNL command
+            If IsTextPresent("TECHNICIAN FINISHING WORK ?") Then
+                Call LogInfo("Found TECHNICIAN FINISHING WORK prompt for line " & lineLetterChar & ", responding with 99", "ProcessOpenStatusLines")
+                Call WaitForPrompt("TECHNICIAN FINISHING WORK ?", "99", True, g_PromptWait, "")
+            End If
+            
+            ' If line exists, handle any other prompts that appear after FNL command
+            Call LogInfo("FNL command processed for line " & lineLetterChar, "ProcessOpenStatusLines")
+            
+            ' Small delay to allow screen updates
+            Call WaitMs(1000)
+            
+            ' Process any remaining prompts that appear after FNL
+            Dim maxPromptAttempts, promptAttempts
+            maxPromptAttempts = 3
+            promptAttempts = 0
+            
+            ' Handle potential remaining prompts after FNL command
+            Do While promptAttempts < maxPromptAttempts
+                If IsTextPresent("COMMAND:") Then
+                    ' Back to command prompt, FNL processing for this line is complete
+                    Exit Do
+                End If
+                
+                ' Check for common prompt patterns and send Enter to accept defaults
+                If IsTextPresent(":") Then ' Generic prompt indicator
+                    Call LogDebug("Found additional prompt after FNL " & lineLetterChar & ", accepting default", "ProcessOpenStatusLines")
+                    Call FastKey("<Enter>")
+                    Call WaitMs(500)
+                    promptAttempts = promptAttempts + 1
+                Else
+                    Exit Do ' No more prompts
+                End If
+            Loop
+        End If
+        
+        Call LogInfo("Completed FNL processing for line " & lineLetterChar, "ProcessOpenStatusLines")
+    Next
+    
+    Call LogInfo("Completed OPEN status line processing with FNL commands", "ProcessOpenStatusLines")
+End Sub
+
+'-----------------------------------------------------------------------------------
+' **PROCEDURE NAME:** ProcessFinalCloseoutPrompts
+' **DATE CREATED:** 2025-12-30
+' **AUTHOR:** GitHub Copilot
+' 
+' **FUNCTIONALITY:**
+' Handles the standard final closeout prompts that appear after FC command:
+' ALL LABOR POSTED, MILEAGE OUT/IN, O.K. TO CLOSE RO, INVOICE PRINTER, etc.
+'-----------------------------------------------------------------------------------
+Sub ProcessFinalCloseoutPrompts()
+    Call LogInfo("Processing final closeout prompts", "ProcessFinalCloseoutPrompts")
+    
+    ' ALL LABOR POSTED
+    Dim send_enter_key_all_labor_posted
+    send_enter_key_all_labor_posted = True
+
+    ' Add a 3 second delay before ALL LABOR POSTED prompt
+    Call WaitMs(3000)
+
+    If Not WaitForPrompt("ALL LABOR POSTED", "Y", send_enter_key_all_labor_posted, g_TimeoutMs, "") Then
+        Call LogError("Failed to get ALL LABOR POSTED prompt - aborting closeout", "ProcessFinalCloseoutPrompts")
+        lastRoResult = "Failed - Could not confirm all labor posted"
+        Exit Sub
+    End If
+    If HandleCloseoutErrors() Then Exit Sub
+    
+    ' MILEAGE OUT
+    Dim mileageOutTimeout
+    mileageOutTimeout = 6000
+    WaitForPrompt "MILEAGE OUT", "", True, mileageOutTimeout, ""
+    If HandleCloseoutErrors() Then Exit Sub
+
+    ' NEW CORNER CASE: Current Mileage less than Previous Mileage
+    ' If this prompt appears, send "Y" to confirm.
+    If WaitForPrompt("Current Mileage less than Previous Mileage", "", False, 5000, "") Then
+        Call LogInfo("Detected 'Current Mileage less than Previous Mileage' prompt. Sending 'Y'.", "ProcessFinalCloseoutPrompts")
+        Dim send_enter_key_mileage_less
+        send_enter_key_mileage_less = True
+        Call WaitForPrompt("Current Mileage less than Previous Mileage", "Y", send_enter_key_mileage_less, g_DefaultWait, "")
+        If HandleCloseoutErrors() Then Exit Sub
+    End If
+
+    ' MILEAGE IN
+    Dim mileageInTimeout
+    mileageInTimeout = 6000
+    Dim send_enter_key_mileage_in
+    send_enter_key_mileage_in = True
+    WaitForPrompt "MILEAGE IN", "", send_enter_key_mileage_in, mileageInTimeout, ""
+    If HandleCloseoutErrors() Then Exit Sub
+
+    ' O.K. TO CLOSE RO
+    Dim okToCloseTimeout
+    okToCloseTimeout = 15000
+    Dim send_enter_key_ok_to_close_ro
+    send_enter_key_ok_to_close_ro = True
+    If Not WaitForPrompt("O.K. TO CLOSE RO", "Y", send_enter_key_ok_to_close_ro, okToCloseTimeout, "") Then
+        Call LogError("Failed to get O.K. TO CLOSE RO prompt - aborting closeout", "ProcessFinalCloseoutPrompts")
+        lastRoResult = "Failed - Could not confirm closeout"
+        Exit Sub
+    End If
+    If HandleCloseoutErrors() Then Exit Sub
+
+    ' Send to printer 2
+    Dim send_enter_key_invoice_printer
+    send_enter_key_invoice_printer = True
+    Dim invoicePromptTimeout
+    invoicePromptTimeout = 5000
+    If Not WaitForPrompt("INVOICE PRINTER", "2", send_enter_key_invoice_printer, invoicePromptTimeout, "") Then
+        Call LogError("Failed to get INVOICE PRINTER prompt - closeout may be incomplete", "ProcessFinalCloseoutPrompts")
+        lastRoResult = "Failed - Could not send to printer"
+        Exit Sub
+    End If
+    
+    ' Use the state machine for the rest of the closeout prompts
+    Dim closeoutPrompts
+    Set closeoutPrompts = CreateCloseoutPromptDictionary()
+    
+    ' Wait for the continue prompt
+    Dim continuePromptTimeout
+    continuePromptTimeout = 10000
+    Dim continuePromptDetected
+    continuePromptDetected = WaitForTextSilent("COMMAND:(SEQ#/E/N/B/?)", continuePromptTimeout)
+    If continuePromptDetected Then
+        Call LogInfo("Detected continue prompt: COMMAND:(SEQ#/E/N/B/?)", "ProcessFinalCloseoutPrompts")
+    Else
+        Call LogWarn("Timeout waiting for continue prompt: COMMAND:(SEQ#/E/N/B/?)", "ProcessFinalCloseoutPrompts")
+    End If
+    Call ProcessPromptSequence(closeoutPrompts)
+
+    ' Final error handling
+    If HandleCloseoutErrors() Then Exit Sub
+
+    lastRoResult = "Successfully closed"
+    Call LogInfo("Final closeout prompts completed successfully", "ProcessFinalCloseoutPrompts")
+End Sub
+
+'-----------------------------------------------------------------------------------
 ' **PROCEDURE NAME:** Closeout_Default
 ' **DATE CREATED:** 2025-12-29
 ' **AUTHOR:** GitHub Copilot
@@ -1900,94 +2107,8 @@ Sub Closeout_Default()
     WaitForPrompt "COMMAND:", "FC", True, g_PromptWait, ""
     If HandleCloseoutErrors() Then Exit Sub
 
-    ' ALL LABOR POSTED
-    Dim send_enter_key_all_labor_posted
-    send_enter_key_all_labor_posted = True
-
-    ' Add a 3 second delay before ALL LABOR POSTED prompt
-    Call WaitMs(3000)
-
-    
-    ' DEBUG: Show a message box for diagnostic purposes
-    ' If Not bzhao Is Nothing Then
-    '     bzhao.MsgBox "DEBUG: At ALL LABOR POSTED prompt in Closeout_Ro"
-    ' End If
-    If Not WaitForPrompt("ALL LABOR POSTED", "Y", send_enter_key_all_labor_posted, g_TimeoutMs, "") Then
-        Call LogError("Failed to get ALL LABOR POSTED prompt - aborting closeout", "Closeout_Ro")
-        lastRoResult = "Failed - Could not confirm all labor posted"
-        Exit Sub
-    End If
-    If HandleCloseoutErrors() Then Exit Sub
-    
-    ' MILEAGE OUT
-    Dim mileageOutTimeout
-    mileageOutTimeout = 6000
-        WaitForPrompt "MILEAGE OUT", "", True, mileageOutTimeout, ""
-    If HandleCloseoutErrors() Then Exit Sub
-
-    ' NEW CORNER CASE: Current Mileage less than Previous Mileage
-    ' If this prompt appears, send "Y" to confirm.
-    If WaitForPrompt("Current Mileage less than Previous Mileage", "", False, 5000, "") Then ' Increased timeout for optional prompt
-        Call LogInfo("Detected 'Current Mileage less than Previous Mileage' prompt. Sending 'Y'.", "Closeout_Ro")
-        Dim send_enter_key_mileage_less
-        send_enter_key_mileage_less = True
-            Call WaitForPrompt("Current Mileage less than Previous Mileage", "Y", send_enter_key_mileage_less, g_DefaultWait, "")
-        ' After sending Y, another error might appear, so we should check for errors again.
-        If HandleCloseoutErrors() Then Exit Sub
-    End If
-
-    ' MILEAGE IN
-    Dim mileageInTimeout
-    mileageInTimeout = 6000
-    Dim send_enter_key_mileage_in
-    send_enter_key_mileage_in = True
-        WaitForPrompt "MILEAGE IN", "", send_enter_key_mileage_in, mileageInTimeout, ""
-    If HandleCloseoutErrors() Then Exit Sub
-
-    ' O.K. TO CLOSE RO
-    Dim okToCloseTimeout
-    okToCloseTimeout = 15000
-    Dim send_enter_key_ok_to_close_ro
-    send_enter_key_ok_to_close_ro = True
-    If Not WaitForPrompt("O.K. TO CLOSE RO", "Y", send_enter_key_ok_to_close_ro, okToCloseTimeout, "") Then
-        Call LogError("Failed to get O.K. TO CLOSE RO prompt - aborting closeout", "Closeout_Ro")
-        lastRoResult = "Failed - Could not confirm closeout"
-        Exit Sub
-    End If
-    If HandleCloseoutErrors() Then Exit Sub
-
-    ' Send to printer 2
-    Dim send_enter_key_invoice_printer
-    send_enter_key_invoice_printer = True
-    Dim invoicePromptTimeout
-    invoicePromptTimeout = 5000
-    If Not WaitForPrompt("INVOICE PRINTER", "2", send_enter_key_invoice_printer, invoicePromptTimeout, "") Then
-        Call LogError("Failed to get INVOICE PRINTER prompt - closeout may be incomplete", "Closeout_Ro")
-        lastRoResult = "Failed - Could not send to printer"
-        Exit Sub
-    End If
-    ' Use the state machine for the rest of the closeout prompts
-    Dim closeoutPrompts
-    Set closeoutPrompts = CreateCloseoutPromptDictionary()
-    ' Add a 5 second delay before processing the final closeout prompts
-    ' Wait for the continue prompt using WaitForTextSilent directly.
-    Dim continuePromptTimeout
-    continuePromptTimeout = 10000 ' 10 seconds, adjust as needed
-
-    Dim continuePromptDetected
-    continuePromptDetected = WaitForTextSilent("COMMAND:(SEQ#/E/N/B/?)", continuePromptTimeout)
-    If continuePromptDetected Then
-        Call LogInfo("Detected continue prompt: COMMAND:(SEQ#/E/N/B/?)", "Closeout_Ro")
-    Else
-        Call LogWarn("Timeout waiting for continue prompt: COMMAND:(SEQ#/E/N/B/?)", "Closeout_Ro")
-    End If
-    Call ProcessPromptSequence(closeoutPrompts)
-
-    ' Give the terminal a short moment to surface any follow-up messages before scanning for errors.
-    'Call WaitMs(2000)
-    If HandleCloseoutErrors() Then Exit Sub
-
-    lastRoResult = "Successfully closed"
+    ' Use the shared final closeout prompts processing
+    Call ProcessFinalCloseoutPrompts()
 End Sub
 
 ' Handles the optional comeback prompt that occasionally appears during closeout.
