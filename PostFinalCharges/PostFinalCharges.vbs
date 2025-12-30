@@ -17,6 +17,7 @@ Dim g_DefaultWait, g_LongWait, g_SendRetryCount, g_TimeoutMs, g_PromptWait, g_De
 Dim g_EnableDiagnosticLogging, DIAGNOSTIC_LOG_PATH
 Dim g_DiagLogQueue
 Dim g_EnableDetailedLogging
+Dim g_DebugDelayFactor
 Dim g_LastScrapedStatus
 Dim g_BaseScriptPath
 Dim g_ShouldAbort, g_AbortReason
@@ -475,6 +476,30 @@ Function HasDefaultValueInPrompt(promptPattern, screenContent)
     On Error GoTo 0
 End Function
 
+'-----------------------------------------------------------------------------------
+' **FUNCTION NAME:** ApplyDebugDelay
+' **DATE CREATED:** 2025-12-30
+' **AUTHOR:** GitHub Copilot
+' 
+' **FUNCTIONALITY:**
+' Applies a debug delay based on the configured g_DebugDelayFactor.
+' Used to slow down script execution for debugging and observation purposes.
+' 
+' **PARAMETERS:**
+' baseDelayMs (Integer): Base delay in milliseconds before applying the factor
+'-----------------------------------------------------------------------------------
+Sub ApplyDebugDelay(baseDelayMs)
+    If g_DebugDelayFactor <= 1.0 Then Exit Sub ' No additional delay needed
+    
+    Dim additionalDelay
+    additionalDelay = CInt(baseDelayMs * (g_DebugDelayFactor - 1.0))
+    
+    If additionalDelay > 0 Then
+        Call LogTrace("ApplyDebugDelay: Adding " & additionalDelay & "ms (factor: " & g_DebugDelayFactor & ")", "ApplyDebugDelay")
+        Call WaitMs(additionalDelay)
+    End If
+End Sub
+
 ' Bootstrap defaults so logging works before config initialization
 g_BaseScriptPath = ""
 CSV_FILE_PATH = ResolvePath("CashoutRoList.csv", LEGACY_CSV_PATH, True)
@@ -810,6 +835,7 @@ Sub InitializeConfig()
     ' --- Now load other settings ---
     g_DefaultWait = GetIniSetting("Settings", "DefaultWait", 1000)
     g_PromptWait = GetIniSetting("Settings", "PromptWait", 5000)
+    g_DebugDelayFactor = CDbl(GetIniSetting("Settings", "DebugDelayFactor", "1.0"))
     
     Dim startSequenceNumberValue, endSequenceNumberValue
     startSequenceNumberValue = GetIniSetting("Processing", "StartSequenceNumber", "")
@@ -1998,7 +2024,8 @@ Sub ProcessOpenStatusLines()
                 End If
                 
                 ' Check for common prompt patterns and send Enter to accept defaults
-                If IsTextPresent(":") Then ' Generic prompt indicator
+                ' But exclude COMMAND prompts to prevent sending Enter at command prompt
+                If IsTextPresent("?") And Not IsTextPresent("COMMAND:") Then ' Look for actual question prompts, not command prompts
                     Call LogDebug("Found additional prompt after FNL " & lineLetterChar & ", accepting default", "ProcessOpenStatusLines")
                     Call FastKey("<Enter>")
                     Call WaitMs(500)
