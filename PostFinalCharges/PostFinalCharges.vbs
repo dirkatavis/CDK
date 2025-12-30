@@ -17,6 +17,7 @@ Dim g_DefaultWait, g_LongWait, g_SendRetryCount, g_TimeoutMs, g_PromptWait, g_De
 Dim g_EnableDiagnosticLogging, DIAGNOSTIC_LOG_PATH
 Dim g_DiagLogQueue
 Dim g_EnableDetailedLogging
+Dim g_DebugDelayFactor
 Dim g_LastScrapedStatus
 Dim g_BaseScriptPath
 Dim g_ShouldAbort, g_AbortReason
@@ -475,6 +476,30 @@ Function HasDefaultValueInPrompt(promptPattern, screenContent)
     On Error GoTo 0
 End Function
 
+'-----------------------------------------------------------------------------------
+' **FUNCTION NAME:** ApplyDebugDelay
+' **DATE CREATED:** 2025-12-30
+' **AUTHOR:** GitHub Copilot
+' 
+' **FUNCTIONALITY:**
+' Applies a debug delay based on the configured g_DebugDelayFactor.
+' Used to slow down script execution for debugging and observation purposes.
+' 
+' **PARAMETERS:**
+' baseDelayMs (Integer): Base delay in milliseconds before applying the factor
+'-----------------------------------------------------------------------------------
+Sub ApplyDebugDelay(baseDelayMs)
+    If g_DebugDelayFactor <= 1.0 Then Exit Sub ' No additional delay needed
+    
+    Dim additionalDelay
+    additionalDelay = CInt(baseDelayMs * (g_DebugDelayFactor - 1.0))
+    
+    If additionalDelay > 0 Then
+        Call LogTrace("ApplyDebugDelay: Adding " & additionalDelay & "ms (factor: " & g_DebugDelayFactor & ")", "ApplyDebugDelay")
+        Call WaitMs(additionalDelay)
+    End If
+End Sub
+
 ' Bootstrap defaults so logging works before config initialization
 g_BaseScriptPath = ""
 CSV_FILE_PATH = ResolvePath("CashoutRoList.csv", LEGACY_CSV_PATH, True)
@@ -810,6 +835,7 @@ Sub InitializeConfig()
     ' --- Now load other settings ---
     g_DefaultWait = GetIniSetting("Settings", "DefaultWait", 1000)
     g_PromptWait = GetIniSetting("Settings", "PromptWait", 5000)
+    g_DebugDelayFactor = CDbl(GetIniSetting("Settings", "DebugDelayFactor", "1.0"))
     
     Dim startSequenceNumberValue, endSequenceNumberValue
     startSequenceNumberValue = GetIniSetting("Processing", "StartSequenceNumber", "")
@@ -1857,7 +1883,18 @@ End Sub
 '-----------------------------------------------------------------------------------
 Sub Closeout_ReadyToPost()
     Call LogInfo("Executing READY TO POST closeout procedure", "Closeout_ReadyToPost")
-    Call Closeout_Default() ' Use standard procedure for now
+    ' First, close any open lines using FNL X commands
+    Call ProcessOpenStatusLines()
+    
+    ' Process all line items before proceeding to final closeout.
+    Call ProcessLineItems
+
+    ' Send the Final Closeout (FC) command
+    WaitForPrompt "COMMAND:", "FC", True, g_PromptWait, ""
+    If HandleCloseoutErrors() Then Exit Sub
+
+    ' Use the shared final closeout prompts processing
+    Call ProcessFinalCloseoutPrompts()
 End Sub
 
 '-----------------------------------------------------------------------------------
@@ -1871,7 +1908,18 @@ End Sub
 '-----------------------------------------------------------------------------------
 Sub Closeout_Preassigned()
     Call LogInfo("Executing PREASSIGNED closeout procedure", "Closeout_Preassigned")
-    Call Closeout_Default() ' Use standard procedure for now - can be customized
+    ' First, close any open lines using FNL X commands
+    Call ProcessOpenStatusLines()
+    
+    ' Process all line items before proceeding to final closeout.
+    Call ProcessLineItems
+
+    ' Send the Final Closeout (FC) command
+    WaitForPrompt "COMMAND:", "FC", True, g_PromptWait, ""
+    If HandleCloseoutErrors() Then Exit Sub
+
+    ' Use the shared final closeout prompts processing
+    Call ProcessFinalCloseoutPrompts()
 End Sub
 
 '-----------------------------------------------------------------------------------
@@ -1909,20 +1957,55 @@ End Sub
 ' **AUTHOR:** GitHub Copilot
 ' 
 ' **FUNCTIONALITY:**
-' Processes individual lines (A-Z) for OPEN status ROs by sending FNL X commands
-' to close open lines, followed by R X processes for each line that exists.
-' Stops when encountering "NOT ON FILE" errors.
+' Processes individual lines (A-Z) for all RO statuses by sending FNL X commands
+' to close open lines. This ensures all line items are properly finalized
+' before proceeding with the main closeout sequence. Stops when encountering "NOT ON FILE" errors.
 '-----------------------------------------------------------------------------------
 Sub ProcessOpenStatusLines()
-    Call LogInfo("Starting OPEN status line processing with FNL commands", "ProcessOpenStatusLines")
+    Call LogInfo("Starting line processing with FNL commands for all statuses", "ProcessOpenStatusLines")
+    
+    ' First, ensure we're at the command prompt before starting FNL processing
+    ' Just check if COMMAND prompt is present, don't send anything
+    If Not IsTextPresent("COMMAND:") Then
+        Call LogError("Could not find COMMAND prompt before FNL processing", "ProcessOpenStatusLines")
+        Exit Sub
+    End If
     
     Dim lineLetterChar, i
     For i = 65 To 90 ' ASCII for A to Z
         lineLetterChar = Chr(i)
-        Call LogInfo("Processing OPEN status for line " & lineLetterChar, "ProcessOpenStatusLines")
+        Call LogInfo("Processing line " & lineLetterChar & " with FNL command", "ProcessOpenStatusLines")
         
-        ' First, try to send FNL (Final Line) command for this line
-        Call WaitForPrompt("COMMAND:", "FNL " & lineLetterChar, True, g_PromptWait, "")
+        ' Send FNL (Final Line) command for this line
+        Call FastText("FNL " & lineLetterChar)
+        Call WaitMs(100)
+        Call FastKey("<Enter>")
+        
+        ' Wait for system response - either error, prompt, or return to command
+        Call WaitMs(1000)
+        
+        ' Wait for some kind of response (error, prompt, or command prompt return)
+        Dim responseReceived
+        responseReceived = False
+        Dim waitStart, waitElapsed
+        waitStart = Timer
+        
+        Do While Not responseReceived And waitElapsed < 5000 ' 5 second timeout
+            waitElapsed = (Timer - waitStart) * 1000
+            
+            If IsTextPresent("LINE CODE " & lineLetterChar & " IS NOT ON FILE") Or _
+               IsTextPresent("LINE " & lineLetterChar & " IS ALREADY FINISHED") Or _
+               IsTextPresent("TECHNICIAN FINISHING WORK") Or _
+               IsTextPresent("COMMAND:") Then
+                responseReceived = True
+            Else
+                Call WaitMs(100) ' Small polling delay
+            End If
+        Loop
+        
+        If Not responseReceived Then
+            Call LogWarn("No clear response received for FNL " & lineLetterChar & " command within timeout", "ProcessOpenStatusLines")
+        End If
         
         ' Check if the line exists by looking for "NOT ON FILE" error
         If IsTextPresent("LINE CODE " & lineLetterChar & " IS NOT ON FILE") Then
@@ -1932,6 +2015,7 @@ Sub ProcessOpenStatusLines()
                 Call LogInfo("No more open lines found after " & Chr(i-1) & " - FNL processing complete", "ProcessOpenStatusLines")
             End If
             ' Press Enter to clear the "NOT ON FILE" message from the screen
+            Call LogDebug("Sending Enter to clear NOT ON FILE message for line " & lineLetterChar, "ProcessOpenStatusLines")
             Call FastKey("<Enter>")
             Exit For ' Exit the For loop
         End If
@@ -1939,7 +2023,10 @@ Sub ProcessOpenStatusLines()
         ' Check for "Line X is already finished" message
         If IsTextPresent("LINE " & lineLetterChar & " IS ALREADY FINISHED") Then
             Call LogInfo("Line " & lineLetterChar & " is already finished, moving to next line", "ProcessOpenStatusLines")
-            Call FastKey("<Enter>")
+            ' No Enter needed - message clears automatically
+        ElseIf IsTextPresent("COMMAND:") Then
+            ' If we're back at command prompt, FNL was successful and no action needed
+            Call LogInfo("FNL " & lineLetterChar & " completed successfully - back at command prompt", "ProcessOpenStatusLines")
         Else
             ' Check for technician prompt after FNL command
             If IsTextPresent("TECHNICIAN FINISHING WORK ?") Then
@@ -1966,7 +2053,8 @@ Sub ProcessOpenStatusLines()
                 End If
                 
                 ' Check for common prompt patterns and send Enter to accept defaults
-                If IsTextPresent(":") Then ' Generic prompt indicator
+                ' But exclude COMMAND prompts to prevent sending Enter at command prompt
+                If IsTextPresent("?") And Not IsTextPresent("COMMAND:") Then ' Look for actual question prompts, not command prompts
                     Call LogDebug("Found additional prompt after FNL " & lineLetterChar & ", accepting default", "ProcessOpenStatusLines")
                     Call FastKey("<Enter>")
                     Call WaitMs(500)
@@ -1977,10 +2065,27 @@ Sub ProcessOpenStatusLines()
             Loop
         End If
         
+        ' Ensure we're back at command prompt before moving to next line
+        ' Just verify we're at the command prompt, don't send any keys
+        Dim commandPromptFound
+        commandPromptFound = False
+        Dim retryCount
+        For retryCount = 1 To 10
+            If IsTextPresent("COMMAND:") Then
+                commandPromptFound = True
+                Exit For
+            End If
+            Call WaitMs(200)
+        Next
+        
+        If Not commandPromptFound Then
+            Call LogWarn("Could not return to COMMAND prompt after FNL " & lineLetterChar & " - continuing", "ProcessOpenStatusLines")
+        End If
+        
         Call LogInfo("Completed FNL processing for line " & lineLetterChar, "ProcessOpenStatusLines")
     Next
     
-    Call LogInfo("Completed OPEN status line processing with FNL commands", "ProcessOpenStatusLines")
+    Call LogInfo("Completed line processing with FNL commands for all statuses", "ProcessOpenStatusLines")
 End Sub
 
 '-----------------------------------------------------------------------------------
@@ -2088,6 +2193,9 @@ End Sub
 ' The standard/default closeout procedure. Contains the original closeout logic.
 '-----------------------------------------------------------------------------------
 Sub Closeout_Default()
+    ' First, close any open lines using FNL X commands for all statuses
+    Call ProcessOpenStatusLines()
+    
     ' Process all line items before proceeding to final closeout.
     Call ProcessLineItems
 
