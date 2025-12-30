@@ -1965,7 +1965,8 @@ Sub ProcessOpenStatusLines()
     Call LogInfo("Starting line processing with FNL commands for all statuses", "ProcessOpenStatusLines")
     
     ' First, ensure we're at the command prompt before starting FNL processing
-    If Not WaitForPrompt("COMMAND:", "", False, g_PromptWait, "") Then
+    ' Just check if COMMAND prompt is present, don't send anything
+    If Not IsTextPresent("COMMAND:") Then
         Call LogError("Could not find COMMAND prompt before FNL processing", "ProcessOpenStatusLines")
         Exit Sub
     End If
@@ -1977,10 +1978,34 @@ Sub ProcessOpenStatusLines()
         
         ' Send FNL (Final Line) command for this line
         Call FastText("FNL " & lineLetterChar)
+        Call WaitMs(100)
         Call FastKey("<Enter>")
         
-        ' Small delay to allow command to process
-        Call WaitMs(500)
+        ' Wait for system response - either error, prompt, or return to command
+        Call WaitMs(1000)
+        
+        ' Wait for some kind of response (error, prompt, or command prompt return)
+        Dim responseReceived
+        responseReceived = False
+        Dim waitStart, waitElapsed
+        waitStart = Timer
+        
+        Do While Not responseReceived And waitElapsed < 5000 ' 5 second timeout
+            waitElapsed = (Timer - waitStart) * 1000
+            
+            If IsTextPresent("LINE CODE " & lineLetterChar & " IS NOT ON FILE") Or _
+               IsTextPresent("LINE " & lineLetterChar & " IS ALREADY FINISHED") Or _
+               IsTextPresent("TECHNICIAN FINISHING WORK") Or _
+               IsTextPresent("COMMAND:") Then
+                responseReceived = True
+            Else
+                Call WaitMs(100) ' Small polling delay
+            End If
+        Loop
+        
+        If Not responseReceived Then
+            Call LogWarn("No clear response received for FNL " & lineLetterChar & " command within timeout", "ProcessOpenStatusLines")
+        End If
         
         ' Check if the line exists by looking for "NOT ON FILE" error
         If IsTextPresent("LINE CODE " & lineLetterChar & " IS NOT ON FILE") Then
@@ -1990,6 +2015,7 @@ Sub ProcessOpenStatusLines()
                 Call LogInfo("No more open lines found after " & Chr(i-1) & " - FNL processing complete", "ProcessOpenStatusLines")
             End If
             ' Press Enter to clear the "NOT ON FILE" message from the screen
+            Call LogDebug("Sending Enter to clear NOT ON FILE message for line " & lineLetterChar, "ProcessOpenStatusLines")
             Call FastKey("<Enter>")
             Exit For ' Exit the For loop
         End If
@@ -1997,7 +2023,10 @@ Sub ProcessOpenStatusLines()
         ' Check for "Line X is already finished" message
         If IsTextPresent("LINE " & lineLetterChar & " IS ALREADY FINISHED") Then
             Call LogInfo("Line " & lineLetterChar & " is already finished, moving to next line", "ProcessOpenStatusLines")
-            Call FastKey("<Enter>")
+            ' No Enter needed - message clears automatically
+        ElseIf IsTextPresent("COMMAND:") Then
+            ' If we're back at command prompt, FNL was successful and no action needed
+            Call LogInfo("FNL " & lineLetterChar & " completed successfully - back at command prompt", "ProcessOpenStatusLines")
         Else
             ' Check for technician prompt after FNL command
             If IsTextPresent("TECHNICIAN FINISHING WORK ?") Then
@@ -2037,7 +2066,19 @@ Sub ProcessOpenStatusLines()
         End If
         
         ' Ensure we're back at command prompt before moving to next line
-        If Not WaitForPrompt("COMMAND:", "", False, g_PromptWait, "") Then
+        ' Just verify we're at the command prompt, don't send any keys
+        Dim commandPromptFound
+        commandPromptFound = False
+        Dim retryCount
+        For retryCount = 1 To 10
+            If IsTextPresent("COMMAND:") Then
+                commandPromptFound = True
+                Exit For
+            End If
+            Call WaitMs(200)
+        Next
+        
+        If Not commandPromptFound Then
             Call LogWarn("Could not return to COMMAND prompt after FNL " & lineLetterChar & " - continuing", "ProcessOpenStatusLines")
         End If
         
