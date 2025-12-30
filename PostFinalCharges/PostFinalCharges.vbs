@@ -291,8 +291,8 @@ Sub ProcessPromptSequence(prompts)
                 Call WaitMs(500)
                 clearElapsed = (Timer - clearStart) * 1000
                 If clearElapsed < 0 Then clearElapsed = clearElapsed + 86400000 ' Handle midnight rollover
-                If clearElapsed > 5000 Then ' 5-second timeout
-                    Call LogWarn("Prompt '" & bestMatchKey & "' did not clear within 5 seconds.", "ProcessPromptSequence")
+                If clearElapsed > POST_PROMPT_WAIT_MS Then ' Configurable prompt clear timeout
+                    Call LogWarn("Prompt '" & bestMatchKey & "' did not clear within " & POST_PROMPT_WAIT_MS & " ms.", "ProcessPromptSequence")
                     Exit Do
                 End If
             Loop
