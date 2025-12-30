@@ -1883,18 +1883,8 @@ End Sub
 '-----------------------------------------------------------------------------------
 Sub Closeout_ReadyToPost()
     Call LogInfo("Executing READY TO POST closeout procedure", "Closeout_ReadyToPost")
-    ' First, close any open lines using FNL X commands
-    Call ProcessOpenStatusLines()
-    
-    ' Process all line items before proceeding to final closeout.
-    Call ProcessLineItems
-
-    ' Send the Final Closeout (FC) command
-    WaitForPrompt "COMMAND:", "FC", True, g_PromptWait, ""
-    If HandleCloseoutErrors() Then Exit Sub
-
-    ' Use the shared final closeout prompts processing
-    Call ProcessFinalCloseoutPrompts()
+    ' Currently identical to default procedure - future customization can be added here
+    Call Closeout_Default()
 End Sub
 
 '-----------------------------------------------------------------------------------
@@ -1908,18 +1898,8 @@ End Sub
 '-----------------------------------------------------------------------------------
 Sub Closeout_Preassigned()
     Call LogInfo("Executing PREASSIGNED closeout procedure", "Closeout_Preassigned")
-    ' First, close any open lines using FNL X commands
-    Call ProcessOpenStatusLines()
-    
-    ' Process all line items before proceeding to final closeout.
-    Call ProcessLineItems
-
-    ' Send the Final Closeout (FC) command
-    WaitForPrompt "COMMAND:", "FC", True, g_PromptWait, ""
-    If HandleCloseoutErrors() Then Exit Sub
-
-    ' Use the shared final closeout prompts processing
-    Call ProcessFinalCloseoutPrompts()
+    ' Currently identical to default procedure - future customization can be added here
+    Call Closeout_Default()
 End Sub
 
 '-----------------------------------------------------------------------------------
@@ -1934,21 +1914,9 @@ End Sub
 '-----------------------------------------------------------------------------------
 Sub Closeout_Open()
     Call LogInfo("Executing OPEN closeout procedure", "Closeout_Open")
-    
-    ' For OPEN status ROs, we need to process lines differently
-    ' First, close any open lines using FNL X commands
-    Call ProcessOpenStatusLines()
-    
-    ' After closing individual lines, perform standard line processing
-    Call ProcessLineItems()
-    
-    ' Finally, send the Final Closeout (FC) command
-    Call LogInfo("Sending final closeout command after OPEN status processing", "Closeout_Open")
-    WaitForPrompt "COMMAND:", "FC", True, g_PromptWait, ""
-    If HandleCloseoutErrors() Then Exit Sub
-
-    ' Continue with standard final closeout prompts
-    Call ProcessFinalCloseoutPrompts()
+    ' Currently identical to default procedure since ProcessOpenStatusLines now runs for all statuses
+    ' Future OPEN-specific customization can be added here
+    Call Closeout_Default()
 End Sub
 
 '-----------------------------------------------------------------------------------
@@ -1989,6 +1957,7 @@ Sub ProcessOpenStatusLines()
         responseReceived = False
         Dim waitStart, waitElapsed
         waitStart = Timer
+        waitElapsed = 0 ' Initialize to prevent undefined behavior on first loop iteration
         
         Do While Not responseReceived And waitElapsed < 5000 ' 5 second timeout
             waitElapsed = (Timer - waitStart) * 1000
@@ -2054,7 +2023,10 @@ Sub ProcessOpenStatusLines()
                 
                 ' Check for common prompt patterns and send Enter to accept defaults
                 ' But exclude COMMAND prompts to prevent sending Enter at command prompt
-                If IsTextPresent("?") And Not IsTextPresent("COMMAND:") Then ' Look for actual question prompts, not command prompts
+                ' Check specific prompt line instead of entire screen for precision
+                Dim promptLineText
+                promptLineText = GetScreenLine(MainPromptLine)
+                If InStr(promptLineText, ": ?") > 0 And InStr(promptLineText, "COMMAND:") = 0 Then ' Look for actual question prompts on the main prompt line only
                     Call LogDebug("Found additional prompt after FNL " & lineLetterChar & ", accepting default", "ProcessOpenStatusLines")
                     Call FastKey("<Enter>")
                     Call WaitMs(500)
