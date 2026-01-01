@@ -2114,12 +2114,12 @@ End Sub
 ' **PROCEDURE NAME:** ProcessFinalCloseoutPrompts
 ' **DATE CREATED:** 2025-12-30
 ' **AUTHOR:** GitHub Copilot
-' **STATUS:** ACTIVE - Handles prompts after F command (same as F prompts)
+' **STATUS:** DEPRECATED - No longer used (prompt handling moved to ProcessPromptSequence)
 ' 
 ' **FUNCTIONALITY:**
-' Handles the final prompts that appear after F (File) command.
-' These are the same prompts as F command, just without the final close step.
-' ALL LABOR POSTED, MILEAGE OUT/IN, O.K. TO CLOSE RO, INVOICE PRINTER, etc.
+' Originally handled final prompts after F (File) command.
+' Functionality replaced by ProcessPromptSequence for better reliability.
+' Kept for reference/potential future use - can be removed in cleanup.
 '-----------------------------------------------------------------------------------
 Sub ProcessFinalCloseoutPrompts()
     Call LogInfo("Processing final closeout prompts", "ProcessFinalCloseoutPrompts")
