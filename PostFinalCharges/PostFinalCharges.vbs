@@ -131,7 +131,7 @@ Function CreateLineItemPromptDictionary()
     Call AddPromptToDictEx(dict, "ACTUAL HOURS \(\d+\)", "0", "<NumpadEnter>", False, True)
     ' SOLD HOURS: Handle both cases - with parentheses (accept default) and without (send "0")
     ' Pattern matches both "SOLD HOURS?" and "SOLD HOURS (10)?" - accepts default if present, sends "0" if not
-    Call AddPromptToDictEx(dict, "SOLD HOURS \(\d+\)\?", "0", "<NumpadEnter>", False, True)
+    Call AddPromptToDictEx(dict, "SOLD HOURS( \(\d+\))?\?", "0", "<NumpadEnter>", False, True)
     Call AddPromptToDict(dict, "ADD A LABOR OPERATION", "", "<Enter>", True)
     ' Note: COMMAND: success condition removed - handled by checking MainPromptLine specifically
     ' to avoid false positives when COMMAND appears elsewhere on screen
