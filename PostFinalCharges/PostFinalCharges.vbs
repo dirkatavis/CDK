@@ -2114,11 +2114,11 @@ End Sub
 ' **PROCEDURE NAME:** ProcessFinalCloseoutPrompts
 ' **DATE CREATED:** 2025-12-30
 ' **AUTHOR:** GitHub Copilot
-' **STATUS:** ACTIVE - Handles prompts after F command (same as FC prompts)
+' **STATUS:** ACTIVE - Handles prompts after F command (same as F prompts)
 ' 
 ' **FUNCTIONALITY:**
 ' Handles the final prompts that appear after F (File) command.
-' These are the same prompts as FC command, just without the final close step.
+' These are the same prompts as F command, just without the final close step.
 ' ALL LABOR POSTED, MILEAGE OUT/IN, O.K. TO CLOSE RO, INVOICE PRINTER, etc.
 '-----------------------------------------------------------------------------------
 Sub ProcessFinalCloseoutPrompts()
