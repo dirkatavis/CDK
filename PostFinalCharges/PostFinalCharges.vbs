@@ -376,23 +376,6 @@ Sub ProcessPromptSequence(prompts)
             Call LogInfo("MainPromptLine (" & MainPromptLine & ") after response: '" & GetScreenLine(MainPromptLine) & "'", "ProcessPromptSequence")
             Call LogInfo("Screen lines 22-24 after response: [22]='" & GetScreenLine(22) & "' [23]='" & GetScreenLine(23) & "' [24]='" & GetScreenLine(24) & "'", "ProcessPromptSequence")
             
-            ' Add extra logging for problematic prompts
-            If InStr(bestMatchKey, "ADD A LABOR OPERATION") > 0 Then
-                Call LogInfo("=== ADD A LABOR OPERATION PROMPT DEBUGGING ===", "ProcessPromptSequence")
-                Call WaitMs(2000) ' Extra wait for this specific prompt
-                Call LogInfo("Screen after ADD A LABOR OPERATION (2s later): " & GetScreenSnapshot(5), "ProcessPromptSequence")
-                
-                ' Check if we're back at COMMAND prompt
-                If IsTextPresent("COMMAND:") Then
-                    Call LogInfo("Successfully returned to COMMAND prompt after ADD A LABOR OPERATION", "ProcessPromptSequence")
-                    finished = True
-                Else
-                    Call LogWarn("Not at COMMAND prompt after ADD A LABOR OPERATION - continuing to wait", "ProcessPromptSequence")
-                    Call LogWarn("MainPromptLine content: '" & GetScreenLine(MainPromptLine) & "'", "ProcessPromptSequence")
-                End If
-                Call LogInfo("=== END ADD A LABOR OPERATION DEBUGGING ===", "ProcessPromptSequence")
-            End If
-            
             If InStr(bestMatchKey, "SOLD HOURS") > 0 Then
                 Call LogInfo("Responded to SOLD HOURS prompt, waiting for screen to stabilize", "ProcessPromptSequence")
                 Call WaitMs(1500) ' Extra wait for this specific prompt
