@@ -21,6 +21,7 @@ Dim g_LastScrapedStatus
 Dim g_BaseScriptPath
 Dim g_ShouldAbort, g_AbortReason
 Dim g_StartSequenceNumber, g_EndSequenceNumber
+Dim g_DebugDelayFactor
 Dim MainPromptLine
 Dim LEGACY_CSV_PATH, LEGACY_LOG_PATH, LEGACY_DIAG_LOG_PATH, LEGACY_COMMONLIB_PATH
 ' Current minimum logging level (configurable)
@@ -118,18 +119,20 @@ Function CreateLineItemPromptDictionary()
     Call AddPromptToDict(dict, "COMMAND:\(SEQ#/E/N/B/\?\)", "", "", True)
     ' COMMAND: prompt removed - handled by legacy WaitForPrompt in ProcessLineItems
     Call AddPromptToDict(dict, "This OpCode was performed in the last 270 days.", "", "", False)
-    Call AddPromptToDict(dict, "LINE CODE X IS NOT ON FILE", "", "<Enter>", True)
+    Call AddPromptToDictEx(dict, "LINE CODE [A-Z] IS NOT ON FILE", "", "<Enter>", True, False)
     Call AddPromptToDict(dict, "LABOR TYPE FOR LINE", "", "<NumpadEnter>", False)
     Call AddPromptToDict(dict, "DESC:", "", "<NumpadEnter>", False)
     Call AddPromptToDict(dict, "Enter a technician number", "", "<F3>", False)
     Call AddPromptToDictEx(dict, "TECHNICIAN \(\d+\)", "99", "<NumpadEnter>", False, True)
     Call AddPromptToDictEx(dict, "TECHNICIAN?", "99", "<NumpadEnter>", False, True)
     Call AddPromptToDictEx(dict, "TECHNICIAN \([A-Za-z0-9]+\)\?", "99", "<NumpadEnter>", False, True)
+    ' Handle line completion confirmation prompt  
+    Call AddPromptToDict(dict, "TECHNICIAN", "Y", "<NumpadEnter>", True)
     Call AddPromptToDictEx(dict, "ACTUAL HOURS \(\d+\)", "0", "<NumpadEnter>", False, True)
     ' SOLD HOURS: Handle both cases - with parentheses (accept default) and without (send "0")
     ' Pattern matches both "SOLD HOURS?" and "SOLD HOURS (10)?" - accepts default if present, sends "0" if not
-    Call AddPromptToDictEx(dict, "SOLD HOURS( \([0-9]+\))?\?", "0", "<NumpadEnter>", False, True)
-    Call AddPromptToDict(dict, "ADD A LABOR OPERATION \(N\)\?", "N", "<NumpadEnter>", True)
+    Call AddPromptToDictEx(dict, "SOLD HOURS( \(\d+\))?\?", "0", "<NumpadEnter>", False, True)
+    Call AddPromptToDict(dict, "ADD A LABOR OPERATION", "", "<Enter>", True)
     ' Note: COMMAND: success condition removed - handled by checking MainPromptLine specifically
     ' to avoid false positives when COMMAND appears elsewhere on screen
     Call AddPromptToDict(dict, "Is this a comeback \(Y/N\)\.\.\.", "Y", "<NumpadEnter>", False)
@@ -159,12 +162,82 @@ Function CreateCloseoutPromptDictionary()
     Set CreateCloseoutPromptDictionary = dict
 End Function
 
+'-----------------------------------------------------------------------------------
+' **FUNCTION NAME:** WaitForScreenStable
+' **DATE CREATED:** 2026-01-01
+' **AUTHOR:** GitHub Copilot
+' 
+' **FUNCTIONALITY:**
+' Waits for the screen content to stabilize by checking that the main prompt line
+' doesn't change for a specified period. This ensures we don't read the screen
+' during a transition state.
+' 
+' **PARAMETERS:**
+' timeoutMs (Integer): Maximum time to wait for stability (default: 2000ms)
+' stabilityMs (Integer): How long the screen must remain unchanged (default: 200ms)
+' 
+' **RETURN VALUE:**
+' (Boolean) Returns True if screen stabilized, False if timeout occurred
+'-----------------------------------------------------------------------------------
+Function WaitForScreenStable(timeoutMs, stabilityMs)
+    If timeoutMs <= 0 Then timeoutMs = 2000
+    If stabilityMs <= 0 Then stabilityMs = 200
+    
+    Dim waitStart, waitElapsed, lastContent, stableStart, stableElapsed
+    Dim currentContent
+    
+    waitStart = Timer
+    lastContent = ""
+    stableStart = 0
+    
+    Do
+        currentContent = GetScreenLine(MainPromptLine)
+        
+        ' Check if content has changed
+        If currentContent <> lastContent Then
+            ' Content changed, restart stability timer
+            lastContent = currentContent
+            stableStart = Timer
+        Else
+            ' Content same, check if we've been stable long enough
+            If stableStart > 0 Then
+                stableElapsed = (Timer - stableStart) * 1000
+                If stableElapsed < 0 Then stableElapsed = stableElapsed + 86400000 ' Handle midnight rollover
+                If stableElapsed >= stabilityMs Then
+                    ' Screen has been stable for required period
+                    WaitForScreenStable = True
+                    Exit Function
+                End If
+            Else
+                ' First iteration with this content, start stability timer
+                stableStart = Timer
+            End If
+        End If
+        
+        ' Check overall timeout
+        waitElapsed = (Timer - waitStart) * 1000
+        If waitElapsed < 0 Then waitElapsed = waitElapsed + 86400000 ' Handle midnight rollover
+        If waitElapsed > timeoutMs Then
+            ' Overall timeout exceeded
+            WaitForScreenStable = False
+            Exit Function
+        End If
+        
+        Call WaitMs(50) ' Small delay between checks
+    Loop
+End Function
+
 ' Generic state machine to process a sequence of prompts from a given dictionary.
 Sub ProcessPromptSequence(prompts)
     Dim finished, promptKey, promptDetails, bestMatchKey, bestMatchLength
     Dim sequenceStartTime, sequenceElapsed
     finished = False
     sequenceStartTime = Timer
+    
+    ' Wait for screen to stabilize before starting scan
+    If Not WaitForScreenStable(3000, 200) Then
+        Call LogWarn("Screen did not stabilize before starting prompt sequence", "ProcessPromptSequence")
+    End If
 
     Do While Not finished
         ' Check for timeout first to ensure it's respected even when stuck in sub-operations
@@ -177,13 +250,11 @@ Sub ProcessPromptSequence(prompts)
             Exit Sub
         End If
         
-        ' TRACE: Log screen snapshot and main prompt line before each scan
-        Call LogTrace("Screen snapshot before prompt scan:", "ProcessPromptSequence")
-        Call LogScreenSnapshot("BeforePromptScan")
+        ' Wait for screen to be stable before scanning
+        Call WaitForScreenStable(1000, 100)
         
         Dim mainPromptText
         mainPromptText = GetScreenLine(MainPromptLine)
-        Call LogTrace("MainPromptLine text: '" & mainPromptText & "'", "ProcessPromptSequence")
         
         If Len(mainPromptText) > 0 And Not IsPromptInConfig(mainPromptText, prompts) Then
             Call LogError("Unknown prompt on line " & MainPromptLine & ": '" & mainPromptText & "' - aborting script.", "ProcessPromptSequence")
@@ -225,7 +296,6 @@ Sub ProcessPromptSequence(prompts)
                         End If
                         If Not regexError Then
                             If re.Test(lineText) Then
-                                Call LogTrace("Regex PromptKey detected on line " & lineToCheck & ": '" & promptKey & "' in '" & lineText & "'", "ProcessPromptSequence")
                                 If Len(promptKey) > bestMatchLength Then
                                     bestMatchKey = promptKey
                                     bestMatchLength = Len(promptKey)
@@ -237,7 +307,6 @@ Sub ProcessPromptSequence(prompts)
                     ' If not regex or regex failed, fall back to plain text
                     If Not isRegex Or regexError Then
                         If InStr(1, lineText, promptKey, vbTextCompare) > 0 Then
-                            Call LogTrace("PromptKey detected on line " & lineToCheck & ": '" & promptKey & "' in '" & lineText & "'", "ProcessPromptSequence")
                             If Len(promptKey) > bestMatchLength Then
                                 bestMatchKey = promptKey
                                 bestMatchLength = Len(promptKey)
@@ -252,7 +321,9 @@ Sub ProcessPromptSequence(prompts)
         If bestMatchLength > 0 Then
             Set promptDetails = prompts.Item(bestMatchKey)
             Call LogInfo("Matched most specific prompt: '" & bestMatchKey & "'", "ProcessPromptSequence")
-            Call LogTrace("Prompt details: ResponseText='" & promptDetails.ResponseText & "', KeyPress='" & promptDetails.KeyPress & "', IsSuccess=" & promptDetails.IsSuccess, "ProcessPromptSequence")
+
+            ' Log the screen before responding
+            Call LogInfo("Screen before responding to '" & bestMatchKey & "': " & GetScreenSnapshot(3), "ProcessPromptSequence")
 
             ' Check if this prompt should accept default values and if one is present
             Dim shouldAcceptDefault
@@ -275,11 +346,46 @@ Sub ProcessPromptSequence(prompts)
             End If
 
             If promptDetails.ResponseText <> "" And Not shouldAcceptDefault Then
-                Call LogTrace("Sending ResponseText: '" & promptDetails.ResponseText & "'", "ProcessPromptSequence")
                 Call FastText(promptDetails.ResponseText)
+                Call LogInfo("Sent ResponseText: '" & promptDetails.ResponseText & "'", "ProcessPromptSequence")
+            Else
+                Call LogInfo("No ResponseText to send (empty or accepting default)", "ProcessPromptSequence")
             End If
-            Call LogTrace("Sending KeyPress: '" & promptDetails.KeyPress & "'", "ProcessPromptSequence")
+            
             Call FastKey(promptDetails.KeyPress)
+            Call LogInfo("Sent KeyPress: '" & promptDetails.KeyPress & "'", "ProcessPromptSequence")
+            
+            ' Add extra logging for problematic prompts
+            If InStr(bestMatchKey, "ADD A LABOR OPERATION") > 0 Then
+                Call LogInfo("Responded to ADD A LABOR OPERATION prompt, waiting for screen to stabilize", "ProcessPromptSequence")
+                Call WaitMs(2000) ' Extra wait for this specific prompt
+                Call LogInfo("Screen after ADD A LABOR OPERATION response: " & GetScreenSnapshot(5), "ProcessPromptSequence")
+                
+                ' Check if we're back at COMMAND prompt
+                If IsTextPresent("COMMAND:") Then
+                    Call LogInfo("Successfully returned to COMMAND prompt after ADD A LABOR OPERATION", "ProcessPromptSequence")
+                    finished = True
+                Else
+                    Call LogWarn("Not at COMMAND prompt after ADD A LABOR OPERATION - continuing to wait", "ProcessPromptSequence")
+                End If
+            End If
+            
+            
+            ' Wait a moment for the response to take effect
+            Call WaitMs(800)
+            Call LogInfo("MainPromptLine (" & MainPromptLine & ") after response: '" & GetScreenLine(MainPromptLine) & "'", "ProcessPromptSequence")
+            Call LogInfo("Screen lines 22-24 after response: [22]='" & GetScreenLine(22) & "' [23]='" & GetScreenLine(23) & "' [24]='" & GetScreenLine(24) & "'", "ProcessPromptSequence")
+            
+            If InStr(bestMatchKey, "SOLD HOURS") > 0 Then
+                Call LogInfo("Responded to SOLD HOURS prompt, waiting for screen to stabilize", "ProcessPromptSequence")
+                Call WaitMs(1500) ' Extra wait for this specific prompt
+                Call LogInfo("Screen after SOLD HOURS response: " & GetScreenSnapshot(5), "ProcessPromptSequence")
+            End If
+
+            If promptDetails.IsSuccess Then
+                finished = True
+                Call LogDebug("Success prompt reached: " & bestMatchKey, "ProcessPromptSequence")
+            End If
 
             ' TRACE: Log screen snapshot after key send
             Call LogScreenSnapshot("AfterKeySend")
@@ -288,7 +394,6 @@ Sub ProcessPromptSequence(prompts)
             Dim clearStart, clearElapsed
             clearStart = Timer
             Do While IsTextPresent(bestMatchKey)
-                Call LogTrace("Prompt '" & bestMatchKey & "' still present after key send.", "ProcessPromptSequence")
                 Call WaitMs(500)
                 clearElapsed = (Timer - clearStart) * 1000
                 If clearElapsed < 0 Then clearElapsed = clearElapsed + 86400000 ' Handle midnight rollover
@@ -297,23 +402,14 @@ Sub ProcessPromptSequence(prompts)
                     Exit Do
                 End If
             Loop
-
-            If promptDetails.IsSuccess Then
-                finished = True
-                Call LogDebug("Success prompt reached: " & bestMatchKey, "ProcessPromptSequence")
-                Call LogTrace("Exiting ProcessPromptSequence on success.", "ProcessPromptSequence")
-            End If
             ' The loop will now naturally restart and rescan for the next prompt
         Else
             ' No prompt found, wait a moment before trying again
-            Call LogTrace("No prompt found in current scan.", "ProcessPromptSequence")
-            Call LogTrace("Prompts being searched for: " & Join(prompts.Keys, ", "), "ProcessPromptSequence")
             
             ' Check if we're back at the COMMAND prompt by examining MainPromptLine specifically
             ' This prevents false positives when "COMMAND" appears elsewhere on screen
             If InStr(1, mainPromptText, "COMMAND:", vbTextCompare) > 0 Then
                 Call LogInfo("Detected return to COMMAND prompt on MainPromptLine - line processing complete", "ProcessPromptSequence")
-                Call LogTrace("Exiting ProcessPromptSequence - back at command prompt.", "ProcessPromptSequence")
                 finished = True
             Else
                 Call WaitMs(250)
@@ -810,6 +906,7 @@ Sub InitializeConfig()
     ' --- Now load other settings ---
     g_DefaultWait = GetIniSetting("Settings", "DefaultWait", 1000)
     g_PromptWait = GetIniSetting("Settings", "PromptWait", 5000)
+    g_DebugDelayFactor = GetIniSetting("Settings", "DebugDelayFactor", 1.0)
     
     Dim startSequenceNumberValue, endSequenceNumberValue
     startSequenceNumberValue = GetIniSetting("Processing", "StartSequenceNumber", "")
@@ -1765,6 +1862,32 @@ Sub ProcessLineItems()
     Dim lineLetterChar, i, lineItemPrompts
     Set lineItemPrompts = CreateLineItemPromptDictionary()
 
+    ' Phase 1: Run FNL commands for all lines (A through Z)
+    Call LogInfo("Phase 1: Running FNL commands for all lines", "ProcessLineItems")
+    For i = 65 To 90 ' ASCII for A to Z
+        lineLetterChar = Chr(i)
+        Call LogInfo("Running FNL " & lineLetterChar & " command", "ProcessLineItems")
+        
+        ' Send the FNL command and let ProcessPromptSequence handle any prompts that appear
+        Call FastText("FNL " & lineLetterChar)
+        Call FastKey("<NumpadEnter>")
+        
+        ' Brief wait to let the response appear
+        Call WaitMs(500)
+        
+        ' Check if line exists BEFORE processing other prompts
+        If IsTextPresent("LINE CODE " & lineLetterChar & " IS NOT ON FILE") Then
+            Call LogInfo("Line " & lineLetterChar & " not found - stopping FNL commands", "ProcessLineItems")
+            Call FastKey("<Enter>") ' Clear the error message
+            Exit For
+        End If
+        
+        ' Process any other prompts that appear (including technician assignment)
+        Call ProcessPromptSequence(lineItemPrompts)
+    Next
+
+    ' Phase 2: Run R commands and process prompts for all lines
+    Call LogInfo("Phase 2: Processing line prompts with R commands", "ProcessLineItems")
     For i = 65 To 90 ' ASCII for A to Z
         lineLetterChar = Chr(i)
         Call LogInfo("Attempting to navigate to line item " & lineLetterChar, "ProcessLineItems")
@@ -1882,7 +2005,7 @@ End Sub
 ' **FUNCTIONALITY:**
 ' Handles closeout procedure specifically for "OPEN" status ROs.
 ' For OPEN status, individual lines (A, B, C, etc.) need to be closed out
-' using "FNL X" commands, followed by "R X" processes, and finally "FC".
+' using "FNL X" commands, followed by "R X" processes, and finally "F".
 '-----------------------------------------------------------------------------------
 Sub Closeout_Open()
     Call LogInfo("Executing OPEN closeout procedure", "Closeout_Open")
@@ -1894,13 +2017,17 @@ Sub Closeout_Open()
     ' After closing individual lines, perform standard line processing
     Call ProcessLineItems()
     
-    ' Finally, send the Final Closeout (FC) command
-    Call LogInfo("Sending final closeout command after OPEN status processing", "Closeout_Open")
-    WaitForPrompt "COMMAND:", "FC", True, g_PromptWait, ""
+    ' Finally, send the File (F) command
+    Call LogInfo("Sending file command after OPEN status processing", "Closeout_Open")
+    WaitForPrompt "COMMAND:", "F", True, g_PromptWait, ""
     If HandleCloseoutErrors() Then Exit Sub
-
-    ' Continue with standard final closeout prompts
-    Call ProcessFinalCloseoutPrompts()
+    
+    ' Handle the "ALL LABOR POSTED (Y/N)?" prompt after F command
+    Call LogInfo("Waiting for 'ALL LABOR POSTED (Y/N)?' prompt", "Closeout_Open")
+    WaitForPrompt "ALL LABOR POSTED (Y/N)?", "Y", True, g_PromptWait, ""
+    
+    lastRoResult = "Successfully filed"
+    Call LogInfo("RO filed successfully - ready for downstream review", "Closeout_Open")
 End Sub
 
 '-----------------------------------------------------------------------------------
@@ -1987,10 +2114,12 @@ End Sub
 ' **PROCEDURE NAME:** ProcessFinalCloseoutPrompts
 ' **DATE CREATED:** 2025-12-30
 ' **AUTHOR:** GitHub Copilot
+' **STATUS:** DEPRECATED - No longer used (prompt handling moved to ProcessPromptSequence)
 ' 
 ' **FUNCTIONALITY:**
-' Handles the standard final closeout prompts that appear after FC command:
-' ALL LABOR POSTED, MILEAGE OUT/IN, O.K. TO CLOSE RO, INVOICE PRINTER, etc.
+' Originally handled final prompts after F (File) command.
+' Functionality replaced by ProcessPromptSequence for better reliability.
+' Kept for reference/potential future use - can be removed in cleanup.
 '-----------------------------------------------------------------------------------
 Sub ProcessFinalCloseoutPrompts()
     Call LogInfo("Processing final closeout prompts", "ProcessFinalCloseoutPrompts")
@@ -2091,12 +2220,16 @@ Sub Closeout_Default()
     ' Process all line items before proceeding to final closeout.
     Call ProcessLineItems
 
-    ' Send the Final Closeout (FC) command
-    WaitForPrompt "COMMAND:", "FC", True, g_PromptWait, ""
+    ' Send the File (F) command
+    WaitForPrompt "COMMAND:", "F", True, g_PromptWait, ""
     If HandleCloseoutErrors() Then Exit Sub
 
-    ' Use the shared final closeout prompts processing
-    Call ProcessFinalCloseoutPrompts()
+    ' Handle the "ALL LABOR POSTED (Y/N)?" prompt after F command
+    Call LogInfo("Waiting for 'ALL LABOR POSTED (Y/N)?' prompt", "Closeout_Default")
+    WaitForPrompt "ALL LABOR POSTED (Y/N)?", "Y", True, g_PromptWait, ""
+
+    lastRoResult = "Successfully filed"
+    Call LogInfo("RO filed successfully - ready for downstream review", "Closeout_Default")
 End Sub
 
 ' Handles the optional comeback prompt that occasionally appears during closeout.

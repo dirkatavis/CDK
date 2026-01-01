@@ -9,3 +9,6 @@ gemini-*.json
 # Personal/local copies
 * - Copy.vbs
 
+
+*.csv
+*.txt
