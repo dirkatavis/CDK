@@ -402,11 +402,6 @@ Sub ProcessPromptSequence(prompts)
                     Exit Do
                 End If
             Loop
-
-            If promptDetails.IsSuccess Then
-                finished = True
-                Call LogDebug("Success prompt reached: " & bestMatchKey, "ProcessPromptSequence")
-            End If
             ' The loop will now naturally restart and rescan for the next prompt
         Else
             ' No prompt found, wait a moment before trying again
