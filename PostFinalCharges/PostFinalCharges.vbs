@@ -1923,6 +1923,20 @@ Sub ProcessLineItems()
         ' Wait for the COMMAND prompt and then enter "R" + the current line letter.
         Call WaitForPrompt("COMMAND:", "R " & lineLetterChar, True, g_PromptWait, "")
         
+        ' Brief wait to let the response appear
+        Call WaitMs(500)
+        
+        ' Check if the line exists FIRST - this avoids inappropriate timeout errors
+        If IsTextPresent("LINE CODE " & lineLetterChar & " IS NOT ON FILE") Then
+            If i = 65 Then ' First line (A) not found
+                Call LogInfo("Finished processing line items. No line A found - no line items to process", "ProcessLineItems")
+            Else ' Subsequent line not found
+                Call LogInfo("Finished processing line items. No more lines found after " & Chr(i-1), "ProcessLineItems")
+            End If
+            ' System automatically returns to COMMAND prompt without manual ENTER
+            Exit For ' Exit the For loop.
+        End If
+        
         ' Wait for the specific line item screen to appear using generic transition function
         Dim expectedLineText, lineScreenLoaded
         expectedLineText = "LINE " & lineLetterChar & " STORY :"
@@ -1934,17 +1948,6 @@ Sub ProcessLineItems()
             ' Press Enter to attempt clearing any pending screen state
             Call FastKey("<Enter>")
             Exit For ' Exit the For loop due to critical screen loading failure
-        End If
-        
-        ' Check if the line exists. If not, we are done with line processing.
-        If IsTextPresent("LINE CODE " & lineLetterChar & " IS NOT ON FILE") Then
-            If i = 65 Then ' First line (A) not found
-                Call LogInfo("Finished processing line items. No line A found - no line items to process", "ProcessLineItems")
-            Else ' Subsequent line not found
-                Call LogInfo("Finished processing line items. No more lines found after " & Chr(i-1), "ProcessLineItems")
-            End If
-            ' System automatically returns to COMMAND prompt without manual ENTER
-            Exit For ' Exit the For loop.
         End If
         ' Use the new state machine method for all prompt handling
         Call LogDebug("Processing line item " & lineLetterChar & " using ProcessSingleLine_Dynamic", "ProcessLineItems")
