@@ -78,14 +78,27 @@ Call Log("TRACE", "g_BaseScriptPath set to: " & g_BaseScriptPath, "Startup")
 
 ' Defines the data structure for a single screen prompt and its corresponding action.
 Class Prompt
-    Public TriggerText
-    Public ResponseText
-    Public KeyPress
-    Public IsSuccess
-    Public AcceptDefault
+    Public TriggerText    ' Pattern to match on screen (can be literal text or regex)
+    Public ResponseText   ' Text to send when prompt is detected (empty if accepting default)
+    Public KeyPress       ' Key to press after response text (e.g. "<NumpadEnter>")
+    Public IsSuccess      ' True if this prompt indicates successful completion
+    Public AcceptDefault  ' True to accept default values shown in parentheses
 End Class
 
-' Helper to create a Prompt object and add it to the dictionary
+'-----------------------------------------------------------------------------------
+' **FUNCTION NAME:** AddPromptToDict
+' **FUNCTIONALITY:** 
+' Creates a Prompt object with AcceptDefault=False and adds it to the dictionary.
+' Use this for prompts that should always send the specified ResponseText,
+' regardless of any default values shown on screen.
+' 
+' **PARAMETERS:**
+' dict - Dictionary to add the prompt to
+' trigger - Text pattern to match (can be literal or regex)
+' response - Text to send when prompt is matched
+' key - Keystroke to send after response text
+' isSuccess - True if this prompt indicates completion of the sequence
+'-----------------------------------------------------------------------------------
 Sub AddPromptToDict(dict, trigger, response, key, isSuccess)
     Dim p
     Set p = New Prompt
@@ -93,11 +106,33 @@ Sub AddPromptToDict(dict, trigger, response, key, isSuccess)
     p.ResponseText = response
     p.KeyPress = key
     p.IsSuccess = isSuccess
-    p.AcceptDefault = False
+    p.AcceptDefault = False  ' Always send response text, ignore screen defaults
     dict.Add trigger, p
 End Sub
 
-' Extended helper to create a Prompt object with AcceptDefault support
+'-----------------------------------------------------------------------------------
+' **FUNCTION NAME:** AddPromptToDictEx  
+' **FUNCTIONALITY:**
+' Enhanced version with AcceptDefault support. Creates a Prompt object that can
+' optionally detect and accept default values shown in parentheses on screen.
+' When AcceptDefault=True and a default value is detected (e.g. "TECHNICIAN (72925)?"),
+' the system will send only the keystroke without response text to preserve the default.
+'
+' **PARAMETERS:**
+' dict - Dictionary to add the prompt to
+' trigger - Text pattern to match (can be literal or regex)
+' response - Text to send when NO default is present or AcceptDefault=False
+' key - Keystroke to send (with or without response text)
+' isSuccess - True if this prompt indicates completion of the sequence
+' acceptDefault - True to detect/accept defaults in parentheses, False to always send response
+'
+' **EXAMPLES:**
+' ' Always send "99" regardless of screen defaults:
+' Call AddPromptToDict(dict, "TECHNICIAN", "99", "<NumpadEnter>", False)
+'
+' ' Accept screen defaults when present, send "99" when no default shown:
+' Call AddPromptToDictEx(dict, "TECHNICIAN \([A-Za-z0-9]+\)\?", "99", "<NumpadEnter>", False, True)
+'-----------------------------------------------------------------------------------
 Sub AddPromptToDictEx(dict, trigger, response, key, isSuccess, acceptDefault)
     Dim p
     Set p = New Prompt
@@ -109,28 +144,46 @@ Sub AddPromptToDictEx(dict, trigger, response, key, isSuccess, acceptDefault)
     dict.Add trigger, p
 End Sub
 
+'-----------------------------------------------------------------------------------
+' **FUNCTION NAME:** CreateLineItemPromptDictionary
+' **FUNCTIONALITY:**
 ' Creates and returns the prompt dictionary for the line item processing sequence.
+' Demonstrates both AddPromptToDict (always sends response) and AddPromptToDictEx 
+' (can accept defaults) usage patterns.
+'-----------------------------------------------------------------------------------
 Function CreateLineItemPromptDictionary()
     Dim dict
     Set dict = CreateObject("Scripting.Dictionary")
     ' Handle end-of-sequence error
     Call AddPromptToDict(dict, "SEQUENCE NUMBER \d+ DOES NOT EXIST", "", "", True)
-    Call AddPromptToDict(dict, "OPERATION CODE FOR LINE", "I", "<NumpadEnter>", False)
+    
+    ' OPERATION CODE FOR LINE: Single pattern handles both scenarios with AcceptDefault=True
+    ' When screen shows "OPERATION CODE FOR LINE A, L1 (I)?", accepts default "I"
+    ' When screen shows "OPERATION CODE FOR LINE A, L1 ()?", sends "I" (empty parens = no default)
+    Call AddPromptToDictEx(dict, "OPERATION CODE FOR LINE.*\([A-Za-z0-9]*\)\?", "I", "<NumpadEnter>", False, True)
     Call AddPromptToDict(dict, "COMMAND:\(SEQ#/E/N/B/\?\)", "", "", True)
     ' COMMAND: prompt removed - handled by legacy WaitForPrompt in ProcessLineItems
     Call AddPromptToDict(dict, "This OpCode was performed in the last 270 days.", "", "", False)
+    
+    ' LINE CODE: Uses AddPromptToDictEx with AcceptDefault=False (always press Enter, never send text)
     Call AddPromptToDictEx(dict, "LINE CODE [A-Z] IS NOT ON FILE", "", "<Enter>", True, False)
     Call AddPromptToDict(dict, "LABOR TYPE FOR LINE", "", "<NumpadEnter>", False)
     Call AddPromptToDict(dict, "DESC:", "", "<NumpadEnter>", False)
     Call AddPromptToDict(dict, "Enter a technician number", "", "<F3>", False)
+    
+    ' TECHNICIAN prompts: Uses AddPromptToDictEx with AcceptDefault=True
+    ' Accepts defaults like "TECHNICIAN (72925)?" or sends "99" for "TECHNICIAN?"
     Call AddPromptToDictEx(dict, "TECHNICIAN \(\d+\)", "99", "<NumpadEnter>", False, True)
     Call AddPromptToDictEx(dict, "TECHNICIAN?", "99", "<NumpadEnter>", False, True)
     Call AddPromptToDictEx(dict, "TECHNICIAN \([A-Za-z0-9]+\)\?", "99", "<NumpadEnter>", False, True)
-    ' Handle line completion confirmation prompt  
+    ' Handle line completion confirmation prompt (always send "Y", no defaults to check)
     Call AddPromptToDict(dict, "TECHNICIAN", "Y", "<NumpadEnter>", True)
+    
+    ' HOURS prompts: Uses AddPromptToDictEx with AcceptDefault=True
+    ' Accepts defaults like "ACTUAL HOURS (117)?" or sends "0" for "ACTUAL HOURS?"
     Call AddPromptToDictEx(dict, "ACTUAL HOURS \(\d+\)", "0", "<NumpadEnter>", False, True)
-    ' SOLD HOURS: Handle both cases - with parentheses (accept default) and without (send "0")
-    ' Pattern matches both "SOLD HOURS?" and "SOLD HOURS (10)?" - accepts default if present, sends "0" if not
+    ' SOLD HOURS: Advanced pattern handles both with and without parentheses
+    ' "SOLD HOURS (10)?" -> accepts default 10, "SOLD HOURS?" -> sends "0"
     Call AddPromptToDictEx(dict, "SOLD HOURS( \(\d+\))?\?", "0", "<NumpadEnter>", False, True)
     Call AddPromptToDict(dict, "ADD A LABOR OPERATION", "", "<Enter>", True)
     ' Note: COMMAND: success condition removed - handled by checking MainPromptLine specifically
@@ -332,8 +385,8 @@ Sub ProcessPromptSequence(prompts)
                         End If
                         On Error GoTo 0
                     End If
-                    ' If not regex or regex failed, fall back to plain text
-                    If Not isRegex Or regexError Then
+                    ' Only fall back to plain text if this was NOT a regex pattern
+                    If Not isRegex Then
                         If InStr(1, lineText, promptKey, vbTextCompare) > 0 Then
                             If Len(promptKey) > bestMatchLength Then
                                 bestMatchKey = promptKey
@@ -349,6 +402,7 @@ Sub ProcessPromptSequence(prompts)
         If bestMatchLength > 0 Then
             Set promptDetails = prompts.Item(bestMatchKey)
             Call LogInfo("Matched most specific prompt: '" & bestMatchKey & "'", "ProcessPromptSequence")
+            Call LogDebug("Prompt details - ResponseText: '" & promptDetails.ResponseText & "', KeyPress: '" & promptDetails.KeyPress & "', AcceptDefault: " & promptDetails.AcceptDefault & ", IsSuccess: " & promptDetails.IsSuccess, "ProcessPromptSequence")
 
             ' Log the screen before responding
             Call LogInfo("Screen before responding to '" & bestMatchKey & "': " & GetScreenSnapshot(3), "ProcessPromptSequence")
@@ -357,20 +411,60 @@ Sub ProcessPromptSequence(prompts)
             Dim shouldAcceptDefault
             shouldAcceptDefault = False
             If promptDetails.AcceptDefault Then
+                Call LogDebug("Prompt has AcceptDefault=True, checking for default values on screen", "ProcessPromptSequence")
+                
                 ' Find the line that contains the matched prompt for default value checking
                 Dim matchedLineContent
                 matchedLineContent = ""
                 For Each lineToCheck In linesToCheck
                     lineText = GetScreenLine(lineToCheck)
-                    If InStr(1, lineText, bestMatchKey, vbTextCompare) > 0 Then
+                    Call LogTrace("Checking line " & lineToCheck & ": '" & lineText & "'", "ProcessPromptSequence")
+                    
+                    ' Check if the bestMatchKey pattern matches this line's content
+                    ' Use regex matching for regex patterns, InStr for plain text patterns
+                    Dim lineMatches, lineMatchFound
+                    lineMatchFound = False
+                    
+                    ' Determine if bestMatchKey is a regex pattern
+                    If Left(bestMatchKey, 1) = "^" Or InStr(bestMatchKey, "(") > 0 Or InStr(bestMatchKey, "[") > 0 Or InStr(bestMatchKey, ".*") > 0 Or InStr(bestMatchKey, "\\d") > 0 Then
+                        ' Regex pattern - use proper regex matching
+                        On Error Resume Next
+                        Dim lineRe
+                        Set lineRe = CreateObject("VBScript.RegExp")
+                        lineRe.Pattern = bestMatchKey
+                        lineRe.IgnoreCase = True
+                        lineRe.Global = False
+                        Set lineMatches = lineRe.Execute(lineText)
+                        If Err.Number = 0 And lineMatches.Count > 0 Then
+                            lineMatchFound = True
+                        End If
+                        On Error GoTo 0
+                    Else
+                        ' Plain text pattern - use InStr
+                        If InStr(1, lineText, bestMatchKey, vbTextCompare) > 0 Then
+                            lineMatchFound = True
+                        End If
+                    End If
+                    
+                    If lineMatchFound Then
                         matchedLineContent = lineText
+                        Call LogDebug("Found matched line " & lineToCheck & " containing prompt pattern: '" & matchedLineContent & "'", "ProcessPromptSequence")
                         Exit For
                     End If
                 Next
+                
+                If matchedLineContent = "" Then
+                    Call LogDebug("Warning: No line found containing the matched prompt pattern '" & bestMatchKey & "'", "ProcessPromptSequence")
+                End If
+                
                 shouldAcceptDefault = HasDefaultValueInPrompt(bestMatchKey, matchedLineContent)
                 If shouldAcceptDefault Then
                     Call LogInfo("Default value detected in prompt - accepting by sending only key press", "ProcessPromptSequence")
+                Else
+                    Call LogDebug("No default value detected or default value was invalid - will send ResponseText", "ProcessPromptSequence")
                 End If
+            Else
+                Call LogDebug("Prompt has AcceptDefault=False, will always send ResponseText if provided", "ProcessPromptSequence")
             End If
 
             If promptDetails.ResponseText <> "" And Not shouldAcceptDefault Then
@@ -568,35 +662,56 @@ End Function
 Function HasDefaultValueInPrompt(promptPattern, screenContent)
     HasDefaultValueInPrompt = False
     
+    Call LogTrace("Analyzing prompt for default values - Pattern: '" & promptPattern & "', Content: '" & screenContent & "'", "HasDefaultValueInPrompt")
+    
     ' Use a more robust approach - look for any text followed by parentheses containing alphanumeric content
     ' This handles all prompt types without hardcoding specific patterns
     On Error Resume Next
     Dim re, matches, match, parenContent
     Set re = CreateObject("VBScript.RegExp")
     
-    ' Universal pattern: any word followed by parentheses containing non-empty alphanumeric content
-    ' Examples: TECHNICIAN(12345), ACTUAL HOURS (8), SOLD HOURS (10)
-    re.Pattern = "[A-Z][A-Z\s]*\s*\(([A-Za-z0-9]+)\)"
+    ' Universal pattern: any text followed by parentheses containing non-empty alphanumeric content
+    ' Examples: TECHNICIAN(12345), ACTUAL HOURS (8), SOLD HOURS (10), OPERATION CODE FOR LINE A, L1 (I)
+    ' Updated pattern to handle any content before parentheses
+    re.Pattern = ".*\(([A-Za-z0-9]+)\)"
     re.IgnoreCase = True
     re.Global = False
     
+    Call LogTrace("Using regex pattern: '" & re.Pattern & "'", "HasDefaultValueInPrompt")
+    
     If Err.Number = 0 Then
         Set matches = re.Execute(screenContent)
+        Call LogTrace("Regex execution completed. Match count: " & matches.Count, "HasDefaultValueInPrompt")
+        
         If matches.Count > 0 Then
             Set match = matches(0)
+            Call LogTrace("First match found: '" & match.Value & "', SubMatches count: " & match.SubMatches.Count, "HasDefaultValueInPrompt")
+            
             If match.SubMatches.Count > 0 Then
                 parenContent = Trim(match.SubMatches(0))
+                Call LogTrace("Extracted parentheses content: '" & parenContent & "'", "HasDefaultValueInPrompt")
+                
                 ' If there's content in parentheses and it's not empty or just question marks
                 If Len(parenContent) > 0 And parenContent <> "?" And parenContent <> "" Then
                     HasDefaultValueInPrompt = True
-                    Call LogTrace("Found default value in prompt: " & parenContent, "HasDefaultValueInPrompt")
+                    Call LogTrace("FOUND VALID DEFAULT VALUE: " & parenContent & " - will accept default", "HasDefaultValueInPrompt")
+                Else
+                    Call LogTrace("Invalid parentheses content (empty, '?' or whitespace only) - no default to accept", "HasDefaultValueInPrompt")
                 End If
+            Else
+                Call LogTrace("No submatches found in regex result", "HasDefaultValueInPrompt")
             End If
+        Else
+            Call LogTrace("No regex matches found in screen content", "HasDefaultValueInPrompt")
         End If
+    Else
+        Call LogTrace("Regex execution error: " & Err.Description & " (" & Err.Number & ")", "HasDefaultValueInPrompt")
     End If
     
     If Err.Number <> 0 Then Err.Clear
     On Error GoTo 0
+    
+    Call LogTrace("Final result: HasDefaultValueInPrompt = " & HasDefaultValueInPrompt, "HasDefaultValueInPrompt")
 End Function
 
 ' Bootstrap defaults so logging works before config initialization
@@ -1923,6 +2038,22 @@ Sub ProcessLineItems()
         ' Wait for the COMMAND prompt and then enter "R" + the current line letter.
         Call WaitForPrompt("COMMAND:", "R " & lineLetterChar, True, g_PromptWait, "")
         
+        ' Brief wait to let the response appear
+        Call WaitMs(500)
+        
+        ' Check if the line exists FIRST - this avoids inappropriate timeout errors
+        If IsTextPresent("LINE CODE " & lineLetterChar & " IS NOT ON FILE") Then
+            If i = 65 Then ' First line (A) not found
+                Call LogInfo("Finished processing line items. No line A found - no line items to process", "ProcessLineItems")
+            Else ' Subsequent line not found
+                Dim prevLineChar
+                prevLineChar = Chr(i-1)
+                Call LogInfo("Finished processing line items. No more lines found after " & prevLineChar, "ProcessLineItems")
+            End If
+            ' System automatically returns to COMMAND prompt without manual ENTER
+            Exit For ' Exit the For loop.
+        End If
+        
         ' Wait for the specific line item screen to appear using generic transition function
         Dim expectedLineText, lineScreenLoaded
         expectedLineText = "LINE " & lineLetterChar & " STORY :"
@@ -1934,17 +2065,6 @@ Sub ProcessLineItems()
             ' Press Enter to attempt clearing any pending screen state
             Call FastKey("<Enter>")
             Exit For ' Exit the For loop due to critical screen loading failure
-        End If
-        
-        ' Check if the line exists. If not, we are done with line processing.
-        If IsTextPresent("LINE CODE " & lineLetterChar & " IS NOT ON FILE") Then
-            If i = 65 Then ' First line (A) not found
-                Call LogInfo("Finished processing line items. No line A found - no line items to process", "ProcessLineItems")
-            Else ' Subsequent line not found
-                Call LogInfo("Finished processing line items. No more lines found after " & Chr(i-1), "ProcessLineItems")
-            End If
-            ' System automatically returns to COMMAND prompt without manual ENTER
-            Exit For ' Exit the For loop.
         End If
         ' Use the new state machine method for all prompt handling
         Call LogDebug("Processing line item " & lineLetterChar & " using ProcessSingleLine_Dynamic", "ProcessLineItems")
@@ -2083,7 +2203,9 @@ Sub ProcessOpenStatusLines()
             If i = 65 Then ' First line (A) not found
                 Call LogInfo("No line A found - no open lines to process with FNL commands", "ProcessOpenStatusLines")
             Else ' Subsequent line not found
-                Call LogInfo("No more open lines found after " & Chr(i-1) & " - FNL processing complete", "ProcessOpenStatusLines")
+                Dim lastProcessedLineChar
+                lastProcessedLineChar = Chr(i-1)
+                Call LogInfo("No more open lines found after " & lastProcessedLineChar & " - FNL processing complete", "ProcessOpenStatusLines")
             End If
             ' System automatically returns to COMMAND prompt without manual ENTER
             Exit For ' Exit the For loop
