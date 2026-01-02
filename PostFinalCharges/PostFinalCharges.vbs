@@ -160,9 +160,8 @@ Function CreateFnlPromptDictionary()
     
     ' Technician prompts that may appear after FNL commands
     Call AddPromptToDict(dict, "TECHNICIAN FINISHING WORK ?", "99", "<NumpadEnter>", False)
-    Call AddPromptToDictEx(dict, "TECHNICIAN \(\d+\)", "99", "<NumpadEnter>", False, True)
-    Call AddPromptToDictEx(dict, "TECHNICIAN?", "99", "<NumpadEnter>", False, True)
     Call AddPromptToDictEx(dict, "TECHNICIAN \([A-Za-z0-9]+\)\?", "99", "<NumpadEnter>", False, True)
+    Call AddPromptToDictEx(dict, "TECHNICIAN\?", "99", "<NumpadEnter>", False, True)
     
     ' Hours prompts that may appear after FNL commands
     Call AddPromptToDictEx(dict, "ACTUAL HOURS \(\d+\)", "0", "<NumpadEnter>", False, True)
