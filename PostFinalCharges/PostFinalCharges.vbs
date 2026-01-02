@@ -145,6 +145,34 @@ Function CreateLineItemPromptDictionary()
     Set CreateLineItemPromptDictionary = dict
 End Function
 
+'-----------------------------------------------------------------------------------
+' **FUNCTION NAME:** CreateFnlPromptDictionary
+' **DATE CREATED:** 2026-01-01
+' **AUTHOR:** GitHub Copilot
+' 
+' **FUNCTIONALITY:**
+' Creates a dictionary of specific prompts that might appear after FNL commands.
+' This replaces the generic colon detection with explicit prompt handling.
+'-----------------------------------------------------------------------------------
+Function CreateFnlPromptDictionary()
+    Dim dict
+    Set dict = CreateObject("Scripting.Dictionary")
+    
+    ' Technician prompts that may appear after FNL commands
+    Call AddPromptToDict(dict, "TECHNICIAN FINISHING WORK ?", "99", "<NumpadEnter>", False)
+    Call AddPromptToDictEx(dict, "TECHNICIAN \([A-Za-z0-9]+\)\?", "99", "<NumpadEnter>", False, True)
+    Call AddPromptToDictEx(dict, "TECHNICIAN\?", "99", "<NumpadEnter>", False, True)
+    
+    ' Hours prompts that may appear after FNL commands
+    Call AddPromptToDictEx(dict, "ACTUAL HOURS \(\d+\)", "0", "<NumpadEnter>", False, True)
+    Call AddPromptToDictEx(dict, "SOLD HOURS( \(\d+\))?\?", "0", "<NumpadEnter>", False, True)
+    
+    ' Success condition - back to command prompt
+    Call AddPromptToDict(dict, "COMMAND:", "", "", True)
+    
+    Set CreateFnlPromptDictionary = dict
+End Function
+
 ' Creates and returns the prompt dictionary for the final closeout sequence.
 Function CreateCloseoutPromptDictionary()
     Dim dict
@@ -1878,7 +1906,7 @@ Sub ProcessLineItems()
         ' Check if line exists BEFORE processing other prompts
         If IsTextPresent("LINE CODE " & lineLetterChar & " IS NOT ON FILE") Then
             Call LogInfo("Line " & lineLetterChar & " not found - stopping FNL commands", "ProcessLineItems")
-            Call FastKey("<Enter>") ' Clear the error message
+            ' System automatically returns to COMMAND prompt without manual ENTER
             Exit For
         End If
         
@@ -1915,8 +1943,7 @@ Sub ProcessLineItems()
             Else ' Subsequent line not found
                 Call LogInfo("Finished processing line items. No more lines found after " & Chr(i-1), "ProcessLineItems")
             End If
-            ' Press Enter to clear the "NOT ON FILE" message from the screen.
-            Call FastKey("<Enter>")
+            ' System automatically returns to COMMAND prompt without manual ENTER
             Exit For ' Exit the For loop.
         End If
         ' Use the new state machine method for all prompt handling
@@ -2058,15 +2085,14 @@ Sub ProcessOpenStatusLines()
             Else ' Subsequent line not found
                 Call LogInfo("No more open lines found after " & Chr(i-1) & " - FNL processing complete", "ProcessOpenStatusLines")
             End If
-            ' Press Enter to clear the "NOT ON FILE" message from the screen
-            Call FastKey("<Enter>")
+            ' System automatically returns to COMMAND prompt without manual ENTER
             Exit For ' Exit the For loop
         End If
         
         ' Check for "Line X is already finished" message
         If IsTextPresent("LINE " & lineLetterChar & " IS ALREADY FINISHED") Then
             Call LogInfo("Line " & lineLetterChar & " is already finished, moving to next line", "ProcessOpenStatusLines")
-            Call FastKey("<Enter>")
+            ' System automatically returns to COMMAND prompt without manual ENTER
         Else
             ' Check for technician prompt after FNL command
             If IsTextPresent("TECHNICIAN FINISHING WORK ?") Then
@@ -2080,28 +2106,13 @@ Sub ProcessOpenStatusLines()
             ' Small delay to allow screen updates
             Call WaitMs(1000)
             
-            ' Process any remaining prompts that appear after FNL
-            Dim maxPromptAttempts, promptAttempts
-            maxPromptAttempts = 3
-            promptAttempts = 0
+            ' REFACTORED: Use ProcessPromptSequence instead of generic colon detection
+            ' This handles specific FNL prompts explicitly rather than any text with ":"
+            Call LogDebug("Processing remaining FNL prompts for line " & lineLetterChar & " using ProcessPromptSequence", "ProcessOpenStatusLines")
             
-            ' Handle potential remaining prompts after FNL command
-            Do While promptAttempts < maxPromptAttempts
-                If IsTextPresent("COMMAND:") Then
-                    ' Back to command prompt, FNL processing for this line is complete
-                    Exit Do
-                End If
-                
-                ' Check for common prompt patterns and send Enter to accept defaults
-                If IsTextPresent(":") Then ' Generic prompt indicator
-                    Call LogDebug("Found additional prompt after FNL " & lineLetterChar & ", accepting default", "ProcessOpenStatusLines")
-                    Call FastKey("<Enter>")
-                    Call WaitMs(500)
-                    promptAttempts = promptAttempts + 1
-                Else
-                    Exit Do ' No more prompts
-                End If
-            Loop
+            Dim fnlPrompts
+            Set fnlPrompts = CreateFnlPromptDictionary()
+            Call ProcessPromptSequence(fnlPrompts)
         End If
         
         Call LogInfo("Completed FNL processing for line " & lineLetterChar, "ProcessOpenStatusLines")
