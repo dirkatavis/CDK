@@ -1907,9 +1907,7 @@ Sub ProcessLineItems()
         ' Check if line exists BEFORE processing other prompts
         If IsTextPresent("LINE CODE " & lineLetterChar & " IS NOT ON FILE") Then
             Call LogInfo("Line " & lineLetterChar & " not found - stopping FNL commands", "ProcessLineItems")
-            ' FIXED: Remove automatic ENTER key press for "NOT ON FILE" case
-            ' The system will automatically return to COMMAND prompt without needing manual ENTER
-            ' Call FastKey("<Enter>") ' <-- REMOVED: This was causing the extra ENTER
+            ' System automatically returns to COMMAND prompt without manual ENTER
             Exit For
         End If
         
@@ -1946,9 +1944,7 @@ Sub ProcessLineItems()
             Else ' Subsequent line not found
                 Call LogInfo("Finished processing line items. No more lines found after " & Chr(i-1), "ProcessLineItems")
             End If
-            ' FIXED: Remove automatic ENTER key press for "NOT ON FILE" case
-            ' The system will automatically return to COMMAND prompt without needing manual ENTER
-            ' Call FastKey("<Enter>") ' <-- REMOVED: This was causing the extra ENTER
+            ' System automatically returns to COMMAND prompt without manual ENTER
             Exit For ' Exit the For loop.
         End If
         ' Use the new state machine method for all prompt handling
@@ -2090,18 +2086,14 @@ Sub ProcessOpenStatusLines()
             Else ' Subsequent line not found
                 Call LogInfo("No more open lines found after " & Chr(i-1) & " - FNL processing complete", "ProcessOpenStatusLines")
             End If
-            ' FIXED: Remove automatic ENTER key press for "NOT ON FILE" case
-            ' The system will automatically return to COMMAND prompt without needing manual ENTER
-            ' Call FastKey("<Enter>") ' <-- REMOVED: This was causing the extra ENTER
+            ' System automatically returns to COMMAND prompt without manual ENTER
             Exit For ' Exit the For loop
         End If
         
         ' Check for "Line X is already finished" message
         If IsTextPresent("LINE " & lineLetterChar & " IS ALREADY FINISHED") Then
             Call LogInfo("Line " & lineLetterChar & " is already finished, moving to next line", "ProcessOpenStatusLines")
-            ' FIXED: Remove automatic ENTER key press for "already finished" case
-            ' The system will automatically return to COMMAND prompt without needing manual ENTER
-            ' Call FastKey("<Enter>") ' <-- REMOVED: This was causing the extra ENTER
+            ' System automatically returns to COMMAND prompt without manual ENTER
         Else
             ' Check for technician prompt after FNL command
             If IsTextPresent("TECHNICIAN FINISHING WORK ?") Then
