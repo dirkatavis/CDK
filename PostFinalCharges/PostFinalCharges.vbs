@@ -2046,7 +2046,9 @@ Sub ProcessLineItems()
             If i = 65 Then ' First line (A) not found
                 Call LogInfo("Finished processing line items. No line A found - no line items to process", "ProcessLineItems")
             Else ' Subsequent line not found
-                Call LogInfo("Finished processing line items. No more lines found after " & Chr(i-1), "ProcessLineItems")
+                Dim prevLineChar
+                prevLineChar = Chr(i-1)
+                Call LogInfo("Finished processing line items. No more lines found after " & prevLineChar, "ProcessLineItems")
             End If
             ' System automatically returns to COMMAND prompt without manual ENTER
             Exit For ' Exit the For loop.
@@ -2201,7 +2203,9 @@ Sub ProcessOpenStatusLines()
             If i = 65 Then ' First line (A) not found
                 Call LogInfo("No line A found - no open lines to process with FNL commands", "ProcessOpenStatusLines")
             Else ' Subsequent line not found
-                Call LogInfo("No more open lines found after " & Chr(i-1) & " - FNL processing complete", "ProcessOpenStatusLines")
+                Dim prevLineChar
+                prevLineChar = Chr(i-1)
+                Call LogInfo("No more open lines found after " & prevLineChar & " - FNL processing complete", "ProcessOpenStatusLines")
             End If
             ' System automatically returns to COMMAND prompt without manual ENTER
             Exit For ' Exit the For loop
