@@ -164,12 +164,11 @@ Function CreateLineItemPromptDictionary()
     ' Handle end-of-sequence error
     Call AddPromptToDict(dict, "SEQUENCE NUMBER \d+ DOES NOT EXIST", "", "", True)
     
-    ' OPERATION CODE FOR LINE: Multiple patterns for different formats
+    ' OPERATION CODE FOR LINE: Comprehensive pattern handles all formats
     ' When screen shows "OPERATION CODE FOR LINE A, L1 (I)?", accepts default "I"
     ' When screen shows "OPERATION CODE FOR LINE A, L1 ()?", sends "I" (empty parens = no default)
-    Call AddPromptToDictEx(dict, "OPERATION CODE FOR LINE.*\([A-Za-z0-9]*\)\?", "I", "<NumpadEnter>", False, True)
-    ' When screen shows "OPERATION CODE FOR LINE A, L1?" (no parentheses), sends "I"
-    Call AddPromptToDict(dict, "OPERATION CODE FOR LINE[^(]*\?$", "I", "<NumpadEnter>", False)
+    ' When screen shows "OPERATION CODE FOR LINE A, L1?", sends "I" (no parentheses)
+    Call AddPromptToDictEx(dict, "OPERATION CODE FOR LINE.*(\([A-Za-z0-9]*\))?\?", "I", "<NumpadEnter>", False, True)
     Call AddPromptToDict(dict, "COMMAND:\(SEQ#/E/N/B/\?\)", "", "", True)
     ' COMMAND: prompt removed - handled by legacy WaitForPrompt in ProcessLineItems
     Call AddPromptToDict(dict, "This OpCode was performed in the last 270 days.", "", "", False)
@@ -1422,7 +1421,7 @@ Sub Main(roNumber)
     
     ' Wait for RO detail screen to load before scraping RO number
     If Not WaitForScreenTransition("RO STATUS:", 5000, "RO detail screen") Then
-        Call LogEvent("crit", "low", "RO detail screen did not load within timeout, attempting RO extraction anyway", "Main", "", "")
+        Call LogEvent("maj", "low", "RO detail screen did not load within timeout, attempting RO extraction anyway", "Main", "", "")
     End If
     
     ' Scrape the actual RO number from the screen (top of screen shows 'RO:  123456')
@@ -1432,7 +1431,7 @@ Sub Main(roNumber)
         currentRODisplay = actualRO
     Else
         currentRODisplay = roNumber
-        Call LogEvent("crit", "low", "RO not found on screen, using sequence: " & roNumber, "Main", "", "")
+        Call LogEvent("maj", "low", "RO not found on screen, using sequence: " & roNumber, "Main", "", "")
     End If
     
     If Len(Trim(CStr(currentRODisplay))) > 0 Then
@@ -2377,7 +2376,6 @@ Sub ProcessLineItems()
         End If
         ' Use the new state machine method for all prompt handling
         Call LogDebug("Processing line item " & lineLetterChar & " using ProcessSingleLine_Dynamic", "ProcessLineItems")
-        Call LogDetailed(3, "Processing line item " & lineLetterChar & " using ProcessPromptSequence", "ProcessLineItems")
 
         ' Process all prompts for this line item using the new state machine
         Call ProcessPromptSequence(lineItemPrompts)
