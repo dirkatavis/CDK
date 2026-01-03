@@ -2553,7 +2553,7 @@ Sub ProcessOpenStatusLines()
     Next
     
     Call LogInfo("Completed OPEN status line processing with FNL commands", "ProcessOpenStatusLines")
-    Call LogEvent("maj", "low", "All lines have been successfully closed", "ProcessOpenStatusLines", "", "")
+    Call LogEvent("comm", "low", "All lines have been successfully closed", "ProcessOpenStatusLines", "", "")
 End Sub
 
 '-----------------------------------------------------------------------------------
