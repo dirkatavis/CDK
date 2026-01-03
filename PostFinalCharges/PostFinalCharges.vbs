@@ -65,6 +65,9 @@ LOG_FILE_PATH = ResolvePath("PostFinalCharges.log", LEGACY_LOG_PATH, False)
 commonLibLoaded = False
 g_ShouldAbort = False
 
+' Initialize session header and perform log trimming once at startup
+Call WriteSessionHeader()
+
 ' --- STARTUP LOGGING: Script Startup and Path Resolution ---
 Call LogEvent("comm", "low", "Script entrypoint reached", "Startup", "", "")
 Call LogEvent("comm", "low", "About to resolve g_BaseScriptPath", "Startup", "", "")
@@ -1256,7 +1259,7 @@ Sub ProcessRONumbers()
         roNumber = 900
         Call LogROHeader(roNumber)
         sequenceLabel = "Sequence " & roNumber
-        Call LogCore(sequenceLabel & " - Processing", "ProcessRONumbers")
+        Call LogEvent("comm", "low", sequenceLabel & " - Processing", "ProcessRONumbers", "", "")
         
         lastRoResult = ""
         Call Main(roNumber)
@@ -1537,7 +1540,7 @@ End Sub
 ' criticality (String): "crit", "maj", "min", "comm" - event importance
 ' verbosity (String): "low", "med", "high", "max" - detail level  
 ' headline (String): Main message (always shown)
-' stage (String): Context/stage info (shown at med+ verbosity)
+' stage (String): Context/stage info (always shown in [source] bracket)
 ' reason (String): Specific reason/cause (shown at high+ verbosity)
 ' technical (String): Technical details (shown at max verbosity only)
 '-----------------------------------------------------------------------------------
@@ -1676,9 +1679,6 @@ Sub WriteLogEntry(criticality, verbosity, headline, stage, reason, technical)
         source = "General "
     End If
     
-    ' Write session header if not yet written today
-    Call WriteSessionHeader()
-    
     ' Build compact log line: HH:MM:SS[crit/verb][source]Message
     Dim timeStamp, currentTime
     currentTime = Now
@@ -1782,13 +1782,26 @@ End Sub
 '-----------------------------------------------------------------------------------
 Sub PerformLogTrim(logFSO, charsToRemove)
     Dim logContent, trimPoint, newContent, tempLogPath
+    Dim logFile
+    
+    On Error Resume Next
     
     ' Read current log content
-    Dim logFile
     Set logFile = logFSO.OpenTextFile(LOG_FILE_PATH, 1) ' ForReading
+    If Err.Number <> 0 Then
+        Err.Clear
+        On Error GoTo 0
+        Exit Sub ' Cannot read original log file
+    End If
+    
     logContent = logFile.ReadAll()
     logFile.Close
     Set logFile = Nothing
+    If Err.Number <> 0 Then
+        Err.Clear
+        On Error GoTo 0
+        Exit Sub ' Error reading file content
+    End If
     
     ' Find trim point at a line boundary
     trimPoint = charsToRemove
@@ -1819,14 +1832,52 @@ Sub PerformLogTrim(logFSO, charsToRemove)
     ' Write trimmed content atomically using temp file
     tempLogPath = LOG_FILE_PATH & ".tmp"
     Set logFile = logFSO.CreateTextFile(tempLogPath, True)
+    If Err.Number <> 0 Then
+        Err.Clear
+        On Error GoTo 0
+        Exit Sub ' Cannot create temp file
+    End If
+    
     logFile.Write newContent
+    If Err.Number <> 0 Then
+        logFile.Close
+        Set logFile = Nothing
+        ' Clean up temp file on write error
+        If logFSO.FileExists(tempLogPath) Then logFSO.DeleteFile tempLogPath
+        Err.Clear
+        On Error GoTo 0
+        Exit Sub
+    End If
+    
     logFile.Close
     Set logFile = Nothing
+    If Err.Number <> 0 Then
+        ' Clean up temp file on close error
+        If logFSO.FileExists(tempLogPath) Then logFSO.DeleteFile tempLogPath
+        Err.Clear
+        On Error GoTo 0
+        Exit Sub
+    End If
     
-    ' Replace original with trimmed version
-    If logFSO.FileExists(LOG_FILE_PATH) Then logFSO.DeleteFile LOG_FILE_PATH
+    ' Replace original with trimmed version (atomic operation)
+    If logFSO.FileExists(LOG_FILE_PATH) Then 
+        logFSO.DeleteFile LOG_FILE_PATH
+        If Err.Number <> 0 Then
+            ' Clean up temp file if original deletion fails
+            If logFSO.FileExists(tempLogPath) Then logFSO.DeleteFile tempLogPath
+            Err.Clear
+            On Error GoTo 0
+            Exit Sub
+        End If
+    End If
+    
     logFSO.MoveFile tempLogPath, LOG_FILE_PATH
+    If Err.Number <> 0 Then
+        ' If move fails, temp file will remain as evidence of failed operation
+        Err.Clear
+    End If
     
+    On Error GoTo 0
     ' Important: Don't reset session flag after trimming
     ' The trimmed content may already contain today's session header
 End Sub
@@ -1834,16 +1885,12 @@ End Sub
 Sub WriteSessionHeader()
     If g_SessionDateLogged Then Exit Sub
     
-    ' Set flag early to prevent recursion during trim operations
-    g_SessionDateLogged = True
-    
     Dim logFSO, logFile, sessionLine, logFolder, currentDate
     
     On Error Resume Next
     Set logFSO = CreateObject("Scripting.FileSystemObject")
     If Err.Number <> 0 Then
         Err.Clear
-        g_SessionDateLogged = False  ' Reset on error
         Exit Sub
     End If
     
@@ -1879,6 +1926,7 @@ Sub WriteSessionHeader()
     logFile.Close
     Set logFile = Nothing
     Set logFSO = Nothing
+    ' Only set flag after successfully writing the header
     g_SessionDateLogged = True
     On Error GoTo 0
 End Sub
@@ -2503,7 +2551,7 @@ Sub ProcessOpenStatusLines()
     Next
     
     Call LogInfo("Completed OPEN status line processing with FNL commands", "ProcessOpenStatusLines")
-    Call LogCore("All lines have been successfully closed", "ProcessOpenStatusLines")
+    Call LogEvent("maj", "low", "All lines have been successfully closed", "ProcessOpenStatusLines", "", "")
 End Sub
 
 '-----------------------------------------------------------------------------------
