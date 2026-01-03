@@ -1274,7 +1274,7 @@ Sub ProcessRONumbers()
         'WaitMs(2000)
         Call LogROHeader(roNumber)
         sequenceLabel = "Sequence " & roNumber
-        Call LogEvent("crit", "low", sequenceLabel & " - Processing", "ProcessRONumbers", "", "")
+        Call LogEvent("comm", "low", sequenceLabel & " - Processing", "ProcessRONumbers", "", "")
 
         ' Start performance timing for this RO
         Dim roStartTime
@@ -1329,12 +1329,12 @@ Sub ProcessRONumbers()
             finalMessage = finalMessage & " (RO " & finalDisplay & ")"
         End If
         finalMessage = finalMessage & " - Result: " & lastRoResult
-        Call LogEvent("crit", "low", finalMessage, "ProcessRONumbers", "", "")
+        Call LogEvent("comm", "low", finalMessage, "ProcessRONumbers", "", "")
         ' Always write the scraped RO status to the core log for troubleshooting
         Dim statusForLog
         statusForLog = Trim(CStr(g_LastScrapedStatus))
         If Len(statusForLog) = 0 Then statusForLog = "(none)"
-        Call LogEvent("crit", "low", "RO STATUS FOUND: " & statusForLog, "ProcessRONumbers", "", "")
+        Call LogEvent("comm", "low", "RO STATUS FOUND: " & statusForLog, "ProcessRONumbers", "", "")
 
         If (lineCount Mod 10) = 0 Then
             Call LogEvent("comm", "med", "Processed " & lineCount & " ROs...", "ProcessRONumbers", "", "")
@@ -1741,7 +1741,9 @@ End Sub
 ' Only trims at session boundaries to maintain log integrity.
 '-----------------------------------------------------------------------------------
 Sub TrimLogToLimit(logFSO)
-    Const CHARS_PER_KB = 100  ' Hardcoded ratio for convenience
+    ' Realistic character-to-byte ratio for log files with timestamps, brackets, and mixed content
+    ' Based on typical log file analysis: ~750 chars/KB accounts for structured log format overhead
+    Const CHARS_PER_KB = 750  ' Conservative estimate for log file density
     Dim rotationSize, currentSize, excessKB, charsToRemove
     
     ' Exit if log file doesn't exist yet
@@ -2333,7 +2335,7 @@ Sub ProcessLineItems()
         Call ProcessPromptSequence(lineItemPrompts)
     Next
 
-    Call LogEvent("crit", "low", "All lines have been successfully closed", "ProcessLineItems", "", "")
+    Call LogEvent("comm", "low", "All lines have been successfully closed", "ProcessLineItems", "", "")
 
     ' Phase 2: Run R commands and process prompts for all lines
     Call LogEvent("comm", "med", "Phase 2: Processing line prompts with R commands", "ProcessLineItems", "", "")
@@ -2384,7 +2386,7 @@ Sub ProcessLineItems()
         g_LastSuccessfulLine = lineLetterChar
         Call LogInfo("Completed processing line item " & lineLetterChar, "ProcessLineItems")
     Next
-    Call LogEvent("crit", "low", "All Line Charges Reviewed Updated", "ProcessLineItems", "", "")
+    Call LogEvent("comm", "low", "All Line Charges Reviewed Updated", "ProcessLineItems", "", "")
 End Sub
 
 '-----------------------------------------------------------------------------------
