@@ -85,7 +85,7 @@ Sub Main()
     RunTest "All InStr Fixes Verification", "cscript.exe test_verify_all_instr_fixes.vbs"
 
     ' Test 11: Manual Test Mode
-    RunTest "Manual Test Mode", "cmd /c ""cd .. && set PFC_TEST_MODE=true && set PFC_LOG_LEVEL=INFO && cscript.exe PostFinalCharges.vbs >nul 2>&1"""
+    RunTest "Manual Test Mode", "powershell.exe -Command ""cd .. ; $env:PFC_TEST_MODE='true' ; $env:PFC_LOG_LEVEL='INFO' ; cscript.exe PostFinalCharges.vbs *> $null"""
 
     ' Summary
     WScript.Echo ""
