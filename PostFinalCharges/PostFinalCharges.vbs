@@ -1666,10 +1666,10 @@ Sub WriteLogEntry(criticality, verbosity, headline, stage, reason, technical)
     message = headline
     ' Note: Stage is already shown in [source] field, no need to duplicate it in message
     If Len(Trim(reason)) > 0 And (verbosity = "high" Or verbosity = "max") Then
-        message = message & " " & reason
+        message = message & " - Reason: " & reason
     End If
     If Len(Trim(technical)) > 0 And verbosity = "max" Then
-        message = message & " {" & technical & "}"
+        message = message & " | Tech: " & technical
     End If
     
     ' Use stage as source, truncate to 8 chars for compact display
