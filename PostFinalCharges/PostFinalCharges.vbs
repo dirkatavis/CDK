@@ -1120,7 +1120,7 @@ Sub InitializeConfig()
     g_LongWait = 2000
     g_SendRetryCount = 2
     g_DelayBetweenTextAndEnterMs = 2000
-    POST_PROMPT_WAIT_MS = 5000  ' Increased from 150ms to 5 seconds for prompt clear timeout
+    POST_PROMPT_WAIT_MS = Int(1000 * g_DebugDelayFactor)  ' Base 1000ms scaled by debug delay factor
     g_EnableDiagnosticLogging = False
     DIAGNOSTIC_LOG_PATH = ResolvePath("PostFinalCharges.screendump.log", LEGACY_DIAG_LOG_PATH, False)
 End Sub
@@ -2334,7 +2334,7 @@ Sub ProcessLineItems()
         Call ProcessPromptSequence(lineItemPrompts)
     Next
 
-    Call LogEvent("comm", "low", "All lines have been successfully closed", "ProcessLineItems", "", "")
+    Call LogEvent("comm", "low", "Phase 1 completed - All lines finalized", "ProcessLineItems", "", "")
 
     ' Phase 2: Run R commands and process prompts for all lines
     Call LogEvent("comm", "med", "Phase 2: Processing line prompts with R commands", "ProcessLineItems", "", "")
@@ -2384,7 +2384,7 @@ Sub ProcessLineItems()
         g_LastSuccessfulLine = lineLetterChar
         Call LogInfo("Completed processing line item " & lineLetterChar, "ProcessLineItems")
     Next
-    Call LogEvent("comm", "low", "All Line Charges Reviewed Updated", "ProcessLineItems", "", "")
+    Call LogEvent("comm", "low", "All line charges have been reviewed and updated", "ProcessLineItems", "", "")
 End Sub
 
 '-----------------------------------------------------------------------------------
