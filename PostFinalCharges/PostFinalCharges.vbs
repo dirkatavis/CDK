@@ -1988,7 +1988,6 @@ Sub WriteSessionHeader()
             End If
         Else
             ' OpenTextFile failed, clear error and continue to write new header
-            Set checkFile = Nothing
             Err.Clear
         End If
     End If
