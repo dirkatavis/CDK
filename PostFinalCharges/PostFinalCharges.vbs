@@ -1967,25 +1967,24 @@ Sub WriteSessionHeader()
     
     ' Check if trimmed log already contains today's session header
     If logFSO.FileExists(LOG_FILE_PATH) Then
-        Dim existingContent, checkFile
+        Dim existingContent, checkFile, readSuccess
         Set checkFile = logFSO.OpenTextFile(LOG_FILE_PATH, 1)
         If Err.Number = 0 Then
             existingContent = checkFile.ReadAll
-            If Err.Number = 0 Then
-                checkFile.Close
-                Set checkFile = Nothing
-                ' If today's session header already exists, mark as logged to prevent duplicates
-                If InStr(existingContent, sessionLine) > 0 Then
-                    g_SessionDateLogged = True
-                    Set logFSO = Nothing
-                    On Error GoTo 0
-                    Exit Sub
-                End If
-            Else
-                ' ReadAll failed, close file and clear error
-                checkFile.Close
-                Set checkFile = Nothing
+            readSuccess = (Err.Number = 0)
+            If Not readSuccess Then
+                ' ReadAll failed, clear error
                 Err.Clear
+            End If
+            ' Always close the file if it was successfully opened
+            checkFile.Close
+            Set checkFile = Nothing
+            ' If today's session header already exists, mark as logged to prevent duplicates
+            If readSuccess And InStr(existingContent, sessionLine) > 0 Then
+                g_SessionDateLogged = True
+                Set logFSO = Nothing
+                On Error GoTo 0
+                Exit Sub
             End If
         Else
             ' OpenTextFile failed, clear error and continue to write new header
