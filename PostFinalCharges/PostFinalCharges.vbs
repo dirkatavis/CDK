@@ -43,6 +43,7 @@ Const VERB_MAX = 3
 Const DEBUG_SCREEN_LINES = 3
 Const g_DiagLogQueueSize = 5
 Const LEGACY_BASE_PATH = "C:\Temp\Code\Scripts\VBScript\CDK\PostFinalCharges"
+Const MIDNIGHT_ROLLOVER_THRESHOLD_MS = -30000 ' Threshold to distinguish Timer precision issues from true midnight rollover
 
 ' --- EARLY LOGGING: Force maximum logging for startup ---
 g_CurrentCriticality = CRIT_COMMON ' Log all criticality levels
@@ -312,7 +313,7 @@ Function WaitForScreenStable(timeoutMs, stabilityMs)
             If stableStart > 0 Then
                 stableElapsed = (Timer - stableStart) * 1000
                 ' Handle midnight rollover more conservatively - only adjust if negative AND magnitude is large
-                If stableElapsed < -30000 Then 
+                If stableElapsed < MIDNIGHT_ROLLOVER_THRESHOLD_MS Then 
                     stableElapsed = stableElapsed + 86400000 ' Handle true midnight rollover
                 ElseIf stableElapsed < 0 Then
                     ' Small negative values are likely precision/timing issues, treat as zero
@@ -333,7 +334,7 @@ Function WaitForScreenStable(timeoutMs, stabilityMs)
         ' Check overall timeout
         waitElapsed = (Timer - waitStart) * 1000
         ' Handle midnight rollover more conservatively - only adjust if negative AND magnitude is large
-        If waitElapsed < -30000 Then 
+        If waitElapsed < MIDNIGHT_ROLLOVER_THRESHOLD_MS Then 
             waitElapsed = waitElapsed + 86400000 ' Handle true midnight rollover
         ElseIf waitElapsed < 0 Then
             ' Small negative values are likely precision/timing issues, treat as zero
@@ -369,7 +370,7 @@ Sub ProcessPromptSequence(prompts)
         ' Check for timeout first to ensure it's respected even when stuck in sub-operations
         sequenceElapsed = (Timer - sequenceStartTime) * 1000
         ' Handle midnight rollover more conservatively - only adjust if negative AND magnitude is large
-        If sequenceElapsed < -30000 Then 
+        If sequenceElapsed < MIDNIGHT_ROLLOVER_THRESHOLD_MS Then 
             sequenceElapsed = sequenceElapsed + 86400000 ' Handle true midnight rollover
         ElseIf sequenceElapsed < 0 Then
             ' Small negative values are likely precision/timing issues, treat as zero
@@ -571,7 +572,7 @@ Sub ProcessPromptSequence(prompts)
                 Call WaitMs(500)
                 clearElapsed = (Timer - clearStart) * 1000
                 ' Handle midnight rollover more conservatively - only adjust if negative AND magnitude is large
-                If clearElapsed < -30000 Then 
+                If clearElapsed < MIDNIGHT_ROLLOVER_THRESHOLD_MS Then 
                     clearElapsed = clearElapsed + 86400000 ' Handle true midnight rollover
                 ElseIf clearElapsed < 0 Then
                     ' Small negative values are likely precision/timing issues, treat as zero
@@ -646,7 +647,7 @@ Function WaitForScreenTransition(expectedText, timeoutMs, description)
         Call WaitMs(50) ' Fast polling for quick detection
         waitElapsed = (Timer - waitStart) * 1000
         ' Handle midnight rollover more conservatively - only adjust if negative AND magnitude is large
-        If waitElapsed < -30000 Then 
+        If waitElapsed < MIDNIGHT_ROLLOVER_THRESHOLD_MS Then 
             waitElapsed = waitElapsed + 86400000 ' Handle true midnight rollover
         ElseIf waitElapsed < 0 Then
             ' Small negative values are likely precision/timing issues, treat as zero
@@ -2312,7 +2313,7 @@ Function WaitForTextSilent(textToFind, timeoutMs)
         Call WaitMs(120)
         elapsedMs = (Timer - startTime) * 1000
         ' Handle midnight rollover more conservatively - only adjust if negative AND magnitude is large
-        If elapsedMs < -30000 Then 
+        If elapsedMs < MIDNIGHT_ROLLOVER_THRESHOLD_MS Then 
             elapsedMs = elapsedMs + 86400000 ' Handle true midnight rollover
         ElseIf elapsedMs < 0 Then
             ' Small negative values are likely precision/timing issues, treat as zero
@@ -2788,7 +2789,7 @@ Sub HandleOptionalComebackPrompt()
             Call WaitMs(100)
             clearElapsed = (Timer - clearStart) * 1000
             ' Handle midnight rollover more conservatively - only adjust if negative AND magnitude is large
-            If clearElapsed < -30000 Then 
+            If clearElapsed < MIDNIGHT_ROLLOVER_THRESHOLD_MS Then 
                 clearElapsed = clearElapsed + 86400000 ' Handle true midnight rollover
             ElseIf clearElapsed < 0 Then
                 ' Small negative values are likely precision/timing issues, treat as zero
@@ -3284,7 +3285,7 @@ Sub WaitForContinuePrompt()
         Call WaitMs(120)
         elapsedMs = (Timer - startTime) * 1000
         ' Handle midnight rollover more conservatively - only adjust if negative AND magnitude is large
-        If elapsedMs < -30000 Then 
+        If elapsedMs < MIDNIGHT_ROLLOVER_THRESHOLD_MS Then 
             elapsedMs = elapsedMs + 86400000 ' Handle true midnight rollover
         ElseIf elapsedMs < 0 Then
             ' Small negative values are likely precision/timing issues, treat as zero
