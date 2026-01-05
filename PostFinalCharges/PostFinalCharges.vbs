@@ -1937,8 +1937,6 @@ Sub PerformLogTrim(logFSO, charsToRemove)
     End If
     
     On Error GoTo 0
-    
-    On Error GoTo 0
     ' Important: Don't reset session flag after trimming
     ' The trimmed content may already contain today's session header
 End Sub
@@ -1971,16 +1969,30 @@ Sub WriteSessionHeader()
         Set existingLogFile = logFSO.OpenTextFile(LOG_FILE_PATH, 1, False)
         If Err.Number = 0 Then
             existingContent = existingLogFile.ReadAll
-            existingLogFile.Close
-            Set existingLogFile = Nothing
-            ' If today's session header is already in the log, set flag and exit
-            If InStr(existingContent, sessionLine) > 0 Then
-                g_SessionDateLogged = True
-                Set logFSO = Nothing
-                On Error GoTo 0
-                Exit Sub
+            If Err.Number <> 0 Then
+                ' Error during read; close file and continue
+                existingLogFile.Close
+                Set existingLogFile = Nothing
+                Err.Clear
+            Else
+                existingLogFile.Close
+                Set existingLogFile = Nothing
+                ' If today's session header is already in the log, set flag and exit
+                If InStr(existingContent, sessionLine) > 0 Then
+                    g_SessionDateLogged = True
+                    Set logFSO = Nothing
+                    On Error GoTo 0
+                    Exit Sub
+                End If
             End If
         Else
+            ' Error opening file; clean up and continue
+            If Not (existingLogFile Is Nothing) Then
+                On Error Resume Next
+                existingLogFile.Close
+                Set existingLogFile = Nothing
+                On Error Resume Next
+            End If
             Err.Clear
         End If
     End If
