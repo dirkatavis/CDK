@@ -3,13 +3,11 @@ Option Explicit
 
 ' Global script variables
 Dim CSV_FILE_PATH, LOG_FILE_PATH
-'Dim fso, csvStream, currentLine, roNumber
 Dim fso, roNumber
 Dim bzhao
 Dim lastRoResult
 Dim currentRODisplay
 Dim commonLibLoaded
-'Dim WAIT_BETWEEN_RETRIES, RETRY_COUNT, TEXT_VERIFY_DELAY, TIMEOUT_MS, POLL_INTERVAL_MS, CLOSEOUT_WAIT, CLOSEOUT_LONG_WAIT
 Dim POST_PROMPT_WAIT_MS
 Dim DEBUG_LOGGING
 Dim g_IsTestMode
@@ -24,26 +22,32 @@ Dim g_StartSequenceNumber, g_EndSequenceNumber
 Dim g_DebugDelayFactor
 Dim MainPromptLine
 Dim LEGACY_CSV_PATH, LEGACY_LOG_PATH, LEGACY_DIAG_LOG_PATH, LEGACY_COMMONLIB_PATH
-' Current minimum logging level (configurable)
-Dim g_CurrentLogLevel
+Dim g_CurrentCriticality, g_CurrentVerbosity
+Dim g_SessionDateLogged
+Dim g_LastSuccessfulLine
+Dim g_NoPromptCount
 
 MainPromptLine = 23
 
+' Criticality constants (higher numbers = higher priority)
+Const CRIT_COMMON = 0
+Const CRIT_MINOR = 1
+Const CRIT_MAJOR = 2
+Const CRIT_CRITICAL = 3
 
-
-' Logging level constants (lower numbers = higher priority)
-Const LOG_LEVEL_CORE = 0  ' Always logged
-Const LOG_LEVEL_ERROR = 1
-Const LOG_LEVEL_WARN = 2  
-Const LOG_LEVEL_INFO = 3
-Const LOG_LEVEL_DEBUG = 4
-Const LOG_LEVEL_TRACE = 5
+' Verbosity constants (higher numbers = more detail)
+Const VERB_LOW = 0
+Const VERB_MEDIUM = 1
+Const VERB_HIGH = 2
+Const VERB_MAX = 3
 Const DEBUG_SCREEN_LINES = 3
 Const g_DiagLogQueueSize = 5
 Const LEGACY_BASE_PATH = "C:\Temp\Code\Scripts\VBScript\CDK\PostFinalCharges"
 
-' --- EARLY LOGGING: Force TRACE level for startup logs ---
-g_CurrentLogLevel = 5 ' LOG_LEVEL_TRACE (ensure all TRACE logs are written at startup)
+' --- EARLY LOGGING: Force maximum logging for startup ---
+g_CurrentCriticality = CRIT_COMMON ' Log all criticality levels
+g_CurrentVerbosity = VERB_MAX ' Show maximum detail during startup
+g_SessionDateLogged = False
 
 
 
@@ -61,10 +65,30 @@ LOG_FILE_PATH = ResolvePath("PostFinalCharges.log", LEGACY_LOG_PATH, False)
 commonLibLoaded = False
 g_ShouldAbort = False
 
-' --- TRACE LOGGING: Script Startup and Path Resolution (after globals/bootstrap) ---
-Call Log("TRACE", "Script entrypoint reached", "Startup")
-Call Log("TRACE", "About to resolve g_BaseScriptPath", "Startup")
-Call Log("TRACE", "g_BaseScriptPath set to: " & g_BaseScriptPath, "Startup")
+' Initialize session header and perform log trimming once at startup
+Dim sessionHeaderFailed, headerErrorNumber, headerErrorDescription
+sessionHeaderFailed = False
+headerErrorNumber = 0
+headerErrorDescription = ""
+
+On Error Resume Next
+Call WriteSessionHeader()
+If Err.Number <> 0 Then
+    sessionHeaderFailed = True
+    headerErrorNumber = Err.Number
+    headerErrorDescription = Err.Description
+    Err.Clear
+End If
+On Error GoTo 0
+
+If sessionHeaderFailed Then
+    Call LogEvent("comm", "low", "Session header write failed (" & headerErrorNumber & "): " & headerErrorDescription, "Startup", "", "")
+End If
+
+' --- STARTUP LOGGING: Script Startup and Path Resolution ---
+Call LogEvent("comm", "low", "Script entrypoint reached", "Startup", "", "")
+Call LogEvent("comm", "low", "About to resolve g_BaseScriptPath", "Startup", "", "")
+Call LogEvent("comm", "low", "g_BaseScriptPath set to: " & g_BaseScriptPath, "Startup", "", "")
 '-----------------------------------------------------------------------------------
 ' **PROCEDURE NAME:** ProcessPromptSequence
 ' **DATE CREATED:** 2025-11-25
@@ -157,10 +181,11 @@ Function CreateLineItemPromptDictionary()
     ' Handle end-of-sequence error
     Call AddPromptToDict(dict, "SEQUENCE NUMBER \d+ DOES NOT EXIST", "", "", True)
     
-    ' OPERATION CODE FOR LINE: Single pattern handles both scenarios with AcceptDefault=True
+    ' OPERATION CODE FOR LINE: Comprehensive pattern handles all formats
     ' When screen shows "OPERATION CODE FOR LINE A, L1 (I)?", accepts default "I"
     ' When screen shows "OPERATION CODE FOR LINE A, L1 ()?", sends "I" (empty parens = no default)
-    Call AddPromptToDictEx(dict, "OPERATION CODE FOR LINE.*\([A-Za-z0-9]*\)\?", "I", "<NumpadEnter>", False, True)
+    ' When screen shows "OPERATION CODE FOR LINE A, L1?", sends "I" (no parentheses)
+    Call AddPromptToDictEx(dict, "OPERATION CODE FOR LINE.*(\([A-Za-z0-9]*\))?\?", "I", "<NumpadEnter>", False, True)
     Call AddPromptToDict(dict, "COMMAND:\(SEQ#/E/N/B/\?\)", "", "", True)
     ' COMMAND: prompt removed - handled by legacy WaitForPrompt in ProcessLineItems
     Call AddPromptToDict(dict, "This OpCode was performed in the last 270 days.", "", "", False)
@@ -264,6 +289,8 @@ Function WaitForScreenStable(timeoutMs, stabilityMs)
     If timeoutMs <= 0 Then timeoutMs = 2000
     If stabilityMs <= 0 Then stabilityMs = 200
     
+    Call LogEvent("comm", "max", "WaitForScreenStable starting", "WaitForScreenStable", "Timeout: " & timeoutMs & "ms, Stability: " & stabilityMs & "ms", "")
+    
     Dim waitStart, waitElapsed, lastContent, stableStart, stableElapsed
     Dim currentContent
     
@@ -277,6 +304,7 @@ Function WaitForScreenStable(timeoutMs, stabilityMs)
         ' Check if content has changed
         If currentContent <> lastContent Then
             ' Content changed, restart stability timer
+            Call LogEvent("comm", "max", "Screen content changed", "WaitForScreenStable", "New: '" & Left(currentContent, 50) & "'", "Old: '" & Left(lastContent, 50) & "'")
             lastContent = currentContent
             stableStart = Timer
         Else
@@ -286,6 +314,7 @@ Function WaitForScreenStable(timeoutMs, stabilityMs)
                 If stableElapsed < 0 Then stableElapsed = stableElapsed + 86400000 ' Handle midnight rollover
                 If stableElapsed >= stabilityMs Then
                     ' Screen has been stable for required period
+                    Call LogEvent("comm", "high", "Screen stable for required period", "WaitForScreenStable", Int(stableElapsed) & "ms >= " & stabilityMs & "ms", "")
                     WaitForScreenStable = True
                     Exit Function
                 End If
@@ -300,6 +329,7 @@ Function WaitForScreenStable(timeoutMs, stabilityMs)
         If waitElapsed < 0 Then waitElapsed = waitElapsed + 86400000 ' Handle midnight rollover
         If waitElapsed > timeoutMs Then
             ' Overall timeout exceeded
+            Call LogEvent("min", "med", "WaitForScreenStable timeout exceeded", "WaitForScreenStable", Int(waitElapsed) & "ms > " & timeoutMs & "ms", "Last content: '" & Left(currentContent, 50) & "'")
             WaitForScreenStable = False
             Exit Function
         End If
@@ -315,9 +345,12 @@ Sub ProcessPromptSequence(prompts)
     finished = False
     sequenceStartTime = Timer
     
+    ' Initialize no-prompt counter for this sequence
+    g_NoPromptCount = 0
+    
     ' Wait for screen to stabilize before starting scan
     If Not WaitForScreenStable(3000, 200) Then
-        Call LogWarn("Screen did not stabilize before starting prompt sequence", "ProcessPromptSequence")
+        Call LogEvent("maj", "med", "Screen did not stabilize before starting prompt sequence", "ProcessPromptSequence", "May affect automation reliability", "WaitForScreenStable(3000,200) returned False")
     End If
 
     Do While Not finished
@@ -325,7 +358,7 @@ Sub ProcessPromptSequence(prompts)
         sequenceElapsed = (Timer - sequenceStartTime) * 1000
         If sequenceElapsed < 0 Then sequenceElapsed = sequenceElapsed + 86400000 ' Handle midnight rollover
         If sequenceElapsed > 30000 Then ' 30-second timeout
-            Call LogError("ProcessPromptSequence timed out after 30 seconds", "ProcessPromptSequence")
+            Call LogEvent("crit", "low", "ProcessPromptSequence timed out after 30 seconds", "ProcessPromptSequence", "Automation stopped", "sequenceElapsed=" & Int(sequenceElapsed) & "ms > 30000ms")
             SafeMsg "ProcessPromptSequence timed out after 30 seconds.\nAutomation stopped.", True, "Sequence Timeout"
             g_ShouldAbort = True
             Exit Sub
@@ -338,7 +371,7 @@ Sub ProcessPromptSequence(prompts)
         mainPromptText = GetScreenLine(MainPromptLine)
         
         If Len(mainPromptText) > 0 And Not IsPromptInConfig(mainPromptText, prompts) Then
-            Call LogError("Unknown prompt on line " & MainPromptLine & ": '" & mainPromptText & "' - aborting script.", "ProcessPromptSequence")
+            Call LogEvent("crit", "low", "Unknown prompt on line " & MainPromptLine & ": '" & mainPromptText & "'", "ProcessPromptSequence", "Aborting script - requires manual review", "prompt not found in prompts dictionary")
             SafeMsg "Unknown prompt detected on line " & MainPromptLine & ": '" & mainPromptText & "\nAutomation stopped for manual review.", True, "Unknown Prompt Error"
             g_ShouldAbort = True
             Exit Sub
@@ -400,25 +433,27 @@ Sub ProcessPromptSequence(prompts)
 
         ' --- If a prompt was found, handle it ---
         If bestMatchLength > 0 Then
+            ' Reset the no-prompt counter since we found a prompt
+            g_NoPromptCount = 0
+            
             Set promptDetails = prompts.Item(bestMatchKey)
-            Call LogInfo("Matched most specific prompt: '" & bestMatchKey & "'", "ProcessPromptSequence")
-            Call LogDebug("Prompt details - ResponseText: '" & promptDetails.ResponseText & "', KeyPress: '" & promptDetails.KeyPress & "', AcceptDefault: " & promptDetails.AcceptDefault & ", IsSuccess: " & promptDetails.IsSuccess, "ProcessPromptSequence")
+            Call LogEvent("comm", "med", "Matched prompt: '" & bestMatchKey & "'", "ProcessPromptSequence", "Found most specific match", "match length=" & bestMatchLength)
+            Call LogEvent("comm", "max", "Prompt details: '" & bestMatchKey & "'", "ProcessPromptSequence", "", "ResponseText='" & promptDetails.ResponseText & "' KeyPress='" & promptDetails.KeyPress & "' AcceptDefault=" & promptDetails.AcceptDefault & " IsSuccess=" & promptDetails.IsSuccess)
 
             ' Log the screen before responding
-            Call LogInfo("Screen before responding to '" & bestMatchKey & "': " & GetScreenSnapshot(3), "ProcessPromptSequence")
+            Call LogEvent("comm", "high", "Screen before responding to '" & bestMatchKey & "'", "ProcessPromptSequence", "", GetScreenSnapshot(3))
 
             ' Check if this prompt should accept default values and if one is present
             Dim shouldAcceptDefault
             shouldAcceptDefault = False
             If promptDetails.AcceptDefault Then
-                Call LogDebug("Prompt has AcceptDefault=True, checking for default values on screen", "ProcessPromptSequence")
+                Call LogEvent("comm", "high", "Checking for default values on screen", "ProcessPromptSequence", "Prompt has AcceptDefault=True", "")
                 
                 ' Find the line that contains the matched prompt for default value checking
                 Dim matchedLineContent
                 matchedLineContent = ""
                 For Each lineToCheck In linesToCheck
                     lineText = GetScreenLine(lineToCheck)
-                    Call LogTrace("Checking line " & lineToCheck & ": '" & lineText & "'", "ProcessPromptSequence")
                     
                     ' Check if the bestMatchKey pattern matches this line's content
                     ' Use regex matching for regex patterns, InStr for plain text patterns
@@ -448,65 +483,64 @@ Sub ProcessPromptSequence(prompts)
                     
                     If lineMatchFound Then
                         matchedLineContent = lineText
-                        Call LogDebug("Found matched line " & lineToCheck & " containing prompt pattern: '" & matchedLineContent & "'", "ProcessPromptSequence")
+                        Call LogEvent("comm", "high", "Found matched line " & lineToCheck, "ProcessPromptSequence", "Contains prompt pattern", "'" & matchedLineContent & "'")
                         Exit For
                     End If
                 Next
                 
                 If matchedLineContent = "" Then
-                    Call LogDebug("Warning: No line found containing the matched prompt pattern '" & bestMatchKey & "'", "ProcessPromptSequence")
+                    Call LogEvent("min", "med", "No line found containing prompt pattern", "ProcessPromptSequence", "Pattern: '" & bestMatchKey & "'", "")
                 End If
                 
                 shouldAcceptDefault = HasDefaultValueInPrompt(bestMatchKey, matchedLineContent)
                 If shouldAcceptDefault Then
-                    Call LogInfo("Default value detected in prompt - accepting by sending only key press", "ProcessPromptSequence")
+                    Call LogEvent("comm", "med", "Default value detected in prompt", "ProcessPromptSequence", "Accepting by sending only key press", "")
                 Else
-                    Call LogDebug("No default value detected or default value was invalid - will send ResponseText", "ProcessPromptSequence")
+                    Call LogEvent("comm", "high", "No valid default value detected", "ProcessPromptSequence", "Will send ResponseText", "")
                 End If
             Else
-                Call LogDebug("Prompt has AcceptDefault=False, will always send ResponseText if provided", "ProcessPromptSequence")
+                Call LogEvent("comm", "high", "Prompt has AcceptDefault=False", "ProcessPromptSequence", "Will always send ResponseText if provided", "")
             End If
 
             If promptDetails.ResponseText <> "" And Not shouldAcceptDefault Then
                 Call FastText(promptDetails.ResponseText)
-                Call LogInfo("Sent ResponseText: '" & promptDetails.ResponseText & "'", "ProcessPromptSequence")
+                Call LogEvent("comm", "med", "Sent ResponseText", "ProcessPromptSequence", "'" & promptDetails.ResponseText & "'", "")
             Else
-                Call LogInfo("No ResponseText to send (empty or accepting default)", "ProcessPromptSequence")
+                Call LogEvent("comm", "med", "No ResponseText to send", "ProcessPromptSequence", "Empty or accepting default", "")
             End If
             
             Call FastKey(promptDetails.KeyPress)
-            Call LogInfo("Sent KeyPress: '" & promptDetails.KeyPress & "'", "ProcessPromptSequence")
             
             ' Add extra logging for problematic prompts
             If InStr(bestMatchKey, "ADD A LABOR OPERATION") > 0 Then
-                Call LogInfo("Responded to ADD A LABOR OPERATION prompt, waiting for screen to stabilize", "ProcessPromptSequence")
+                Call LogEvent("comm", "med", "Responded to ADD A LABOR OPERATION prompt", "ProcessPromptSequence", "Waiting for screen to stabilize", "")
                 Call WaitMs(2000) ' Extra wait for this specific prompt
-                Call LogInfo("Screen after ADD A LABOR OPERATION response: " & GetScreenSnapshot(5), "ProcessPromptSequence")
+                Call LogEvent("comm", "high", "Screen after ADD A LABOR OPERATION response", "ProcessPromptSequence", "", GetScreenSnapshot(5))
                 
                 ' Check if we're back at COMMAND prompt
                 If IsTextPresent("COMMAND:") Then
-                    Call LogInfo("Successfully returned to COMMAND prompt after ADD A LABOR OPERATION", "ProcessPromptSequence")
+                    Call LogEvent("comm", "med", "Successfully returned to COMMAND prompt", "ProcessPromptSequence", "After ADD A LABOR OPERATION", "")
                     finished = True
                 Else
-                    Call LogWarn("Not at COMMAND prompt after ADD A LABOR OPERATION - continuing to wait", "ProcessPromptSequence")
+                    Call LogEvent("min", "med", "Not at COMMAND prompt after ADD A LABOR OPERATION", "ProcessPromptSequence", "Continuing to wait", "")
                 End If
             End If
             
             
             ' Wait a moment for the response to take effect
             Call WaitMs(800)
-            Call LogInfo("MainPromptLine (" & MainPromptLine & ") after response: '" & GetScreenLine(MainPromptLine) & "'", "ProcessPromptSequence")
-            Call LogInfo("Screen lines 22-24 after response: [22]='" & GetScreenLine(22) & "' [23]='" & GetScreenLine(23) & "' [24]='" & GetScreenLine(24) & "'", "ProcessPromptSequence")
+            Call LogEvent("comm", "high", "MainPromptLine (" & MainPromptLine & ") after response", "ProcessPromptSequence", "'" & GetScreenLine(MainPromptLine) & "'", "")
+            Call LogEvent("comm", "max", "Screen lines 22-24 after response", "ProcessPromptSequence", "", "[22]='" & GetScreenLine(22) & "' [23]='" & GetScreenLine(23) & "' [24]='" & GetScreenLine(24) & "'")
             
             If InStr(bestMatchKey, "SOLD HOURS") > 0 Then
-                Call LogInfo("Responded to SOLD HOURS prompt, waiting for screen to stabilize", "ProcessPromptSequence")
+                Call LogEvent("comm", "med", "Responded to SOLD HOURS prompt", "ProcessPromptSequence", "Waiting for screen to stabilize", "")
                 Call WaitMs(1500) ' Extra wait for this specific prompt
-                Call LogInfo("Screen after SOLD HOURS response: " & GetScreenSnapshot(5), "ProcessPromptSequence")
+                Call LogEvent("comm", "high", "Screen after SOLD HOURS response", "ProcessPromptSequence", "", GetScreenSnapshot(5))
             End If
 
             If promptDetails.IsSuccess Then
                 finished = True
-                Call LogDebug("Success prompt reached: " & bestMatchKey, "ProcessPromptSequence")
+                Call LogEvent("comm", "med", "Success prompt reached", "ProcessPromptSequence", bestMatchKey, "")
             End If
 
             ' TRACE: Log screen snapshot after key send
@@ -520,7 +554,7 @@ Sub ProcessPromptSequence(prompts)
                 clearElapsed = (Timer - clearStart) * 1000
                 If clearElapsed < 0 Then clearElapsed = clearElapsed + 86400000 ' Handle midnight rollover
                 If clearElapsed > POST_PROMPT_WAIT_MS Then ' Configurable prompt clear timeout
-                    Call LogWarn("Prompt '" & bestMatchKey & "' did not clear within " & POST_PROMPT_WAIT_MS & " ms.", "ProcessPromptSequence")
+                    Call LogEvent("min", "med", "Prompt did not clear within timeout", "ProcessPromptSequence", "'" & bestMatchKey & "' - " & POST_PROMPT_WAIT_MS & " ms", "clearElapsed=" & Int(clearElapsed) & "ms")
                     Exit Do
                 End If
             Loop
@@ -531,10 +565,21 @@ Sub ProcessPromptSequence(prompts)
             ' Check if we're back at the COMMAND prompt by examining MainPromptLine specifically
             ' This prevents false positives when "COMMAND" appears elsewhere on screen
             If InStr(1, mainPromptText, "COMMAND:", vbTextCompare) > 0 Then
-                Call LogInfo("Detected return to COMMAND prompt on MainPromptLine - line processing complete", "ProcessPromptSequence")
+                Call LogEvent("comm", "med", "Detected return to COMMAND prompt on MainPromptLine", "ProcessPromptSequence", "Line processing complete", "")
                 finished = True
             Else
-                Call WaitMs(250)
+                ' Track consecutive "no prompt" iterations to prevent infinite loops
+                g_NoPromptCount = g_NoPromptCount + 1
+                
+                If g_NoPromptCount > 20 Then ' Maximum 20 iterations of no prompt (5 seconds total)
+                    Call LogEvent("crit", "low", "Too many consecutive iterations with no prompt detected", "ProcessPromptSequence", "Possible infinite loop - aborting", "noPromptCount=" & g_NoPromptCount & " line=" & MainPromptLine & " text='" & mainPromptText & "'")
+                    Call SafeMsg("Automation appears stuck - too many iterations with no prompt detected." & vbCrLf & "Line " & MainPromptLine & ": '" & mainPromptText & "'" & vbCrLf & "Stopping automation.", True, "Infinite Loop Detection")
+                    g_ShouldAbort = True
+                    finished = True
+                Else
+                    Call LogEvent("min", "med", "No prompt found - waiting and retrying", "ProcessPromptSequence", "Attempt " & g_NoPromptCount & " of 20", "line=" & MainPromptLine & " text='" & mainPromptText & "'")
+                    Call WaitMs(250)
+                End If
             End If
         End If
     Loop
@@ -565,12 +610,12 @@ Function WaitForScreenTransition(expectedText, timeoutMs, description)
     waitStart = Timer
     found = False
     
-    Call LogTrace("Waiting for " & description & " - looking for: '" & expectedText & "'", "WaitForScreenTransition")
+    Call LogEvent("comm", "max", "Waiting for " & description, "WaitForScreenTransition", "Looking for: '" & expectedText & "'", "")
     
     Do
         If IsTextPresent(expectedText) Then
             found = True
-            Call LogTrace(description & " detected - found: '" & expectedText & "'", "WaitForScreenTransition")
+            Call LogEvent("comm", "max", description & " detected", "WaitForScreenTransition", "Found: '" & expectedText & "'", "")
             Exit Do
         End If
         
@@ -579,16 +624,16 @@ Function WaitForScreenTransition(expectedText, timeoutMs, description)
         If waitElapsed < 0 Then waitElapsed = waitElapsed + 86400000 ' Handle midnight rollover
         
         If waitElapsed > timeoutMs Then
-            Call LogWarn("Timeout waiting for " & description & " after " & timeoutMs & "ms. Expected: '" & expectedText & "'", "WaitForScreenTransition")
+            Call LogEvent("min", "med", "Timeout waiting for " & description, "WaitForScreenTransition", "After " & timeoutMs & "ms - Expected: '" & expectedText & "'", "")
             Exit Do
         End If
     Loop
     
     ' Log explicit result for clarity at point of return
     If found Then
-        Call LogTrace("Successfully found " & description & " within " & Int(waitElapsed) & "ms", "WaitForScreenTransition")
+        Call LogEvent("comm", "max", "Successfully found " & description, "WaitForScreenTransition", "Within " & Int(waitElapsed) & "ms", "")
     Else
-        Call LogTrace("Failed to find " & description & " (timeout after " & Int(waitElapsed) & "ms)", "WaitForScreenTransition")
+        Call LogEvent("comm", "max", "Failed to find " & description, "WaitForScreenTransition", "Timeout after " & Int(waitElapsed) & "ms", "")
     End If
     
     WaitForScreenTransition = found
@@ -662,7 +707,7 @@ End Function
 Function HasDefaultValueInPrompt(promptPattern, screenContent)
     HasDefaultValueInPrompt = False
     
-    Call LogTrace("Analyzing prompt for default values - Pattern: '" & promptPattern & "', Content: '" & screenContent & "'", "HasDefaultValueInPrompt")
+    Call LogEvent("comm", "max", "Analyzing prompt for default values", "HasDefaultValueInPrompt", "Pattern: '" & promptPattern & "'", "Content: '" & screenContent & "'")
     
     ' Use a more robust approach - look for any text followed by parentheses containing alphanumeric content
     ' This handles all prompt types without hardcoding specific patterns
@@ -677,41 +722,41 @@ Function HasDefaultValueInPrompt(promptPattern, screenContent)
     re.IgnoreCase = True
     re.Global = False
     
-    Call LogTrace("Using regex pattern: '" & re.Pattern & "'", "HasDefaultValueInPrompt")
+    Call LogEvent("comm", "max", "Using regex pattern", "HasDefaultValueInPrompt", "'" & re.Pattern & "'", "")
     
     If Err.Number = 0 Then
         Set matches = re.Execute(screenContent)
-        Call LogTrace("Regex execution completed. Match count: " & matches.Count, "HasDefaultValueInPrompt")
+        Call LogEvent("comm", "max", "Regex execution completed", "HasDefaultValueInPrompt", "Match count: " & matches.Count, "")
         
         If matches.Count > 0 Then
             Set match = matches(0)
-            Call LogTrace("First match found: '" & match.Value & "', SubMatches count: " & match.SubMatches.Count, "HasDefaultValueInPrompt")
+            Call LogEvent("comm", "max", "First match found", "HasDefaultValueInPrompt", "'" & match.Value & "'", "SubMatches count: " & match.SubMatches.Count)
             
             If match.SubMatches.Count > 0 Then
                 parenContent = Trim(match.SubMatches(0))
-                Call LogTrace("Extracted parentheses content: '" & parenContent & "'", "HasDefaultValueInPrompt")
+                Call LogEvent("comm", "max", "Extracted parentheses content", "HasDefaultValueInPrompt", "'" & parenContent & "'", "")
                 
                 ' If there's content in parentheses and it's not empty or just question marks
                 If Len(parenContent) > 0 And parenContent <> "?" And parenContent <> "" Then
                     HasDefaultValueInPrompt = True
-                    Call LogTrace("FOUND VALID DEFAULT VALUE: " & parenContent & " - will accept default", "HasDefaultValueInPrompt")
+                    Call LogEvent("comm", "max", "FOUND VALID DEFAULT VALUE: " & parenContent, "HasDefaultValueInPrompt", "Will accept default", "")
                 Else
-                    Call LogTrace("Invalid parentheses content (empty, '?' or whitespace only) - no default to accept", "HasDefaultValueInPrompt")
+                    Call LogEvent("comm", "max", "Invalid parentheses content", "HasDefaultValueInPrompt", "Empty, '?' or whitespace only - no default to accept", "")
                 End If
             Else
-                Call LogTrace("No submatches found in regex result", "HasDefaultValueInPrompt")
+                Call LogEvent("comm", "max", "No submatches found in regex result", "HasDefaultValueInPrompt", "", "")
             End If
         Else
-            Call LogTrace("No regex matches found in screen content", "HasDefaultValueInPrompt")
+            Call LogEvent("comm", "max", "No regex matches found in screen content", "HasDefaultValueInPrompt", "", "")
         End If
     Else
-        Call LogTrace("Regex execution error: " & Err.Description & " (" & Err.Number & ")", "HasDefaultValueInPrompt")
+        Call LogEvent("min", "med", "Regex execution error", "HasDefaultValueInPrompt", Err.Description & " (" & Err.Number & ")", "")
     End If
     
     If Err.Number <> 0 Then Err.Clear
     On Error GoTo 0
     
-    Call LogTrace("Final result: HasDefaultValueInPrompt = " & HasDefaultValueInPrompt, "HasDefaultValueInPrompt")
+    Call LogEvent("comm", "max", "Final result: HasDefaultValueInPrompt = " & HasDefaultValueInPrompt, "HasDefaultValueInPrompt", "", "")
 End Function
 
 ' Bootstrap defaults so logging works before config initialization
@@ -724,11 +769,11 @@ g_ShouldAbort = False
 ' LogResult adapter for the library
 Sub LogResult(logMsg)
     ' This adapter is for messages coming from the legacy CommonLib.
-    ' We log them as DEBUG, and errors are parsed and logged at the ERROR level.
+    ' Parse ERROR prefix and route to appropriate criticality level.
     If Left(UCase(Trim(logMsg)), 6) = "ERROR:" Then
-        Call Log("ERROR", "ADAPTER: " & logMsg, "CommonLib")
+        Call LogEvent("maj", "med", "ADAPTER: " & logMsg, "CommonLib", "", "")
     Else
-        Call Log("DEBUG", "ADAPTER: " & logMsg, "CommonLib")
+        Call LogEvent("comm", "high", "ADAPTER: " & logMsg, "CommonLib", "", "")
     End If
 End Sub
 
@@ -744,7 +789,7 @@ Sub RunMainProcess()
     g_AbortReason = ""
     Call InitializeObjects()
     If commonLibLoaded Then
-        Call LogInfo("CommonLib loaded successfully in PostFinalCharges.vbs", "RunMainProcess")
+        Call LogEvent("comm", "med", "CommonLib loaded successfully", "RunMainProcess", "In PostFinalCharges.vbs", "")
     End If
     If ConnectBlueZone() Then
         ProcessRONumbers()
@@ -774,7 +819,7 @@ Function IncludeFile(filePath)
     Set fsoInclude = CreateObject("Scripting.FileSystemObject")
 
     If Not fsoInclude.FileExists(filePath) Then
-        Call LogError("IncludeFile - File not found: " & filePath, "IncludeFile")
+        Call LogEvent("crit", "low", "IncludeFile - File not found", "IncludeFile", filePath, "")
         IncludeFile = False
         Exit Function
     End If
@@ -787,7 +832,7 @@ Function IncludeFile(filePath)
     ExecuteGlobal fileContent
 
     If Err.Number <> 0 Then
-        Call LogError("IncludeFile - Error executing file '" & filePath & "': " & Err.Description & " (" & Err.Number & ", " & Err.Source & ")", "IncludeFile")
+        Call LogEvent("crit", "med", "IncludeFile - Error executing file '" & filePath & "'", "IncludeFile", Err.Description, "Error " & Err.Number & ", " & Err.Source)
         Err.Clear
         IncludeFile = False
         Exit Function
@@ -800,6 +845,8 @@ End Function
 
 
 Function ResolvePath(targetPath, defaultPath, mustExist)
+    Call LogEvent("comm", "max", "ResolvePath starting", "ResolvePath", "Target: '" & targetPath & "'", "Default: '" & defaultPath & "', mustExist: " & mustExist)
+    
     Dim fsoLocal, basePath, candidate, hasDefault, requireExists
     Set fsoLocal = CreateObject("Scripting.FileSystemObject")
 
@@ -808,14 +855,19 @@ Function ResolvePath(targetPath, defaultPath, mustExist)
 
     If IsAbsolutePath(targetPath) Then
         candidate = targetPath
+        Call LogEvent("comm", "max", "Using absolute path", "ResolvePath", "Candidate: '" & candidate & "'", "")
     Else
         basePath = GetBaseScriptPath()
+        Call LogEvent("comm", "max", "Resolving relative path", "ResolvePath", "BasePath: '" & basePath & "'", "")
         If Len(basePath) > 0 Then
             On Error Resume Next
             candidate = fsoLocal.BuildPath(basePath, targetPath)
             If Err.Number <> 0 Then
+                Call LogEvent("min", "med", "BuildPath failed", "ResolvePath", "Error: " & Err.Description, "")
                 candidate = ""
                 Err.Clear
+            Else
+                Call LogEvent("comm", "max", "BuildPath succeeded", "ResolvePath", "Candidate: '" & candidate & "'", "")
             End If
             On Error GoTo 0
         End If
@@ -827,9 +879,12 @@ Function ResolvePath(targetPath, defaultPath, mustExist)
 
     If requireExists Then
         If Not PathExists(fsoLocal, candidate) Then
+            Call LogEvent("min", "med", "Required path does not exist", "ResolvePath", "Candidate: '" & candidate & "'", "")
             If hasDefault Then
+                Call LogEvent("comm", "high", "Using default path", "ResolvePath", "Default: '" & defaultPath & "'", "")
                 ResolvePath = defaultPath
             Else
+                Call LogEvent("comm", "high", "No default available, returning non-existent path", "ResolvePath", "Candidate: '" & candidate & "'", "")
                 ResolvePath = candidate
             End If
             Set fsoLocal = Nothing
@@ -907,19 +962,19 @@ Function GetIniSetting(section, key, defaultValue)
     result = defaultValue ' Start with the default value
     inSection = False
     configPath = ResolvePath("config.ini", "", False)
-    Call LogDebug("Reading INI: " & configPath, "GetIniSetting")
+    Call LogEvent("comm", "high", "Reading INI: " & configPath, "GetIniSetting", "", "")
 
     On Error Resume Next
     Set fso = CreateObject("Scripting.FileSystemObject")
     If Not fso.FileExists(configPath) Then
-        Call LogDebug("INI file not found at: " & configPath, "GetIniSetting")
+        Call LogEvent("comm", "high", "INI file not found at: " & configPath, "GetIniSetting", "", "")
         GetIniSetting = defaultValue
         Exit Function
     End If
     
     Set file = fso.OpenTextFile(configPath, 1)
     If Err.Number <> 0 Then
-        Call LogWarn("Could not open INI file: " & configPath, "GetIniSetting")
+        Call LogEvent("min", "low", "Could not open INI file: " & configPath, "GetIniSetting", "Check file permissions", "")
         GetIniSetting = defaultValue
         Exit Function
     End If
@@ -933,10 +988,10 @@ Function GetIniSetting(section, key, defaultValue)
             currentSection = LCase(Trim(Mid(line, 2, Len(line) - 2)))
             If currentSection = LCase(section) Then
                 inSection = True
-                Call LogDebug("Entered section [" & section & "]", "GetIniSetting")
+                Call LogEvent("comm", "high", "Entered section [" & section & "]", "GetIniSetting", "", "")
             ElseIf inSection Then
                 ' We have passed the relevant section, so we can stop.
-                Call LogDebug("Exited section [" & section & "]", "GetIniSetting")
+                Call LogEvent("comm", "max", "Exited section [" & section & "]", "GetIniSetting", "", "")
                 Exit Do
             End If
         ElseIf inSection And InStr(line, "=") > 0 And Left(line, 1) <> ";" Then
@@ -947,7 +1002,7 @@ Function GetIniSetting(section, key, defaultValue)
             currentValue = Trim(parts(1))
             If LCase(currentKey) = LCase(key) Then
                 result = currentValue
-                Call LogDebug("Found key '" & key & "' with value '" & result & "'", "GetIniSetting")
+                Call LogEvent("comm", "high", "Found key '" & key & "' with value '" & result & "'", "GetIniSetting", "", "")
                 Exit Do ' Found the key, no need to read further
             End If
         End If
@@ -998,12 +1053,12 @@ Sub InitializeObjects()
         mockPath = ResolvePath("MockBzhao.vbs", "", True)
         If IncludeFile(mockPath) Then
             Set bzhao = New MockBzhao
-            Call LogInfo("Using MockBzhao for testing", "InitializeObjects")
+            Call LogEvent("comm", "med", "Using MockBzhao for testing", "InitializeObjects", "", "")
             
             ' Setup initial test scenario
             bzhao.SetupTestScenario("basic_command_prompt")
         Else
-            Call LogError("Could not load MockBzhao.vbs for test mode", "InitializeObjects")
+            Call LogEvent("maj", "low", "Could not load MockBzhao.vbs for test mode", "InitializeObjects", "", "")
             g_IsTestMode = False
         End If
     End If
@@ -1011,7 +1066,7 @@ Sub InitializeObjects()
     If Not g_IsTestMode Then
         Set bzhao = CreateObject("BZWhll.WhllObj")
         If Err.Number <> 0 Then
-            Call LogError("Failed to create BZWhll.WhllObj: " & Err.Description, "InitializeObjects")
+            Call LogEvent("crit", "med", "Failed to create BZWhll.WhllObj", "InitializeObjects", Err.Description, "")
             Err.Clear
         End If
     End If
@@ -1033,17 +1088,28 @@ End Sub
 Sub InitializeConfig()
     ' Force g_BaseScriptPath to the known project root
     g_BaseScriptPath = "C:\Temp\Code\Scripts\VBScript\CDK\PostFinalCharges"
-    ' --- Initialize Log Level from INI file FIRST ---
-    Dim logLevelValue
-    logLevelValue = UCase(GetIniSetting("Settings", "LogLevel", "WARN"))
-    g_CurrentLogLevel = LOG_LEVEL_WARN ' Default
     
-    Select Case logLevelValue
-        Case "ERROR": g_CurrentLogLevel = LOG_LEVEL_ERROR
-        Case "WARN": g_CurrentLogLevel = LOG_LEVEL_WARN
-        Case "INFO": g_CurrentLogLevel = LOG_LEVEL_INFO
-        Case "DEBUG": g_CurrentLogLevel = LOG_LEVEL_DEBUG
-        Case "TRACE": g_CurrentLogLevel = LOG_LEVEL_TRACE
+    ' --- Initialize Logging Configuration from INI file ---
+    Dim criticalityValue, verbosityValue
+    criticalityValue = LCase(GetIniSetting("Settings", "LogCriticality", "comm"))
+    verbosityValue = LCase(GetIniSetting("Settings", "UserVerbosity", "med"))
+    
+    ' Set criticality threshold
+    Select Case criticalityValue
+        Case "crit": g_CurrentCriticality = CRIT_CRITICAL
+        Case "maj": g_CurrentCriticality = CRIT_MAJOR
+        Case "min": g_CurrentCriticality = CRIT_MINOR
+        Case "comm": g_CurrentCriticality = CRIT_COMMON
+        Case Else: g_CurrentCriticality = CRIT_COMMON
+    End Select
+    
+    ' Set verbosity threshold
+    Select Case verbosityValue
+        Case "low": g_CurrentVerbosity = VERB_LOW
+        Case "med": g_CurrentVerbosity = VERB_MEDIUM
+        Case "high": g_CurrentVerbosity = VERB_HIGH
+        Case "max": g_CurrentVerbosity = VERB_MAX
+        Case Else: g_CurrentVerbosity = VERB_MEDIUM
     End Select
 
     ' --- Now load other settings ---
@@ -1056,7 +1122,7 @@ Sub InitializeConfig()
     endSequenceNumberValue = GetIniSetting("Processing", "EndSequenceNumber", "")
 
     If startSequenceNumberValue = "" Or endSequenceNumberValue = "" Then
-        Call LogError("Critical config missing: 'StartSequenceNumber' and/or 'EndSequenceNumber' not found in config.ini. Aborting run.", "InitializeConfig")
+        Call LogEvent("crit", "low", "Critical config missing: 'StartSequenceNumber' and/or 'EndSequenceNumber' not found in config.ini", "InitializeConfig", "Script cannot continue without sequence range", "")
         g_ShouldAbort = True
         g_StartSequenceNumber = 1 ' Set loop to be non-executing
         g_EndSequenceNumber = 0
@@ -1071,8 +1137,7 @@ Sub InitializeConfig()
     g_LongWait = 2000
     g_SendRetryCount = 2
     g_DelayBetweenTextAndEnterMs = 2000
-    'POLL_INTERVAL_MS = 150
-    POST_PROMPT_WAIT_MS = 150
+    POST_PROMPT_WAIT_MS = Int(1000 * g_DebugDelayFactor)  ' Base 1000ms scaled by debug delay factor
     g_EnableDiagnosticLogging = False
     DIAGNOSTIC_LOG_PATH = ResolvePath("PostFinalCharges.screendump.log", LEGACY_DIAG_LOG_PATH, False)
 End Sub
@@ -1089,8 +1154,8 @@ End Sub
 ' This allows for dynamic changes without editing the config file.
 '-----------------------------------------------------------------------------------
 Sub DetermineDebugMode()
-    ' This function now only handles overrides via environment variables.
-    ' Default log level is set in InitializeConfig from the INI file.
+    ' This function handles environment variable overrides for dual-axis logging.
+    ' Default criticality and verbosity are set in InitializeConfig from INI file.
     
     DEBUG_LOGGING = False
     g_EnableDetailedLogging = False
@@ -1109,23 +1174,37 @@ Sub DetermineDebugMode()
     If envValue = "1" Or envValue = "true" Or envValue = "yes" Then
         DEBUG_LOGGING = True
         g_EnableDetailedLogging = True
-        g_CurrentLogLevel = LOG_LEVEL_TRACE ' Override to most verbose
+        g_CurrentCriticality = CRIT_COMMON ' Log all events
+        g_CurrentVerbosity = VERB_MAX ' Maximum detail
     End If
     
-    ' --- PFC_LOG_LEVEL override ---
-    ' Allows specific log level setting, overriding both INI and PFC_DEBUG.
-    Dim logLevelEnvValue
-    logLevelEnvValue = UCase(Trim(shell.Environment("PROCESS")("PFC_LOG_LEVEL")))
-    If Len(logLevelEnvValue) = 0 Then logLevelEnvValue = UCase(Trim(shell.Environment("USER")("PFC_LOG_LEVEL")))
-    If Len(logLevelEnvValue) = 0 Then logLevelEnvValue = UCase(Trim(shell.Environment("SYSTEM")("PFC_LOG_LEVEL")))
+    ' --- PFC_LOG_CRITICALITY override ---
+    Dim criticalityEnvValue
+    criticalityEnvValue = LCase(Trim(shell.Environment("PROCESS")("PFC_LOG_CRITICALITY")))
+    If Len(criticalityEnvValue) = 0 Then criticalityEnvValue = LCase(Trim(shell.Environment("USER")("PFC_LOG_CRITICALITY")))
+    If Len(criticalityEnvValue) = 0 Then criticalityEnvValue = LCase(Trim(shell.Environment("SYSTEM")("PFC_LOG_CRITICALITY")))
     
-    If Len(logLevelEnvValue) > 0 Then
-        Select Case logLevelEnvValue
-            Case "ERROR": g_CurrentLogLevel = LOG_LEVEL_ERROR
-            Case "WARN": g_CurrentLogLevel = LOG_LEVEL_WARN
-            Case "INFO": g_CurrentLogLevel = LOG_LEVEL_INFO
-            Case "DEBUG": g_CurrentLogLevel = LOG_LEVEL_DEBUG
-            Case "TRACE": g_CurrentLogLevel = LOG_LEVEL_TRACE
+    If Len(criticalityEnvValue) > 0 Then
+        Select Case criticalityEnvValue
+            Case "crit": g_CurrentCriticality = CRIT_CRITICAL
+            Case "maj": g_CurrentCriticality = CRIT_MAJOR
+            Case "min": g_CurrentCriticality = CRIT_MINOR
+            Case "comm": g_CurrentCriticality = CRIT_COMMON
+        End Select
+    End If
+    
+    ' --- PFC_LOG_VERBOSITY override ---
+    Dim verbosityEnvValue
+    verbosityEnvValue = LCase(Trim(shell.Environment("PROCESS")("PFC_LOG_VERBOSITY")))
+    If Len(verbosityEnvValue) = 0 Then verbosityEnvValue = LCase(Trim(shell.Environment("USER")("PFC_LOG_VERBOSITY")))
+    If Len(verbosityEnvValue) = 0 Then verbosityEnvValue = LCase(Trim(shell.Environment("SYSTEM")("PFC_LOG_VERBOSITY")))
+    
+    If Len(verbosityEnvValue) > 0 Then
+        Select Case verbosityEnvValue
+            Case "low": g_CurrentVerbosity = VERB_LOW
+            Case "med": g_CurrentVerbosity = VERB_MEDIUM
+            Case "high": g_CurrentVerbosity = VERB_HIGH
+            Case "max": g_CurrentVerbosity = VERB_MAX
         End Select
     End If
 
@@ -1152,18 +1231,18 @@ End Sub
 Function ConnectBlueZone()
     On Error Resume Next
     If bzhao Is Nothing Then
-        Call LogError("BlueZone object is not available (CreateObject failed).", "ConnectBlueZone")
+        Call LogEvent("crit", "low", "BlueZone object is not available", "ConnectBlueZone", "CreateObject failed", "")
         ConnectBlueZone = False
         Exit Function
     End If
     
     bzhao.Connect ""
     If Err.Number <> 0 Then
-        Call LogError("BlueZone connection failed: " & Err.Description, "ConnectBlueZone")
+        Call LogEvent("crit", "med", "BlueZone connection failed", "ConnectBlueZone", Err.Description, "")
         Err.Clear
         ConnectBlueZone = False
     Else
-        Call LogInfo("Connected to BlueZone.", "ConnectBlueZone")
+        Call LogEvent("comm", "med", "Connected to BlueZone", "ConnectBlueZone", "", "")
         ConnectBlueZone = True
     End If
     On Error GoTo 0
@@ -1196,13 +1275,13 @@ Sub ProcessRONumbers()
         roNumber = 900
         Call LogROHeader(roNumber)
         sequenceLabel = "Sequence " & roNumber
-        Call LogInfo(sequenceLabel & " - Processing", "ProcessRONumbers")
+        Call LogEvent("comm", "low", sequenceLabel & " - Processing", "ProcessRONumbers", "", "")
         
         lastRoResult = ""
         Call Main(roNumber)
         
-        Call LogInfo(sequenceLabel & " - Result: " & lastRoResult, "ProcessRONumbers")
-        Call LogInfo("Test mode: Processed single RO " & roNumber, "ProcessRONumbers")
+        Call LogEvent("comm", "med", sequenceLabel & " - Result: " & lastRoResult, "ProcessRONumbers", "", "")
+        Call LogEvent("comm", "med", "Test mode: Processed single RO " & roNumber, "ProcessRONumbers", "", "")
         Exit Sub
     End If
 
@@ -1211,7 +1290,7 @@ Sub ProcessRONumbers()
         'WaitMs(2000)
         Call LogROHeader(roNumber)
         sequenceLabel = "Sequence " & roNumber
-        Call LogInfo(sequenceLabel & " - Processing", "ProcessRONumbers")
+        Call LogEvent("comm", "low", sequenceLabel & " - Processing", "ProcessRONumbers", "", "")
 
         ' Start performance timing for this RO
         Dim roStartTime
@@ -1222,7 +1301,7 @@ Sub ProcessRONumbers()
 
         ' Check for end-of-sequence error
         If IsTextPresent("SEQUENCE NUMBER " & roNumber & " DOES NOT EXIST") Then
-            Call LogError("End of sequence detected: SEQUENCE NUMBER " & roNumber & " DOES NOT EXIST. Stopping script.", "ProcessRONumbers")
+            Call LogEvent("maj", "low", "End of sequence detected", "ProcessRONumbers", "SEQUENCE NUMBER " & roNumber & " DOES NOT EXIST", "Stopping script")
             Exit Sub
         End If
 
@@ -1231,7 +1310,7 @@ Sub ProcessRONumbers()
             Dim roEndTime, roDuration
             roEndTime = Now
             roDuration = DateDiff("s", roStartTime, roEndTime)
-            Call LogInfo(sequenceLabel & " - E2E Duration: " & roDuration & " seconds", "ProcessRONumbers")
+            Call LogEvent("comm", "med", sequenceLabel & " - E2E Duration: " & roDuration & " seconds", "ProcessRONumbers", "", "")
         End If
 
         If Err.Number <> 0 Then
@@ -1248,7 +1327,7 @@ Sub ProcessRONumbers()
             If Len(Trim(CStr(displayId))) > 0 And CStr(displayId) <> CStr(roNumber) Then
                 errorLabel = errorLabel & " (RO " & displayId & ")"
             End If
-            Call LogError(errorLabel & " - " & lastRoResult, "ProcessRONumbers")
+            Call LogEvent("maj", "low", errorLabel & " - " & lastRoResult, "ProcessRONumbers", "", "")
             Err.Clear
         End If
 
@@ -1266,19 +1345,19 @@ Sub ProcessRONumbers()
             finalMessage = finalMessage & " (RO " & finalDisplay & ")"
         End If
         finalMessage = finalMessage & " - Result: " & lastRoResult
-        Call LogCore(finalMessage, "ProcessRONumbers")
+        Call LogEvent("comm", "low", finalMessage, "ProcessRONumbers", "", "")
         ' Always write the scraped RO status to the core log for troubleshooting
         Dim statusForLog
         statusForLog = Trim(CStr(g_LastScrapedStatus))
         If Len(statusForLog) = 0 Then statusForLog = "(none)"
-        Call LogCore("RO STATUS FOUND: " & statusForLog, "ProcessRONumbers")
+        Call LogEvent("comm", "low", "RO STATUS FOUND: " & statusForLog, "ProcessRONumbers", "", "")
 
         If (lineCount Mod 10) = 0 Then
-            Call LogInfo("Processed " & lineCount & " ROs...", "ProcessRONumbers")
+            Call LogEvent("comm", "med", "Processed " & lineCount & " ROs...", "ProcessRONumbers", "", "")
         End If
 
         If g_ShouldAbort Then
-            Call LogError("Aborting sequence processing. Reason: " & g_AbortReason, "ProcessRONumbers")
+            Call LogEvent("crit", "low", "Aborting sequence processing", "ProcessRONumbers", "Reason: " & g_AbortReason, "")
             Exit Sub
         End If
     Next
@@ -1320,7 +1399,7 @@ Sub LogROHeader(ro)
         If Err.Number <> 0 Then
             Err.Clear
             ' If both attempts fail, exit the function gracefully
-            Call LogError("Failed to open log file: " & LOG_FILE_PATH, "LogROHeader")
+            Call LogEvent("maj", "low", "Failed to open log file", "LogROHeader", LOG_FILE_PATH, "")
             Exit Sub
         End If
     End If
@@ -1356,6 +1435,12 @@ Sub Main(roNumber)
 
     send_enter_key = True
     Call WaitForPrompt("COMMAND:", roNumber, send_enter_key, 10000, "")
+    
+    ' Wait for RO detail screen to load before scraping RO number
+    If Not WaitForScreenTransition("RO STATUS:", 5000, "RO detail screen") Then
+        Call LogEvent("maj", "low", "RO detail screen did not load within timeout, attempting RO extraction anyway", "Main", "", "")
+    End If
+    
     ' Scrape the actual RO number from the screen (top of screen shows 'RO:  123456')
     Dim actualRO
     actualRO = GetROFromScreen()
@@ -1363,34 +1448,35 @@ Sub Main(roNumber)
         currentRODisplay = actualRO
     Else
         currentRODisplay = roNumber
+        Call LogEvent("maj", "low", "RO not found on screen, using sequence: " & roNumber, "Main", "", "")
     End If
     
     If Len(Trim(CStr(currentRODisplay))) > 0 Then
-        Call LogInfo("Sent RO to BlueZone", "Main")
+        Call LogEvent("comm", "med", "Sent RO to BlueZone", "Main", "", "")
     Else
         ' No scraped RO available; log against the sequence number and note unknown RO
-        Call LogInfo(roNumber & " - Sent RO to BlueZone - RO: (unknown) - will use sequence number for checks", "Main")
+        Call LogEvent("comm", "med", roNumber & " - Sent RO to BlueZone", "Main", "RO: (unknown) - will use sequence number for checks", "")
     End If
     
     ' Check for "closed" response
     If IsTextPresent("Repair Order " & currentRODisplay & " is closed.") Then
-        Call LogInfo("Repair Order Closed", "Main")
+        Call LogEvent("comm", "med", "Repair Order Closed", "Main", "", "")
         lastRoResult = "Closed"
         Exit Sub
     End If
     
     ' Check for "NOT ON FILE" response
     If IsTextPresent("NOT ON FILE") Then
-        Call LogInfo("Not On File", "Main")
+        Call LogEvent("comm", "med", "Not On File", "Main", "", "")
         lastRoResult = "Not On File"
         Exit Sub
     End If
     
     ' Otherwise, assume repair order is open — prefer the scraped RO for logging
     If Len(Trim(CStr(currentRODisplay))) > 0 Then
-        Call LogInfo("Repair Order Open", "Main")
+        Call LogEvent("comm", "med", "Repair Order Open", "Main", "", "")
     Else
-        Call LogInfo(roNumber & " - Repair Order Open", "Main")
+        Call LogEvent("comm", "med", roNumber & " - Repair Order Open", "Main", "", "")
     End If
     
     ' Allow time for RO details to fully load before checking status
@@ -1409,26 +1495,26 @@ Sub Main(roNumber)
     Else
         Dim currentStatus
         currentStatus = Trim(CStr(g_LastScrapedStatus))
-        Call LogInfo("RO STATUS: " & currentStatus & " (Ready for processing)", "Main")
+        Call LogEvent("comm", "med", "RO STATUS: " & currentStatus & " (Ready for processing)", "Main", "", "")
     End If
     
     ' Snapshot the scraped status now to avoid timing races, then detect triggers.
     Dim trigger, roStatusForDecision
     roStatusForDecision = Trim(CStr(g_LastScrapedStatus))
-    Call LogDebug("Pre-trigger check - scraped status: '" & roStatusForDecision & "'", "Main")
+    Call LogEvent("comm", "high", "Pre-trigger check", "Main", "Scraped status: '" & roStatusForDecision & "'", "")
     trigger = FindTrigger()
     If trigger <> "" Then
-        Call LogInfo("Trigger found: " & trigger & " - Proceeding to Closeout", "Main")
+        Call LogEvent("comm", "med", "Trigger found: " & trigger, "Main", "Proceeding to Closeout", "")
         Call Closeout_Ro(roStatusForDecision)
         ' Closeout_Ro should set lastRoResult appropriately
     Else
         ' If no trigger text found, but the scraped RO status is valid for closeout,
         ' proceed to closeout anyway (status supersedes trigger text).
         If IsValidCloseoutStatus(roStatusForDecision) Then
-            Call LogInfo("No closeout trigger text found, but RO STATUS is " & roStatusForDecision & " — proceeding to Closeout", "Main")
+            Call LogEvent("comm", "med", "No closeout trigger text found", "Main", "RO STATUS is " & roStatusForDecision & " — proceeding to Closeout", "")
             Call Closeout_Ro(roStatusForDecision)
         Else
-            Call LogInfo("No Closeout Text Found - Skipping Closeout", "Main")
+            Call LogEvent("comm", "med", "No Closeout Text Found - Skipping Closeout", "Main", "", "")
             Call FastText("E")
             Call FastKey("<NumpadEnter>")
             ' Wait for the command prompt to return to ensure we are in a known state
@@ -1458,109 +1544,91 @@ End Sub
 ' **message** (String): The main content of the log message.
 ' **source** (String): The name of the procedure where the log entry originated.
 '-----------------------------------------------------------------------------------
-' **FUNCTION NAME:** Log
-' **DATE CREATED:** 2025-11-19
+' **FUNCTION NAME:** LogEvent
+' **DATE CREATED:** 2026-01-02
 ' **AUTHOR:** GitHub Copilot
 ' 
 ' **FUNCTIONALITY:**
-' Unified logging interface with level-based filtering.
-' Automatically filters messages based on current log level.
+' New dual-axis logging system with criticality and verbosity dimensions.
+' Criticality filters event importance, verbosity controls detail expansion.
 ' 
 ' **PARAMETERS:**
-' level (String): Log level - "CORE", "ERROR", "WARN", "INFO", "DEBUG", "TRACE"
-' message (String): The message to log
-' source (String): The source component/function
+' criticality (String): "crit", "maj", "min", "comm" - event importance
+' verbosity (String): "low", "med", "high", "max" - detail level  
+' headline (String): Main message (always shown)
+' stage (String): Context/stage info (always shown in [source] bracket)
+' reason (String): Specific reason/cause (shown at high+ verbosity)
+' technical (String): Technical details (shown at max verbosity only)
 '-----------------------------------------------------------------------------------
-Sub Log(level, message, source)
-    Dim levelValue
+Sub LogEvent(criticality, verbosity, headline, stage, reason, technical)
+    Dim critValue, verbValue
     
-    ' Convert level string to numeric value
-    Select Case UCase(level)
-        Case "CORE": levelValue = LOG_LEVEL_CORE
-        Case "ERROR": levelValue = LOG_LEVEL_ERROR
-        Case "WARN": levelValue = LOG_LEVEL_WARN
-        Case "INFO": levelValue = LOG_LEVEL_INFO
-        Case "DEBUG": levelValue = LOG_LEVEL_DEBUG
-        Case "TRACE": levelValue = LOG_LEVEL_TRACE
-        Case Else: levelValue = LOG_LEVEL_INFO ' Default to INFO for unknown levels
+    ' Convert criticality to numeric value
+    Select Case LCase(Trim(criticality))
+        Case "crit": critValue = CRIT_CRITICAL
+        Case "maj": critValue = CRIT_MAJOR
+        Case "min": critValue = CRIT_MINOR
+        Case "comm": critValue = CRIT_COMMON
+        Case Else: critValue = CRIT_COMMON
     End Select
     
-    ' Only log if the message's level is less than or equal to the current configured level
-    If levelValue <= g_CurrentLogLevel Then
-        Call WriteLogEntry(level, message, source)
+    ' Convert verbosity to numeric value  
+    Select Case LCase(Trim(verbosity))
+        Case "low": verbValue = VERB_LOW
+        Case "med": verbValue = VERB_MEDIUM
+        Case "high": verbValue = VERB_HIGH
+        Case "max": verbValue = VERB_MAX
+        Case Else: verbValue = VERB_MEDIUM
+    End Select
+    
+    ' Check if message should be logged (both thresholds must be met)
+    If critValue >= g_CurrentCriticality And verbValue <= g_CurrentVerbosity Then
+        Call WriteLogEntry(criticality, verbosity, headline, stage, reason, technical)
     End If
 End Sub
 
 '-----------------------------------------------------------------------------------
-' **FUNCTION NAME:** LogError
-' **DATE CREATED:** 2025-11-19
-' **AUTHOR:** GitHub Copilot
-' 
-' **FUNCTIONALITY:**
-' Convenience function for ERROR level logging.
+' **CONVENIENCE FUNCTIONS:** New dual-axis logging shortcuts
 '-----------------------------------------------------------------------------------
-Sub LogError(message, source)
-    Call Log("ERROR", message, source)
+Sub LogCritical(headline, stage, reason, technical)
+    Call LogEvent("crit", "low", headline, stage, reason, technical)
 End Sub
 
-'-----------------------------------------------------------------------------------
-' **FUNCTION NAME:** LogWarn
-' **DATE CREATED:** 2025-11-19
-' **AUTHOR:** GitHub Copilot
-' 
-' **FUNCTIONALITY:**
-' Convenience function for WARN level logging.
-'-----------------------------------------------------------------------------------
-Sub LogWarn(message, source)
-    Call Log("WARN", message, source)
+Sub LogMajor(headline, stage, reason, technical)
+    Call LogEvent("maj", "low", headline, stage, reason, technical)
 End Sub
 
-'-----------------------------------------------------------------------------------
-' **FUNCTION NAME:** LogInfo
-' **DATE CREATED:** 2025-11-19
-' **AUTHOR:** GitHub Copilot
-' 
-' **FUNCTIONALITY:**
-' Convenience function for INFO level logging.
-'-----------------------------------------------------------------------------------
-Sub LogInfo(message, source)
-    Call Log("INFO", message, source)
+Sub LogMinor(headline, stage, reason, technical)
+    Call LogEvent("min", "low", headline, stage, reason, technical)
 End Sub
 
-'-----------------------------------------------------------------------------------
-' **FUNCTION NAME:** LogDebug
-' **DATE CREATED:** 2025-11-19
-' **AUTHOR:** GitHub Copilot
-' 
-' **FUNCTIONALITY:**
-' Convenience function for DEBUG level logging.
-'-----------------------------------------------------------------------------------
-Sub LogDebug(message, source)
-    Call Log("DEBUG", message, source)
+Sub LogCommon(headline, stage, reason, technical)
+    Call LogEvent("comm", "low", headline, stage, reason, technical)
 End Sub
 
-'-----------------------------------------------------------------------------------
-' **FUNCTION NAME:** LogTrace
-' **DATE CREATED:** 2025-11-19
-' **AUTHOR:** GitHub Copilot
-' 
-' **FUNCTIONALITY:**
-' Convenience function for TRACE level logging.
-'-----------------------------------------------------------------------------------
-Sub LogTrace(message, source)
-    Call Log("TRACE", message, source)
-End Sub
-
-'-----------------------------------------------------------------------------------
-' **FUNCTION NAME:** LogCore
-' **DATE CREATED:** 2025-11-28
-' **AUTHOR:** Gemini
-' 
-' **FUNCTIONALITY:**
-' Logs essential messages by using the CORE log level, which is always output.
-'-----------------------------------------------------------------------------------
+' Backward compatibility adapters - map old calls to new system
 Sub LogCore(message, source)
-    Call Log("CORE", message, source)
+    Call LogEvent("crit", "low", message, source, "", "")
+End Sub
+
+Sub LogError(message, source)
+    Call LogEvent("maj", "low", message, source, "", "")
+End Sub
+
+Sub LogWarn(message, source)
+    Call LogEvent("min", "low", message, source, "", "")
+End Sub
+
+Sub LogInfo(message, source)
+    Call LogEvent("comm", "low", message, source, "", "")
+End Sub
+
+Sub LogDebug(message, source)
+    Call LogEvent("comm", "high", message, source, "", "")
+End Sub
+
+Sub LogTrace(message, source)
+    Call LogEvent("comm", "max", message, source, "", "")
 End Sub
 
 '-----------------------------------------------------------------------------------
@@ -1573,7 +1641,16 @@ End Sub
 ' Kept for backward compatibility.
 '-----------------------------------------------------------------------------------
 Sub LogResultWithSource(level, message, source)
-    Call Log(level, message, source)
+    ' Legacy adapter - map old level to new criticality/verbosity
+    Dim criticality
+    Select Case level
+        Case 0, 1: criticality = "crit"  ' LOG_LEVEL_CORE, LOG_LEVEL_ERROR
+        Case 2: criticality = "min"      ' LOG_LEVEL_WARN
+        Case 3: criticality = "comm"     ' LOG_LEVEL_INFO
+        Case 4, 5: criticality = "comm"  ' LOG_LEVEL_DEBUG, LOG_LEVEL_TRACE
+        Case Else: criticality = "comm"
+    End Select
+    Call LogEvent(criticality, "med", message, source, "", "")
 End Sub
 
 '-----------------------------------------------------------------------------------
@@ -1586,13 +1663,43 @@ End Sub
 ' Kept for backward compatibility.
 '-----------------------------------------------------------------------------------
 Sub LogDetailed(level, message, source)
-    Call Log(level, message, source)
+    ' Legacy adapter - map old level to new criticality/verbosity
+    Dim criticality
+    Select Case level
+        Case 0, 1: criticality = "crit"  ' LOG_LEVEL_CORE, LOG_LEVEL_ERROR
+        Case 2: criticality = "min"      ' LOG_LEVEL_WARN
+        Case 3: criticality = "comm"     ' LOG_LEVEL_INFO
+        Case 4, 5: criticality = "comm"  ' LOG_LEVEL_DEBUG, LOG_LEVEL_TRACE
+        Case Else: criticality = "comm"
+    End Select
+    Call LogEvent(criticality, "high", message, source, "", "")
 End Sub
 
-Sub WriteLogEntry(level, message, source)
-    Dim logFSO, logFile, logLine, logFolder
-
-    logLine = Now & " [" & level & "] [" & source & "] " & message
+Sub WriteLogEntry(criticality, verbosity, headline, stage, reason, technical)
+    Dim logFSO, logFile, logLine, logFolder, message, source
+    
+    ' Build message based on verbosity level
+    message = headline
+    ' Note: Stage is already shown in [source] field, no need to duplicate it in message
+    If Len(Trim(reason)) > 0 And (verbosity = "high" Or verbosity = "max") Then
+        message = message & " - Reason: " & reason
+    End If
+    If Len(Trim(technical)) > 0 And verbosity = "max" Then
+        message = message & " | Tech: " & technical
+    End If
+    
+    ' Use stage as source, truncate to 16 chars for compact display
+    If Len(Trim(stage)) > 0 Then
+        source = Left(Trim(stage) & "                ", 16) ' Pad to 16 chars
+    Else
+        source = "General         "
+    End If
+    
+    ' Build compact log line: HH:MM:SS[crit/verb][source]Message
+    Dim timeStamp, currentTime
+    currentTime = Now
+    timeStamp = Right("0" & Hour(currentTime), 2) & ":" & Right("0" & Minute(currentTime), 2) & ":" & Right("0" & Second(currentTime), 2)
+    logLine = timeStamp & "[" & criticality & "/" & verbosity & "][" & source & "]" & message
 
     On Error Resume Next
     Set logFSO = CreateObject("Scripting.FileSystemObject")
@@ -1601,7 +1708,6 @@ Sub WriteLogEntry(level, message, source)
         Exit Sub
     End If
 
-    'Dim logFolder
     logFolder = logFSO.GetParentFolderName(LOG_FILE_PATH)
     If Len(logFolder) > 0 Then
         Call EnsureFolderExists(logFSO, logFolder)
@@ -1638,6 +1744,241 @@ Sub WriteLogEntry(level, message, source)
     logFile.Close
     Set logFile = Nothing
     Set logFSO = Nothing
+    On Error GoTo 0
+End Sub
+
+'-----------------------------------------------------------------------------------
+' **PROCEDURE NAME:** TrimLogToLimit
+' **DATE CREATED:** 2026-01-03
+' **AUTHOR:** GitHub Copilot
+' 
+' **FUNCTIONALITY:**
+' Uses ratio-based calculation to trim log file to configured size limit.
+' Only trims at session boundaries to maintain log integrity.
+'-----------------------------------------------------------------------------------
+Sub TrimLogToLimit(logFSO)
+    ' Realistic character-to-byte ratio for log files with timestamps, brackets, and mixed content
+    ' Based on typical log file analysis: ~750 chars/KB accounts for structured log format overhead
+    Const CHARS_PER_KB = 750  ' Conservative estimate for log file density
+    Dim rotationSize, currentSize, excessKB, charsToRemove
+    
+    ' Exit if log file doesn't exist yet
+    If Not logFSO.FileExists(LOG_FILE_PATH) Then Exit Sub
+    
+    ' Get rotation size from config (default to 1MB if not set)
+    rotationSize = GetIniSetting("Settings", "LogRotationSize", "1048576")
+    If Not IsNumeric(rotationSize) Then rotationSize = 1048576
+    rotationSize = CLng(rotationSize)
+    
+    ' Get current file size
+    Dim logFileObj
+    Set logFileObj = logFSO.GetFile(LOG_FILE_PATH)
+    currentSize = logFileObj.Size
+    Set logFileObj = Nothing
+    
+    ' Check if trimming is needed
+    If currentSize <= rotationSize Then Exit Sub
+    
+    ' Calculate excess and characters to remove
+    excessKB = (currentSize - rotationSize) \ 1024
+    charsToRemove = excessKB * CHARS_PER_KB
+    
+    ' Add 20% buffer to ensure we get under the limit (keep result as integer)
+    charsToRemove = Int(charsToRemove * 1.2)
+    
+    ' Trim the log file
+    Call PerformLogTrim(logFSO, charsToRemove)
+End Sub
+
+'-----------------------------------------------------------------------------------
+' **PROCEDURE NAME:** PerformLogTrim
+' **DATE CREATED:** 2026-01-03
+' **AUTHOR:** GitHub Copilot
+' 
+' **FUNCTIONALITY:**
+' Performs the actual log trimming by reading content and rewriting without head portion.
+'-----------------------------------------------------------------------------------
+Sub PerformLogTrim(logFSO, charsToRemove)
+    Dim logContent, trimPoint, newContent, tempLogPath
+    Dim logFile
+    
+    On Error Resume Next
+    
+    ' Read current log content
+    Set logFile = logFSO.OpenTextFile(LOG_FILE_PATH, 1) ' ForReading
+    If Err.Number <> 0 Then
+        Err.Clear
+        On Error GoTo 0
+        Exit Sub ' Cannot read original log file
+    End If
+    
+    logContent = logFile.ReadAll()
+    logFile.Close
+    Set logFile = Nothing
+    If Err.Number <> 0 Then
+        Err.Clear
+        On Error GoTo 0
+        Exit Sub ' Error reading file content
+    End If
+    
+    ' Find trim point at a line boundary
+    trimPoint = charsToRemove
+    If trimPoint >= Len(logContent) Then
+        ' If we'd remove everything, keep last 25% of file
+        trimPoint = Int(Len(logContent) * 0.75)
+    End If
+    
+    ' Find next newline after trim point to preserve line boundaries
+    Do While trimPoint < Len(logContent) And Mid(logContent, trimPoint, 1) <> vbLf
+        trimPoint = trimPoint + 1
+    Loop
+    
+    ' Look for next session boundary if possible (90% threshold ensures we find boundaries in trim area)
+    Dim sessionPos
+    sessionPos = InStr(trimPoint, logContent, "=== SESSION:")
+    If sessionPos > 0 And sessionPos < Int(Len(logContent) * 0.9) Then
+        trimPoint = sessionPos - 1
+        ' Find start of that line
+        Do While trimPoint > 1 And Mid(logContent, trimPoint - 1, 1) <> vbLf
+            trimPoint = trimPoint - 1
+        Loop
+    End If
+    
+    ' Get content to keep
+    newContent = Mid(logContent, trimPoint + 1)
+    
+    ' Write trimmed content atomically using temp file
+    tempLogPath = LOG_FILE_PATH & ".tmp"
+    Set logFile = logFSO.CreateTextFile(tempLogPath, True)
+    If Err.Number <> 0 Then
+        Err.Clear
+        On Error GoTo 0
+        Exit Sub ' Cannot create temp file
+    End If
+    
+    logFile.Write newContent
+    If Err.Number <> 0 Then
+        logFile.Close
+        Set logFile = Nothing
+        ' Clean up temp file on write error
+        If logFSO.FileExists(tempLogPath) Then logFSO.DeleteFile tempLogPath
+        Err.Clear
+        On Error GoTo 0
+        Exit Sub
+    End If
+    
+    logFile.Close
+    Set logFile = Nothing
+    If Err.Number <> 0 Then
+        ' Clean up temp file on close error
+        If logFSO.FileExists(tempLogPath) Then logFSO.DeleteFile tempLogPath
+        Err.Clear
+        On Error GoTo 0
+        Exit Sub
+    End If
+    
+    ' Replace original with trimmed version
+    If logFSO.FileExists(LOG_FILE_PATH) Then
+        logFSO.DeleteFile LOG_FILE_PATH
+        If Err.Number <> 0 Then
+            ' Failed to delete original; do not proceed with move
+            Err.Clear
+            If logFSO.FileExists(tempLogPath) Then
+                logFSO.DeleteFile tempLogPath
+            End If
+            On Error GoTo 0
+            Exit Sub
+        End If
+    End If
+
+    logFSO.MoveFile tempLogPath, LOG_FILE_PATH
+    If Err.Number <> 0 Then
+        ' Move failed; attempt to remove orphaned temp file
+        Err.Clear
+        If logFSO.FileExists(tempLogPath) Then
+            logFSO.DeleteFile tempLogPath
+        End If
+    End If
+    
+    On Error GoTo 0
+    ' Important: Don't reset session flag after trimming
+    ' The trimmed content may already contain today's session header
+End Sub
+
+Sub WriteSessionHeader()
+    If g_SessionDateLogged Then Exit Sub
+    
+    Dim logFSO, logFile, sessionLine, logFolder, currentDate
+    
+    On Error Resume Next
+    Set logFSO = CreateObject("Scripting.FileSystemObject")
+    If Err.Number <> 0 Then
+        Err.Clear
+        Exit Sub
+    End If
+    
+    ' Check if log trimming is needed at start of new session
+    Call TrimLogToLimit(logFSO)
+    If Err.Number <> 0 Then
+        Err.Clear
+        ' Continue even if trimming fails
+    End If
+    
+    currentDate = Now
+    sessionLine = "=== SESSION: " & Year(currentDate) & "-" & Right("0" & Month(currentDate), 2) & "-" & Right("0" & Day(currentDate), 2) & " ==="
+
+    ' Check if today's session header already exists in the log
+    If logFSO.FileExists(LOG_FILE_PATH) Then
+        Dim existingContent, checkFile
+        Set checkFile = logFSO.OpenTextFile(LOG_FILE_PATH, 1)
+        If Err.Number = 0 Then
+            existingContent = checkFile.ReadAll
+            If Err.Number = 0 Then
+                checkFile.Close
+                Set checkFile = Nothing
+                ' If today's session header already exists, mark as logged and exit
+                If InStr(existingContent, sessionLine) > 0 Then
+                    g_SessionDateLogged = True
+                    Set logFSO = Nothing
+                    On Error GoTo 0
+                    Exit Sub
+                End If
+            Else
+                ' ReadAll failed, clean up and continue
+                checkFile.Close
+                Set checkFile = Nothing
+                Err.Clear
+            End If
+        Else
+            ' OpenTextFile failed, clear error and continue
+            Err.Clear
+        End If
+    End If
+
+    logFolder = logFSO.GetParentFolderName(LOG_FILE_PATH)
+    If Len(logFolder) > 0 Then
+        Call EnsureFolderExists(logFSO, logFolder)
+        If Err.Number <> 0 Then
+            Err.Clear
+            Exit Sub
+        End If
+    End If
+
+    Set logFile = logFSO.OpenTextFile(LOG_FILE_PATH, 8, True)
+    If Err.Number <> 0 Then
+        Err.Clear
+        Set logFile = Nothing
+        Set logFSO = Nothing
+        On Error GoTo 0
+        Exit Sub
+    End If
+
+    logFile.WriteLine sessionLine
+    logFile.Close
+    Set logFile = Nothing
+    Set logFSO = Nothing
+    ' Only set flag after successfully writing the header
+    g_SessionDateLogged = True
     On Error GoTo 0
 End Sub
 
@@ -1681,9 +2022,9 @@ End Sub
 Sub SafeMsg(text, isCritical, title)
     If Len(Trim(CStr(title))) = 0 Then title = ""
     If isCritical Then
-        Call LogError(text, "SafeMsg")
+        Call LogEvent("maj", "low", text, "SafeMsg", "", "")
     Else
-        Call LogInfo(text, "SafeMsg")
+        Call LogEvent("comm", "med", text, "SafeMsg", "", "")
     End If
 
     ' Try to show a MsgBox only if MsgBox exists in this host (wrap to avoid errors)
@@ -1725,7 +2066,7 @@ End Sub
 '-----------------------------------------------------------------------------------
 Function GetROFromScreen()
     If bzhao Is Nothing Then
-        Call LogError("bzhao object is not available", "GetROFromScreen")
+        Call LogEvent("maj", "low", "bzhao object is not available", "GetROFromScreen", "", "")
         GetROFromScreen = ""
         Exit Function
     End If
@@ -1735,7 +2076,7 @@ Function GetROFromScreen()
     On Error Resume Next
     bzhao.ReadScreen screenContentBuffer, screenLength, 1, 1
     If Err.Number <> 0 Then
-        Call LogError("GetROFromScreen ReadScreen failed: " & Err.Description, "GetROFromScreen")
+        Call LogEvent("maj", "med", "GetROFromScreen ReadScreen failed", "GetROFromScreen", Err.Description, "")
         Err.Clear
         GetROFromScreen = ""
         On Error GoTo 0
@@ -1753,6 +2094,7 @@ Function GetROFromScreen()
         GetROFromScreen = matches(0).SubMatches(0)
     Else
         GetROFromScreen = ""
+        Call LogEvent("crit", "low", "RO not found on screen", "GetROFromScreen", "", "")
     End If
 End Function
 
@@ -1783,7 +2125,7 @@ Function GetValidCloseoutStatuses()
     Next
     
     ' Log the configured statuses for transparency
-    Call LogInfo("Valid closeout statuses: " & configStatuses, "GetValidCloseoutStatuses")
+    Call LogEvent("comm", "high", "Valid closeout statuses", "GetValidCloseoutStatuses", configStatuses, "")
     
     GetValidCloseoutStatuses = statusArray
 End Function
@@ -1866,7 +2208,7 @@ End Function
 Function GetRepairOrderStatus()
     On Error Resume Next
     If bzhao Is Nothing Then
-        Call LogWarn("GetRepairOrderStatus: bzhao object not available", "GetRepairOrderStatus")
+        Call LogEvent("min", "med", "GetRepairOrderStatus: bzhao object not available", "GetRepairOrderStatus", "", "")
         GetRepairOrderStatus = ""
         Exit Function
     End If
@@ -1877,7 +2219,7 @@ Function GetRepairOrderStatus()
     colNum = 1
     bzhao.ReadScreen buf, lengthToRead, lineNum, colNum
     If Err.Number <> 0 Then
-        Call LogWarn("GetRepairOrderStatus: ReadScreen failed: " & Err.Description, "GetRepairOrderStatus")
+        Call LogEvent("min", "med", "GetRepairOrderStatus: ReadScreen failed", "GetRepairOrderStatus", Err.Description, "")
         Err.Clear
         GetRepairOrderStatus = ""
         On Error GoTo 0
@@ -1885,7 +2227,7 @@ Function GetRepairOrderStatus()
     End If
     On Error GoTo 0
 
-    Call LogDebug("GetRepairOrderStatus - raw buffer: '" & Replace(buf, vbCrLf, " ") & "'", "GetRepairOrderStatus")
+    Call LogEvent("comm", "max", "GetRepairOrderStatus - raw buffer", "GetRepairOrderStatus", "'" & Replace(buf, vbCrLf, " ") & "'", "")
 
     Dim prefix, pos, raw
     prefix = "RO STATUS: "
@@ -1908,7 +2250,7 @@ Function GetRepairOrderStatus()
     GetRepairOrderStatus = parsedStatus
     ' Save parsed status for later logging by the caller
     g_LastScrapedStatus = parsedStatus
-    Call LogDebug("GetRepairOrderStatus - parsed status: '" & parsedStatus & "'", "GetRepairOrderStatus")
+    Call LogEvent("comm", "high", "GetRepairOrderStatus - parsed status", "GetRepairOrderStatus", "'" & parsedStatus & "'", "")
 End Function
 
 
@@ -1970,7 +2312,7 @@ Sub LogScreenSnapshot(name)
     On Error Resume Next
     bzhao.ReadScreen screenContentBuffer, screenLength, 1, 1
     If Err.Number <> 0 Then
-        Call LogDebug("LogScreenSnapshot failed to read screen: " & Err.Description, "LogScreenSnapshot")
+        Call LogEvent("min", "med", "LogScreenSnapshot failed to read screen", "LogScreenSnapshot", Err.Description, "")
         Err.Clear
         On Error GoTo 0
         Exit Sub
@@ -1983,7 +2325,7 @@ Sub LogScreenSnapshot(name)
     snippet = Replace(snippet, vbLf, " ")
     ' Trim to 240 chars so logs are compact
     If Len(snippet) > 240 Then snippet = Left(snippet, 240) & "..."
-    Call LogDebug("ScreenSnapshot(" & name & "): " & snippet, "LogScreenSnapshot")
+    Call LogEvent("comm", "max", "ScreenSnapshot(" & name & ")", "LogScreenSnapshot", snippet, "")
 End Sub
 
 
@@ -2004,12 +2346,15 @@ End Sub
 Sub ProcessLineItems()
     Dim lineLetterChar, i, lineItemPrompts
     Set lineItemPrompts = CreateLineItemPromptDictionary()
+    
+    ' Initialize line tracking
+    g_LastSuccessfulLine = ""
 
     ' Phase 1: Run FNL commands for all lines (A through Z)
-    Call LogInfo("Phase 1: Running FNL commands for all lines", "ProcessLineItems")
+    Call LogEvent("comm", "med", "Phase 1: Running FNL commands for all lines", "ProcessLineItems", "", "")
     For i = 65 To 90 ' ASCII for A to Z
         lineLetterChar = Chr(i)
-        Call LogInfo("Running FNL " & lineLetterChar & " command", "ProcessLineItems")
+        Call LogEvent("comm", "med", "Running FNL " & lineLetterChar & " command", "ProcessLineItems", "", "")
         
         ' Send the FNL command and let ProcessPromptSequence handle any prompts that appear
         Call FastText("FNL " & lineLetterChar)
@@ -2020,20 +2365,32 @@ Sub ProcessLineItems()
         
         ' Check if line exists BEFORE processing other prompts
         If IsTextPresent("LINE CODE " & lineLetterChar & " IS NOT ON FILE") Then
-            Call LogInfo("Line " & lineLetterChar & " not found - stopping FNL commands", "ProcessLineItems")
+            Dim screenResponse
+            screenResponse = GetScreenSnapshot(24)
+            If g_LastSuccessfulLine = "" Then
+                Call LogEvent("comm", "low", "No line items found - Line " & lineLetterChar & " does not exist", "ProcessLineItems", "No lines to process", "")
+            Else
+                Call LogEvent("comm", "low", "Finished processing line items. No more lines found after " & g_LastSuccessfulLine, "ProcessLineItems", "Line " & lineLetterChar & " does not exist", "")
+            End If
+            Call LogEvent("comm", "high", "FNL " & lineLetterChar & " command response", "ProcessLineItems", screenResponse, "")
             ' System automatically returns to COMMAND prompt without manual ENTER
             Exit For
         End If
+        
+        ' Track successful line for better reporting
+        g_LastSuccessfulLine = lineLetterChar
         
         ' Process any other prompts that appear (including technician assignment)
         Call ProcessPromptSequence(lineItemPrompts)
     Next
 
+    Call LogEvent("comm", "low", "Phase 1 completed - All lines finalized", "ProcessLineItems", "", "")
+
     ' Phase 2: Run R commands and process prompts for all lines
-    Call LogInfo("Phase 2: Processing line prompts with R commands", "ProcessLineItems")
+    Call LogEvent("comm", "med", "Phase 2: Processing line prompts with R commands", "ProcessLineItems", "", "")
     For i = 65 To 90 ' ASCII for A to Z
         lineLetterChar = Chr(i)
-        Call LogInfo("Attempting to navigate to line item " & lineLetterChar, "ProcessLineItems")
+        Call LogEvent("comm", "med", "Running R " & lineLetterChar & " command", "ProcessLineItems", "", "")
         
         ' Wait for the COMMAND prompt and then enter "R" + the current line letter.
         Call WaitForPrompt("COMMAND:", "R " & lineLetterChar, True, g_PromptWait, "")
@@ -2043,12 +2400,13 @@ Sub ProcessLineItems()
         
         ' Check if the line exists FIRST - this avoids inappropriate timeout errors
         If IsTextPresent("LINE CODE " & lineLetterChar & " IS NOT ON FILE") Then
-            If i = 65 Then ' First line (A) not found
-                Call LogInfo("Finished processing line items. No line A found - no line items to process", "ProcessLineItems")
-            Else ' Subsequent line not found
-                Dim prevLineChar
-                prevLineChar = Chr(i-1)
-                Call LogInfo("Finished processing line items. No more lines found after " & prevLineChar, "ProcessLineItems")
+            Dim rScreenResponse
+            rScreenResponse = GetScreenSnapshot(24)
+            Call LogEvent("comm", "high", "R " & lineLetterChar & " command response", "ProcessLineItems", rScreenResponse, "")
+            If g_LastSuccessfulLine = "" Then
+                Call LogEvent("comm", "low", "Finished processing line items. No line items found to process", "ProcessLineItems", "Line " & lineLetterChar & " does not exist", "")
+            Else
+                Call LogEvent("comm", "low", "Finished processing line items. No more lines found after " & g_LastSuccessfulLine, "ProcessLineItems", "Line " & lineLetterChar & " does not exist", "")
             End If
             ' System automatically returns to COMMAND prompt without manual ENTER
             Exit For ' Exit the For loop.
@@ -2060,21 +2418,23 @@ Sub ProcessLineItems()
         lineScreenLoaded = WaitForScreenTransition(expectedLineText, 3000, "line " & lineLetterChar & " screen")
         
         If Not lineScreenLoaded Then
-            Call LogError("CRITICAL: Line " & lineLetterChar & " screen failed to load within timeout - screen state uncertain", "ProcessLineItems")
-            Call LogError("Cannot safely continue processing with unknown screen state. Exiting line processing.", "ProcessLineItems")
+            Call LogEvent("crit", "low", "CRITICAL: Line " & lineLetterChar & " screen failed to load within timeout", "ProcessLineItems", "Screen state uncertain", "")
+            Call LogEvent("crit", "low", "Cannot safely continue processing with unknown screen state", "ProcessLineItems", "Exiting line processing", "")
             ' Press Enter to attempt clearing any pending screen state
             Call FastKey("<Enter>")
             Exit For ' Exit the For loop due to critical screen loading failure
         End If
         ' Use the new state machine method for all prompt handling
         Call LogDebug("Processing line item " & lineLetterChar & " using ProcessSingleLine_Dynamic", "ProcessLineItems")
-        Call LogDetailed("INFO", "Processing line item " & lineLetterChar & " using ProcessPromptSequence", "ProcessLineItems")
 
         ' Process all prompts for this line item using the new state machine
         Call ProcessPromptSequence(lineItemPrompts)
         
+        ' Track successful line processing for R commands
+        g_LastSuccessfulLine = lineLetterChar
         Call LogInfo("Completed processing line item " & lineLetterChar, "ProcessLineItems")
     Next
+    Call LogEvent("comm", "low", "All line charges have been reviewed and updated", "ProcessLineItems", "", "")
 End Sub
 
 '-----------------------------------------------------------------------------------
@@ -2091,7 +2451,7 @@ End Sub
 ' roStatus (String): The RO status to determine closeout procedure
 '-----------------------------------------------------------------------------------
 Sub Closeout_Ro(roStatus)
-    Call LogInfo("Starting closeout procedure for status: " & roStatus, "Closeout_Ro")
+    Call LogEvent("comm", "med", "Starting closeout procedure", "Closeout_Ro", "Status: " & roStatus, "")
     
     ' Check if status-specific closeout is enabled
     Dim useStatusSpecific
@@ -2241,6 +2601,7 @@ Sub ProcessOpenStatusLines()
     Next
     
     Call LogInfo("Completed OPEN status line processing with FNL commands", "ProcessOpenStatusLines")
+    Call LogEvent("comm", "low", "All lines have been successfully closed", "ProcessOpenStatusLines", "", "")
 End Sub
 
 '-----------------------------------------------------------------------------------
@@ -2265,7 +2626,7 @@ Sub ProcessFinalCloseoutPrompts()
     Call WaitMs(3000)
 
     If Not WaitForPrompt("ALL LABOR POSTED", "Y", send_enter_key_all_labor_posted, g_TimeoutMs, "") Then
-        Call LogError("Failed to get ALL LABOR POSTED prompt - aborting closeout", "ProcessFinalCloseoutPrompts")
+        Call LogEvent("maj", "low", "Failed to get ALL LABOR POSTED prompt", "ProcessFinalCloseoutPrompts", "Aborting closeout", "")
         lastRoResult = "Failed - Could not confirm all labor posted"
         Exit Sub
     End If
@@ -2301,7 +2662,7 @@ Sub ProcessFinalCloseoutPrompts()
     Dim send_enter_key_ok_to_close_ro
     send_enter_key_ok_to_close_ro = True
     If Not WaitForPrompt("O.K. TO CLOSE RO", "Y", send_enter_key_ok_to_close_ro, okToCloseTimeout, "") Then
-        Call LogError("Failed to get O.K. TO CLOSE RO prompt - aborting closeout", "ProcessFinalCloseoutPrompts")
+        Call LogEvent("maj", "low", "Failed to get O.K. TO CLOSE RO prompt", "ProcessFinalCloseoutPrompts", "Aborting closeout", "")
         lastRoResult = "Failed - Could not confirm closeout"
         Exit Sub
     End If
@@ -2427,6 +2788,8 @@ End Sub
 ' (String) Returns the matching trigger text if found, otherwise returns an empty string.
 '-----------------------------------------------------------------------------------
 Function FindTrigger()
+    Call LogEvent("comm", "high", "FindTrigger starting", "FindTrigger", "Scanning for closeout triggers", "")
+    
     Dim triggers, i, candidate
     ' Add or remove entries in this array as needed.
     triggers = Array( _
@@ -2442,12 +2805,15 @@ Function FindTrigger()
     
     For i = LBound(triggers) To UBound(triggers)
         candidate = triggers(i)
+        Call LogEvent("comm", "max", "Checking trigger", "FindTrigger", "'" & candidate & "'", "")
         If IsTextPresent(candidate) Then
+            Call LogEvent("comm", "med", "Trigger found", "FindTrigger", "'" & candidate & "'", "")
             FindTrigger = candidate
             Exit Function
         End If
     Next
     
+    Call LogEvent("comm", "med", "No triggers found", "FindTrigger", "Checked " & (UBound(triggers) - LBound(triggers) + 1) & " triggers", "")
     FindTrigger = ""
 End Function
 
