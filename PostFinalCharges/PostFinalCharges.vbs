@@ -1968,6 +1968,8 @@ Sub WriteSessionHeader()
     ' Check if trimmed log already contains today's session header
     If logFSO.FileExists(LOG_FILE_PATH) Then
         Dim existingContent, checkFile, readSuccess
+        existingContent = ""
+        readSuccess = False
         Set checkFile = logFSO.OpenTextFile(LOG_FILE_PATH, 1)
         If Err.Number = 0 Then
             existingContent = checkFile.ReadAll
