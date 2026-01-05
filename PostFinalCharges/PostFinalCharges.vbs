@@ -1986,13 +1986,11 @@ Sub WriteSessionHeader()
                 End If
             End If
         Else
-            ' Error opening file; clean up and continue
+            ' Error opening file; clean up if file object was partially created
             If Not (existingLogFile Is Nothing) Then
-                On Error Resume Next
                 existingLogFile.Close
-                Set existingLogFile = Nothing
-                On Error Resume Next
             End If
+            Set existingLogFile = Nothing
             Err.Clear
         End If
     End If
