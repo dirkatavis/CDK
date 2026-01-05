@@ -1824,7 +1824,7 @@ Sub PerformLogTrim(logFSO, charsToRemove)
     ' Find trim point at a line boundary
     trimPoint = charsToRemove
     If trimPoint >= Len(logContent) Then
-        ' If we'd remove everything, keep last 25% of file (75% threshold prevents excessive data loss)
+        ' If we'd remove everything, keep last 25% of file
         trimPoint = Int(Len(logContent) * 0.75)
     End If
     
@@ -1937,8 +1937,6 @@ Sub PerformLogTrim(logFSO, charsToRemove)
     End If
     
     On Error GoTo 0
-    
-    On Error GoTo 0
     ' Important: Don't reset session flag after trimming
     ' The trimmed content may already contain today's session header
 End Sub
@@ -1990,6 +1988,38 @@ Sub WriteSessionHeader()
             End If
         Else
             ' OpenTextFile failed, clear error and continue to write new header
+            Err.Clear
+        End If
+    End If
+
+    ' After trimming, check if today's session header already exists in the trimmed log
+    If logFSO.FileExists(LOG_FILE_PATH) Then
+        Dim existingLogFile, existingContent
+        Set existingLogFile = logFSO.OpenTextFile(LOG_FILE_PATH, 1, False)
+        If Err.Number = 0 Then
+            existingContent = existingLogFile.ReadAll
+            If Err.Number <> 0 Then
+                ' Error during read; close file and continue
+                existingLogFile.Close
+                Set existingLogFile = Nothing
+                Err.Clear
+            Else
+                existingLogFile.Close
+                Set existingLogFile = Nothing
+                ' If today's session header is already in the log, set flag and exit
+                If InStr(existingContent, sessionLine) > 0 Then
+                    g_SessionDateLogged = True
+                    Set logFSO = Nothing
+                    On Error GoTo 0
+                    Exit Sub
+                End If
+            End If
+        Else
+            ' Error opening file; clean up if file object was partially created
+            If Not (existingLogFile Is Nothing) Then
+                existingLogFile.Close
+            End If
+            Set existingLogFile = Nothing
             Err.Clear
         End If
     End If
