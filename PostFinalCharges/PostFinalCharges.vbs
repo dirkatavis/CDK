@@ -1971,16 +1971,25 @@ Sub WriteSessionHeader()
         Set checkFile = logFSO.OpenTextFile(LOG_FILE_PATH, 1)
         If Err.Number = 0 Then
             existingContent = checkFile.ReadAll
-            checkFile.Close
-            Set checkFile = Nothing
-            ' If today's session header already exists, mark as logged to prevent duplicates
-            If InStr(existingContent, sessionLine) > 0 Then
-                g_SessionDateLogged = True
-                Set logFSO = Nothing
-                On Error GoTo 0
-                Exit Sub
+            If Err.Number = 0 Then
+                checkFile.Close
+                Set checkFile = Nothing
+                ' If today's session header already exists, mark as logged to prevent duplicates
+                If InStr(existingContent, sessionLine) > 0 Then
+                    g_SessionDateLogged = True
+                    Set logFSO = Nothing
+                    On Error GoTo 0
+                    Exit Sub
+                End If
+            Else
+                ' ReadAll failed, close file and clear error
+                checkFile.Close
+                Set checkFile = Nothing
+                Err.Clear
             End If
         Else
+            ' OpenTextFile failed, clear error and continue to write new header
+            Set checkFile = Nothing
             Err.Clear
         End If
     End If
