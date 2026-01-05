@@ -1833,7 +1833,7 @@ Sub PerformLogTrim(logFSO, charsToRemove)
         trimPoint = trimPoint + 1
     Loop
     
-    ' Look for next session boundary if possible
+    ' Look for next session boundary if possible (90% threshold ensures we find boundaries in trim area)
     Dim sessionPos
     sessionPos = InStr(trimPoint, logContent, "=== SESSION:")
     If sessionPos > 0 And sessionPos < Int(Len(logContent) * 0.9) Then
@@ -1962,6 +1962,35 @@ Sub WriteSessionHeader()
     
     currentDate = Now
     sessionLine = "=== SESSION: " & Year(currentDate) & "-" & Right("0" & Month(currentDate), 2) & "-" & Right("0" & Day(currentDate), 2) & " ==="
+    
+    ' Check if trimmed log already contains today's session header
+    If logFSO.FileExists(LOG_FILE_PATH) Then
+        Dim existingContent, checkFile, readSuccess
+        existingContent = ""
+        readSuccess = False
+        Set checkFile = logFSO.OpenTextFile(LOG_FILE_PATH, 1)
+        If Err.Number = 0 Then
+            existingContent = checkFile.ReadAll
+            readSuccess = (Err.Number = 0)
+            If Not readSuccess Then
+                ' ReadAll failed, clear error
+                Err.Clear
+            End If
+            ' Always close the file if it was successfully opened
+            checkFile.Close
+            Set checkFile = Nothing
+            ' If today's session header already exists, mark as logged to prevent duplicates
+            If readSuccess And InStr(existingContent, sessionLine) > 0 Then
+                g_SessionDateLogged = True
+                Set logFSO = Nothing
+                On Error GoTo 0
+                Exit Sub
+            End If
+        Else
+            ' OpenTextFile failed, clear error and continue to write new header
+            Err.Clear
+        End If
+    End If
 
     ' After trimming, check if today's session header already exists in the trimmed log
     If logFSO.FileExists(LOG_FILE_PATH) Then
