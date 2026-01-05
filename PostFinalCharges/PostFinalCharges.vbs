@@ -66,7 +66,24 @@ commonLibLoaded = False
 g_ShouldAbort = False
 
 ' Initialize session header and perform log trimming once at startup
+Dim sessionHeaderFailed, headerErrorNumber, headerErrorDescription
+sessionHeaderFailed = False
+headerErrorNumber = 0
+headerErrorDescription = ""
+
+On Error Resume Next
 Call WriteSessionHeader()
+If Err.Number <> 0 Then
+    sessionHeaderFailed = True
+    headerErrorNumber = Err.Number
+    headerErrorDescription = Err.Description
+    Err.Clear
+End If
+On Error GoTo 0
+
+If sessionHeaderFailed Then
+    Call LogEvent("comm", "low", "Session header write failed (" & headerErrorNumber & "): " & headerErrorDescription, "Startup", "", "")
+End If
 
 ' --- STARTUP LOGGING: Script Startup and Path Resolution ---
 Call LogEvent("comm", "low", "Script entrypoint reached", "Startup", "", "")
@@ -1671,11 +1688,11 @@ Sub WriteLogEntry(criticality, verbosity, headline, stage, reason, technical)
         message = message & " | Tech: " & technical
     End If
     
-    ' Use stage as source, truncate to 8 chars for compact display
+    ' Use stage as source, truncate to 16 chars for compact display
     If Len(Trim(stage)) > 0 Then
-        source = Left(Trim(stage) & "        ", 8) ' Pad to 8 chars
+        source = Left(Trim(stage) & "                ", 16) ' Pad to 16 chars
     Else
-        source = "General "
+        source = "General         "
     End If
     
     ' Build compact log line: HH:MM:SS[crit/verb][source]Message
@@ -1766,8 +1783,8 @@ Sub TrimLogToLimit(logFSO)
     excessKB = (currentSize - rotationSize) \ 1024
     charsToRemove = excessKB * CHARS_PER_KB
     
-    ' Add 20% buffer to ensure we get under the limit
-    charsToRemove = charsToRemove * 1.2
+    ' Add 20% buffer to ensure we get under the limit (keep result as integer)
+    charsToRemove = Int(charsToRemove * 1.2)
     
     ' Trim the log file
     Call PerformLogTrim(logFSO, charsToRemove)
@@ -1808,7 +1825,7 @@ Sub PerformLogTrim(logFSO, charsToRemove)
     trimPoint = charsToRemove
     If trimPoint >= Len(logContent) Then
         ' If we'd remove everything, keep last 25% of file
-        trimPoint = Len(logContent) * 0.75
+        trimPoint = Int(Len(logContent) * 0.75)
     End If
     
     ' Find next newline after trim point to preserve line boundaries
@@ -1819,7 +1836,7 @@ Sub PerformLogTrim(logFSO, charsToRemove)
     ' Look for next session boundary if possible
     Dim sessionPos
     sessionPos = InStr(trimPoint, logContent, "=== SESSION:")
-    If sessionPos > 0 And sessionPos < (Len(logContent) * 0.9) Then
+    If sessionPos > 0 And sessionPos < Int(Len(logContent) * 0.9) Then
         trimPoint = sessionPos - 1
         ' Find start of that line
         Do While trimPoint > 1 And Mid(logContent, trimPoint - 1, 1) <> vbLf
@@ -1947,6 +1964,26 @@ Sub WriteSessionHeader()
     
     currentDate = Now
     sessionLine = "=== SESSION: " & Year(currentDate) & "-" & Right("0" & Month(currentDate), 2) & "-" & Right("0" & Day(currentDate), 2) & " ==="
+
+    ' After trimming, check if today's session header already exists in the trimmed log
+    If logFSO.FileExists(LOG_FILE_PATH) Then
+        Dim existingLogFile, existingContent
+        Set existingLogFile = logFSO.OpenTextFile(LOG_FILE_PATH, 1, False)
+        If Err.Number = 0 Then
+            existingContent = existingLogFile.ReadAll
+            existingLogFile.Close
+            Set existingLogFile = Nothing
+            ' If today's session header is already in the log, set flag and exit
+            If InStr(existingContent, sessionLine) > 0 Then
+                g_SessionDateLogged = True
+                Set logFSO = Nothing
+                On Error GoTo 0
+                Exit Sub
+            End If
+        Else
+            Err.Clear
+        End If
+    End If
 
     logFolder = logFSO.GetParentFolderName(LOG_FILE_PATH)
     If Len(logFolder) > 0 Then
