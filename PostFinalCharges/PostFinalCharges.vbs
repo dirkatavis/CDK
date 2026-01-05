@@ -1877,42 +1877,6 @@ Sub PerformLogTrim(logFSO, charsToRemove)
         Exit Sub
     End If
     
-    ' Replace original with trimmed version (atomic operation)
-    If logFSO.FileExists(LOG_FILE_PATH) Then 
-        logFSO.DeleteFile LOG_FILE_PATH
-        If Err.Number <> 0 Then
-            ' Clean up temp file if original deletion fails
-            If logFSO.FileExists(tempLogPath) Then logFSO.DeleteFile tempLogPath
-            Err.Clear
-            On Error GoTo 0
-    On Error Resume Next
-    tempLogPath = LOG_FILE_PATH & ".tmp"
-    Set logFile = logFSO.CreateTextFile(tempLogPath, True)
-    If Err.Number <> 0 Or (logFile Is Nothing) Then
-        Err.Clear
-        ' Best-effort cleanup of any partial temp file
-        If logFSO.FileExists(tempLogPath) Then
-            logFSO.DeleteFile tempLogPath
-        End If
-        On Error GoTo 0
-        Exit Sub
-    End If
-
-    logFile.Write newContent
-    If Err.Number <> 0 Then
-        logFile.Close
-        Set logFile = Nothing
-        Err.Clear
-        If logFSO.FileExists(tempLogPath) Then
-            logFSO.DeleteFile tempLogPath
-        End If
-        On Error GoTo 0
-        Exit Sub
-    End If
-
-    logFile.Close
-    Set logFile = Nothing
-    
     ' Replace original with trimmed version
     If logFSO.FileExists(LOG_FILE_PATH) Then
         logFSO.DeleteFile LOG_FILE_PATH
@@ -1962,64 +1926,31 @@ Sub WriteSessionHeader()
     
     currentDate = Now
     sessionLine = "=== SESSION: " & Year(currentDate) & "-" & Right("0" & Month(currentDate), 2) & "-" & Right("0" & Day(currentDate), 2) & " ==="
-    
-    ' Check if trimmed log already contains today's session header
+
+    ' Check if today's session header already exists in the log
     If logFSO.FileExists(LOG_FILE_PATH) Then
-        Dim existingContent, checkFile, readSuccess
-        existingContent = ""
-        readSuccess = False
+        Dim existingContent, checkFile
         Set checkFile = logFSO.OpenTextFile(LOG_FILE_PATH, 1)
         If Err.Number = 0 Then
             existingContent = checkFile.ReadAll
-            readSuccess = (Err.Number = 0)
-            If Not readSuccess Then
-                ' ReadAll failed, clear error
-                Err.Clear
-            End If
-            ' Always close the file if it was successfully opened
-            checkFile.Close
-            Set checkFile = Nothing
-            ' If today's session header already exists, mark as logged to prevent duplicates
-            If readSuccess And InStr(existingContent, sessionLine) > 0 Then
-                g_SessionDateLogged = True
-                Set logFSO = Nothing
-                On Error GoTo 0
-                Exit Sub
-            End If
-        Else
-            ' OpenTextFile failed, clear error and continue to write new header
-            Err.Clear
-        End If
-    End If
-
-    ' After trimming, check if today's session header already exists in the trimmed log
-    If logFSO.FileExists(LOG_FILE_PATH) Then
-        Dim existingLogFile, existingContent
-        Set existingLogFile = logFSO.OpenTextFile(LOG_FILE_PATH, 1, False)
-        If Err.Number = 0 Then
-            existingContent = existingLogFile.ReadAll
-            If Err.Number <> 0 Then
-                ' Error during read; close file and continue
-                existingLogFile.Close
-                Set existingLogFile = Nothing
-                Err.Clear
-            Else
-                existingLogFile.Close
-                Set existingLogFile = Nothing
-                ' If today's session header is already in the log, set flag and exit
+            If Err.Number = 0 Then
+                checkFile.Close
+                Set checkFile = Nothing
+                ' If today's session header already exists, mark as logged and exit
                 If InStr(existingContent, sessionLine) > 0 Then
                     g_SessionDateLogged = True
                     Set logFSO = Nothing
                     On Error GoTo 0
                     Exit Sub
                 End If
+            Else
+                ' ReadAll failed, clean up and continue
+                checkFile.Close
+                Set checkFile = Nothing
+                Err.Clear
             End If
         Else
-            ' Error opening file; clean up if file object was partially created
-            If Not (existingLogFile Is Nothing) Then
-                existingLogFile.Close
-            End If
-            Set existingLogFile = Nothing
+            ' OpenTextFile failed, clear error and continue
             Err.Clear
         End If
     End If
