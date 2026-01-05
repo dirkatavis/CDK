@@ -1868,15 +1868,58 @@ Sub PerformLogTrim(logFSO, charsToRemove)
             If logFSO.FileExists(tempLogPath) Then logFSO.DeleteFile tempLogPath
             Err.Clear
             On Error GoTo 0
+    On Error Resume Next
+    tempLogPath = LOG_FILE_PATH & ".tmp"
+    Set logFile = logFSO.CreateTextFile(tempLogPath, True)
+    If Err.Number <> 0 Or (logFile Is Nothing) Then
+        Err.Clear
+        ' Best-effort cleanup of any partial temp file
+        If logFSO.FileExists(tempLogPath) Then
+            logFSO.DeleteFile tempLogPath
+        End If
+        On Error GoTo 0
+        Exit Sub
+    End If
+
+    logFile.Write newContent
+    If Err.Number <> 0 Then
+        logFile.Close
+        Set logFile = Nothing
+        Err.Clear
+        If logFSO.FileExists(tempLogPath) Then
+            logFSO.DeleteFile tempLogPath
+        End If
+        On Error GoTo 0
+        Exit Sub
+    End If
+
+    logFile.Close
+    Set logFile = Nothing
+    
+    ' Replace original with trimmed version
+    If logFSO.FileExists(LOG_FILE_PATH) Then
+        logFSO.DeleteFile LOG_FILE_PATH
+        If Err.Number <> 0 Then
+            ' Failed to delete original; do not proceed with move
+            Err.Clear
+            If logFSO.FileExists(tempLogPath) Then
+                logFSO.DeleteFile tempLogPath
+            End If
+            On Error GoTo 0
             Exit Sub
         End If
     End If
-    
+
     logFSO.MoveFile tempLogPath, LOG_FILE_PATH
     If Err.Number <> 0 Then
-        ' If move fails, temp file will remain as evidence of failed operation
+        ' Move failed; attempt to remove orphaned temp file
         Err.Clear
+        If logFSO.FileExists(tempLogPath) Then
+            logFSO.DeleteFile tempLogPath
+        End If
     End If
+    
+    On Error GoTo 0
     
     On Error GoTo 0
     ' Important: Don't reset session flag after trimming
