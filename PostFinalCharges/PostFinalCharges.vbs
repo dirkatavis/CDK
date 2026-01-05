@@ -43,7 +43,7 @@ Const VERB_MAX = 3
 Const DEBUG_SCREEN_LINES = 3
 Const g_DiagLogQueueSize = 5
 Const LEGACY_BASE_PATH = "C:\Temp\Code\Scripts\VBScript\CDK\PostFinalCharges"
-Const MIDNIGHT_ROLLOVER_THRESHOLD_MS = -30000 ' Threshold to distinguish Timer precision issues from true midnight rollover
+' Simplified timeout logic - no midnight handling needed for current debugging
 
 ' --- EARLY LOGGING: Force maximum logging for startup ---
 g_CurrentCriticality = CRIT_COMMON ' Log all criticality levels
@@ -312,13 +312,6 @@ Function WaitForScreenStable(timeoutMs, stabilityMs)
             ' Content same, check if we've been stable long enough
             If stableStart > 0 Then
                 stableElapsed = (Timer - stableStart) * 1000
-                ' Handle midnight rollover more conservatively - only adjust if negative AND magnitude is large
-                If stableElapsed < MIDNIGHT_ROLLOVER_THRESHOLD_MS Then 
-                    stableElapsed = stableElapsed + 86400000 ' Handle true midnight rollover
-                ElseIf stableElapsed < 0 Then
-                    ' Small negative values are likely precision/timing issues, treat as zero
-                    stableElapsed = 0
-                End If
                 If stableElapsed >= stabilityMs Then
                     ' Screen has been stable for required period
                     Call LogEvent("comm", "high", "Screen stable for required period", "WaitForScreenStable", Int(stableElapsed) & "ms >= " & stabilityMs & "ms", "")
@@ -333,13 +326,6 @@ Function WaitForScreenStable(timeoutMs, stabilityMs)
         
         ' Check overall timeout
         waitElapsed = (Timer - waitStart) * 1000
-        ' Handle midnight rollover more conservatively - only adjust if negative AND magnitude is large
-        If waitElapsed < MIDNIGHT_ROLLOVER_THRESHOLD_MS Then 
-            waitElapsed = waitElapsed + 86400000 ' Handle true midnight rollover
-        ElseIf waitElapsed < 0 Then
-            ' Small negative values are likely precision/timing issues, treat as zero
-            waitElapsed = 0
-        End If
         If waitElapsed > timeoutMs Then
             ' Overall timeout exceeded
             Call LogEvent("min", "med", "WaitForScreenStable timeout exceeded", "WaitForScreenStable", Int(waitElapsed) & "ms > " & timeoutMs & "ms", "Last content: '" & Left(currentContent, 50) & "'")
@@ -351,12 +337,14 @@ Function WaitForScreenStable(timeoutMs, stabilityMs)
     Loop
 End Function
 
+
+
 ' Generic state machine to process a sequence of prompts from a given dictionary.
 Sub ProcessPromptSequence(prompts)
     Dim finished, promptKey, promptDetails, bestMatchKey, bestMatchLength
     Dim sequenceStartTime, sequenceElapsed
     finished = False
-    sequenceStartTime = Timer
+    sequenceStartTime = Now() ' Use actual date/time instead of Timer
     
     ' Initialize no-prompt counter for this sequence
     g_NoPromptCount = 0
@@ -367,17 +355,11 @@ Sub ProcessPromptSequence(prompts)
     End If
 
     Do While Not finished
-        ' Check for timeout first to ensure it's respected even when stuck in sub-operations
-        sequenceElapsed = (Timer - sequenceStartTime) * 1000
-        ' Handle midnight rollover more conservatively - only adjust if negative AND magnitude is large
-        If sequenceElapsed < MIDNIGHT_ROLLOVER_THRESHOLD_MS Then 
-            sequenceElapsed = sequenceElapsed + 86400000 ' Handle true midnight rollover
-        ElseIf sequenceElapsed < 0 Then
-            ' Small negative values are likely precision/timing issues, treat as zero
-            sequenceElapsed = 0
-        End If
+        ' Check for timeout - using real wall clock time
+        sequenceElapsed = DateDiff("s", sequenceStartTime, Now()) * 1000
+        
         If sequenceElapsed > 30000 Then ' 30-second timeout
-            Call LogEvent("crit", "low", "ProcessPromptSequence timed out after 30 seconds", "ProcessPromptSequence", "Automation stopped", "sequenceElapsed=" & Int(sequenceElapsed) & "ms > 30000ms")
+            Call LogEvent("crit", "low", "ProcessPromptSequence timed out after 30 seconds", "ProcessPromptSequence", "Automation stopped", "Now()=" & Now() & " sequenceStartTime=" & sequenceStartTime & " calculated=" & sequenceElapsed & "ms > 30000ms")
             SafeMsg "ProcessPromptSequence timed out after 30 seconds.\nAutomation stopped.", True, "Sequence Timeout"
             g_ShouldAbort = True
             Exit Sub
@@ -454,6 +436,11 @@ Sub ProcessPromptSequence(prompts)
         If bestMatchLength > 0 Then
             ' Reset the no-prompt counter since we found a prompt
             g_NoPromptCount = 0
+            
+            ' CRITICAL FIX: Reset timer for each individual prompt
+            ' Each prompt gets its own 30-second timeout window
+            sequenceStartTime = Now()
+            Call LogEvent("comm", "med", "TIMER RESET for new prompt", "ProcessPromptSequence", "Individual prompt timeout starts now", "sequenceStartTime=" & sequenceStartTime)
             
             Set promptDetails = prompts.Item(bestMatchKey)
             Call LogEvent("comm", "med", "Matched prompt: '" & bestMatchKey & "'", "ProcessPromptSequence", "Found most specific match", "match length=" & bestMatchLength)
@@ -571,13 +558,6 @@ Sub ProcessPromptSequence(prompts)
             Do While IsTextPresent(bestMatchKey)
                 Call WaitMs(500)
                 clearElapsed = (Timer - clearStart) * 1000
-                ' Handle midnight rollover more conservatively - only adjust if negative AND magnitude is large
-                If clearElapsed < MIDNIGHT_ROLLOVER_THRESHOLD_MS Then 
-                    clearElapsed = clearElapsed + 86400000 ' Handle true midnight rollover
-                ElseIf clearElapsed < 0 Then
-                    ' Small negative values are likely precision/timing issues, treat as zero
-                    clearElapsed = 0
-                End If
                 If clearElapsed > POST_PROMPT_WAIT_MS Then ' Configurable prompt clear timeout
                     Call LogEvent("min", "med", "Prompt did not clear within timeout", "ProcessPromptSequence", "'" & bestMatchKey & "' - " & POST_PROMPT_WAIT_MS & " ms", "clearElapsed=" & Int(clearElapsed) & "ms")
                     Exit Do
@@ -646,13 +626,6 @@ Function WaitForScreenTransition(expectedText, timeoutMs, description)
         
         Call WaitMs(50) ' Fast polling for quick detection
         waitElapsed = (Timer - waitStart) * 1000
-        ' Handle midnight rollover more conservatively - only adjust if negative AND magnitude is large
-        If waitElapsed < MIDNIGHT_ROLLOVER_THRESHOLD_MS Then 
-            waitElapsed = waitElapsed + 86400000 ' Handle true midnight rollover
-        ElseIf waitElapsed < 0 Then
-            ' Small negative values are likely precision/timing issues, treat as zero
-            waitElapsed = 0
-        End If
         
         If waitElapsed > timeoutMs Then
             Call LogEvent("min", "med", "Timeout waiting for " & description, "WaitForScreenTransition", "After " & timeoutMs & "ms - Expected: '" & expectedText & "'", "")
@@ -2312,13 +2285,6 @@ Function WaitForTextSilent(textToFind, timeoutMs)
 
         Call WaitMs(120)
         elapsedMs = (Timer - startTime) * 1000
-        ' Handle midnight rollover more conservatively - only adjust if negative AND magnitude is large
-        If elapsedMs < MIDNIGHT_ROLLOVER_THRESHOLD_MS Then 
-            elapsedMs = elapsedMs + 86400000 ' Handle true midnight rollover
-        ElseIf elapsedMs < 0 Then
-            ' Small negative values are likely precision/timing issues, treat as zero
-            elapsedMs = 0
-        End If
     Loop While elapsedMs < timeoutMs
 
     WaitForTextSilent = False
@@ -2788,13 +2754,6 @@ Sub HandleOptionalComebackPrompt()
         Do While IsTextPresent(comebackPrompt)
             Call WaitMs(100)
             clearElapsed = (Timer - clearStart) * 1000
-            ' Handle midnight rollover more conservatively - only adjust if negative AND magnitude is large
-            If clearElapsed < MIDNIGHT_ROLLOVER_THRESHOLD_MS Then 
-                clearElapsed = clearElapsed + 86400000 ' Handle true midnight rollover
-            ElseIf clearElapsed < 0 Then
-                ' Small negative values are likely precision/timing issues, treat as zero
-                clearElapsed = 0
-            End If
             If clearElapsed > 2000 Then
                 Call LogWarn("Comeback prompt did not clear within 2 seconds", "HandleOptionalComebackPrompt")
                 Exit Do
@@ -3284,13 +3243,6 @@ Sub WaitForContinuePrompt()
         End If
         Call WaitMs(120)
         elapsedMs = (Timer - startTime) * 1000
-        ' Handle midnight rollover more conservatively - only adjust if negative AND magnitude is large
-        If elapsedMs < MIDNIGHT_ROLLOVER_THRESHOLD_MS Then 
-            elapsedMs = elapsedMs + 86400000 ' Handle true midnight rollover
-        ElseIf elapsedMs < 0 Then
-            ' Small negative values are likely precision/timing issues, treat as zero
-            elapsedMs = 0
-        End If
     Loop While elapsedMs < timeoutMs
     ' If not found, log and continue
     Call LogWarn("Timeout waiting for continue prompt: " & promptText, "WaitForContinuePrompt")
