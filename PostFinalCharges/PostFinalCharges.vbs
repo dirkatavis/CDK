@@ -531,7 +531,7 @@ Sub ProcessPromptSequence(prompts)
             ' Add extra logging for problematic prompts
             If InStr(bestMatchKey, "ADD A LABOR OPERATION") > 0 Then
                 Call LogEvent("comm", "med", "Responded to ADD A LABOR OPERATION prompt", "ProcessPromptSequence", "Waiting for screen to stabilize", "")
-                Call WaitMs(2000) ' Extra wait for this specific prompt
+                Call WaitMs(800) ' Extra wait for this specific prompt (optimized from 2000ms)
                 Call LogEvent("comm", "high", "Screen after ADD A LABOR OPERATION response", "ProcessPromptSequence", "", GetScreenSnapshot(5))
                 
                 ' Check if we're back at COMMAND prompt
@@ -545,13 +545,13 @@ Sub ProcessPromptSequence(prompts)
             
             
             ' Wait a moment for the response to take effect
-            Call WaitMs(800)
+            Call WaitMs(500)
             Call LogEvent("comm", "high", "MainPromptLine (" & MainPromptLine & ") after response", "ProcessPromptSequence", "'" & GetScreenLine(MainPromptLine) & "'", "")
             Call LogEvent("comm", "max", "Screen lines 22-24 after response", "ProcessPromptSequence", "", "[22]='" & GetScreenLine(22) & "' [23]='" & GetScreenLine(23) & "' [24]='" & GetScreenLine(24) & "'")
             
             If InStr(bestMatchKey, "SOLD HOURS") > 0 Then
                 Call LogEvent("comm", "med", "Responded to SOLD HOURS prompt", "ProcessPromptSequence", "Waiting for screen to stabilize", "")
-                Call WaitMs(1500) ' Extra wait for this specific prompt
+                Call WaitMs(800) ' Extra wait for this specific prompt (optimized from 1500ms)
                 Call LogEvent("comm", "high", "Screen after SOLD HOURS response", "ProcessPromptSequence", "", GetScreenSnapshot(5))
             End If
 
@@ -2203,7 +2203,7 @@ End Function
 Function IsStatusReady()
     ' Use GetRepairOrderStatus() to scrape the exact RO status from the screen
     ' Caller may choose to add waits before calling if needed
-    bzhao.pause 1000 ' brief pause to ensure screen is stable
+    bzhao.pause 200 ' brief pause to ensure screen is stable (optimized from 1000ms)
     Dim roStatus, validStatuses, i
     roStatus = GetRepairOrderStatus()
     validStatuses = GetValidCloseoutStatuses()
@@ -2617,8 +2617,8 @@ Sub ProcessOpenStatusLines()
             ' If line exists, handle any other prompts that appear after FNL command
             Call LogInfo("FNL command processed for line " & lineLetterChar, "ProcessOpenStatusLines")
             
-            ' Small delay to allow screen updates
-            Call WaitMs(1000)
+            ' Small delay to allow screen updates (optimized from 1000ms)
+            Call WaitMs(500)
             
             ' REFACTORED: Use ProcessPromptSequence instead of generic colon detection
             ' This handles specific FNL prompts explicitly rather than any text with ":"
@@ -2654,8 +2654,8 @@ Sub ProcessFinalCloseoutPrompts()
     Dim send_enter_key_all_labor_posted
     send_enter_key_all_labor_posted = True
 
-    ' Add a 3 second delay before ALL LABOR POSTED prompt
-    Call WaitMs(3000)
+    ' Add a brief delay before ALL LABOR POSTED prompt (optimized from 3000ms)
+    Call WaitMs(1000)
 
     If Not WaitForPrompt("ALL LABOR POSTED", "Y", send_enter_key_all_labor_posted, g_TimeoutMs, "") Then
         Call LogEvent("maj", "low", "Failed to get ALL LABOR POSTED prompt", "ProcessFinalCloseoutPrompts", "Aborting closeout", "")

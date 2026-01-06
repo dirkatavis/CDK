@@ -8,11 +8,11 @@ Option Explicit
 ' Configuration Constants
 Const CSV_FILE_PATH = "C:\Temp\bluezone_backup\Scripts\Create_RO.csv"
 Const POLL_INTERVAL = 100   ' Check every 100ms (10 times per second)
-Const POST_ENTRY_WAIT = 200  ' Minimal wait after entry
-Const PRE_KEY_WAIT = 150     ' Pause before sending special keys
-Const POST_KEY_WAIT = 350    ' Pause after sending special keys
+Const POST_ENTRY_WAIT = 100  ' Minimal wait after entry (optimized from 200ms)
+Const PRE_KEY_WAIT = 100     ' Pause before sending special keys (optimized from 150ms)
+Const POST_KEY_WAIT = 200    ' Pause after sending special keys (optimized from 350ms)
 Const PROMPT_TIMEOUT_MS = 5000 ' Default prompt timeout
-Const DelayTimeAfterPromptDetection = 500 ' Delay after prompt detection before sending input
+Const DelayTimeAfterPromptDetection = 200 ' Delay after prompt detection before sending input (optimized from 500ms)
 Dim fso, ts, strLine, arrValues, i, MVA, Mileage
 Dim Bzhao
 On Error Resume Next
@@ -133,7 +133,7 @@ Sub Main(mva, mileage)
     ' CURRENT: No verification - NEEDS PROMPT DETECTION
     Call WaitForPrompt("Choose an option", "<NumpadEnter>", False, PROMPT_TIMEOUT_MS)
     
-    bzhao.Pause 5000 ' Small pause to ensure screen is stable before proceeding
+    bzhao.Pause 1000 ' Brief pause to ensure screen is stable (optimized from 5000ms)
     '==== INPUT POINT 14: BEFORE SECOND ENTER KEY ====
     ' NEED TO IDENTIFY: What prompt appears before second Enter?
     ' CURRENT: No verification - NEEDS PROMPT DETECTION

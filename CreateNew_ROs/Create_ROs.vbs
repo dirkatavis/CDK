@@ -7,10 +7,10 @@ Option Explicit
 
 ' Configuration Constants
 Const CSV_FILE_PATH = "C:\Temp\Code\Scripts\VBScript\CDK\CreateNew_ROs\create_RO.csv"
-Const POLL_INTERVAL = 1000   ' Check every 1000ms (1 time per second)
-Const POST_ENTRY_WAIT = 200  ' Minimal wait after entry
-Const PRE_KEY_WAIT = 150     ' Pause before sending special keys
-Const POST_KEY_WAIT = 350    ' Pause after sending special keys
+Const POLL_INTERVAL = 500   ' Check every 500ms (optimized from 1000ms for faster response)
+Const POST_ENTRY_WAIT = 100  ' Minimal wait after entry (optimized from 200ms)
+Const PRE_KEY_WAIT = 100     ' Pause before sending special keys (optimized from 150ms)
+Const POST_KEY_WAIT = 200    ' Pause after sending special keys (optimized from 350ms)
 Const PROMPT_TIMEOUT_MS = 5000 ' Default prompt timeout
 
 Dim fso, ts, strLine, arrValues, i, MVA, Mileage
@@ -224,8 +224,7 @@ Sub WaitForPrompt(promptText, valueToEnter, sendEnter, timeoutMs)
         ' Apply slow mode delay if enabled
         If IsSlowModeEnabled() Then Call WaitMs(1000)
         
-        ' Check if the value is a special key command
-        bzhao.Pause 1000
+        ' Check if the value is a special key command (removed redundant bzhao.Pause)
         If InStr(1, valueToEnter, "<") > 0 And InStr(1, valueToEnter, ">") > 0 Then
             LOG "Sending key command: " & valueToEnter
             Call FastKey(valueToEnter)

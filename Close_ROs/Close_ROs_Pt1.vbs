@@ -91,10 +91,10 @@ Sub ProcessRo(RoNumber)
     ' 2. Execute CCC commands A, B, and C in a loop
     commands = Array("A", "B", "C")
     For i = 0 To UBound(commands)
-        bzhao.Pause 1000 ' Pause 1 second before each command
+        bzhao.Pause 300 ' Brief pause before each command (optimized from 1000ms)
         bzhao.SendKey "CCC " & commands(i)
         bzhao.SendKey "<Enter>"
-        bzhao.Pause 2000 ' Give screen time to update
+        bzhao.Pause 500 ' Give screen time to update (optimized from 2000ms)
         
         ' Wait for story to close by monitoring screen text
         Call WaitForStoryClosure(commands(i))
@@ -103,7 +103,7 @@ Sub ProcessRo(RoNumber)
     ' 3. Command E Execution (To exit/move to next record screen)
     bzhao.SendKey "E"
     bzhao.SendKey "<Enter>"
-    bzhao.Pause 1000 ' Final pause to allow the screen to fully reset for the next RO
+    bzhao.Pause 500 ' Final pause to allow the screen to fully reset (optimized from 1000ms)
 End Sub
 
 ' Waits for the story closure text to disappear from screen
@@ -117,8 +117,8 @@ Function CheckForROError()
     Dim screenContentBuffer, screenLength
     screenLength = 80
 
-    'Give screen a moment to update
-    bzhao.Pause 2000
+    'Give screen a moment to update (optimized from 2000ms)
+    bzhao.Pause 500
 
     ' Check line 2
     bzhao.ReadScreen screenContentBuffer, screenLength, 2, 1
@@ -177,7 +177,7 @@ Sub ReadAndShowFullScreen()
     Dim screenContentBuffer, screenLength
     screenLength = 24 * 80 ' 24 rows, 80 columns
     bzhao.ReadScreen screenContentBuffer, screenLength, 1, 1
-    bzhao.Pause 2000 ' Give screen time to update
+    bzhao.Pause 200 ' Brief screen update delay (optimized from 2000ms)
     MsgBox screenContentBuffer, vbOKOnly, "Full Screen Content: " & screenContentBuffer
 End Sub
 

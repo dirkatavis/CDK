@@ -67,7 +67,7 @@ End Sub
 Function CheckForTextInLine2(targetText)
     Dim screenContentBuffer, screenLength
     screenLength = 80
-    bzhao.Pause 2000 ' Give screen time to update
+    bzhao.Pause 300 ' Brief screen update delay (optimized from 2000ms)
     bzhao.ReadScreen screenContentBuffer, screenLength, 2, 1
     If InStr(screenContentBuffer, targetText) > 0 Then
         CheckForTextInLine2 = True
@@ -97,34 +97,34 @@ Sub Closeout_Ro()
     ' Final Closeout Steps
     '*******************************************************
     WaitForTextAtBottom "COMMAND:"
-    EnterTextAndWait "FC", 1000
+    EnterTextAndWait "FC", 500
     If HandleCloseoutErrors() Then Exit Sub
     
     ' Have all hours been entered
     WaitForTextAtBottom "ALL LABOR POSTED"
-    EnterTextAndWait "Y", 1000
+    EnterTextAndWait "Y", 500
     If HandleCloseoutErrors() Then Exit Sub
 
     
     ' OUT MILEAGE
     WaitForTextAtBottom "MILEAGE OUT"
-    EnterTextAndWait "", 1000
+    EnterTextAndWait "", 500
     If HandleCloseoutErrors() Then Exit Sub
     
     ' IN MILEAGE
     WaitForTextAtBottom "MILEAGE IN"
-    EnterTextAndWait "", 1000
+    EnterTextAndWait "", 500
     If HandleCloseoutErrors() Then Exit Sub
     
     ' OK TO CLOSE THE RO?
     WaitForTextAtBottom "O.K. TO CLOSE RO"
-    EnterTextAndWait "Y", 1000
+    EnterTextAndWait "Y", 500
     If HandleCloseoutErrors() Then Exit Sub
     
-    ' SEND TO PRINTER 2
-    bzhao.Pause 2000
+    ' SEND TO PRINTER 2 (optimized from 2000ms)
+    bzhao.Pause 500
     WaitForTextAtBottom "INVOICE PRINTER"
-    EnterTextAndWait "2", 1000
+    EnterTextAndWait "2", 500
     lastRoResult = "Successfully closed"
 End Sub
 
@@ -143,8 +143,8 @@ Sub WaitForTextAtBottom(targetText)
     LogResult "DEBUG", "Waiting for text at bottom: '" & targetText & "'"
     Do
         'LogResult "DEBUG", "Waiting for text at bottom: '" & targetText & "'. Elapsed time: " & elapsed & " ms"
-        bzhao.Pause 500
-        elapsed = elapsed + 500
+        bzhao.Pause 250
+        elapsed = elapsed + 250
         bzhao.ReadScreen screenContentBuffer, screenLength, row, col
         Dim debugLine
         debugLine = Left(screenContentBuffer, 40)
@@ -177,9 +177,9 @@ End Function
 '-----------------------------------------------------------
 Sub EnterTextAndWait(text, wait)
     bzhao.SendKey text
-    bzhao.Pause 100 ' Small delay to allow text to register
+    bzhao.Pause 50 ' Small delay to allow text to register (optimized from 100ms)
     Call PressKey ("<NumpadEnter>")
-    bzhao.Pause 500
+    bzhao.Pause 200 ' Brief delay after enter (optimized from 500ms)
 End Sub
 
 '-----------------------------------------------------------
@@ -188,7 +188,7 @@ End Sub
 '-----------------------------------------------------------
 Sub PressKey(key)
    bzhao.SendKey key
-   bzhao.Pause 100 ' Small delay to allow key press to register  
+   bzhao.Pause 50 ' Small delay to allow key press to register (optimized from 100ms)
 End Sub
 
 Sub LogResult(logType, message)
@@ -218,9 +218,9 @@ Function HandleCloseoutErrors()
     LogResult "ERROR", "Closeout failed due to error on screen."
         ' Send 'E' to exit back to main screen
         bzhao.SendKey "E"
-        bzhao.Pause 100
+        bzhao.Pause 50
         bzhao.SendKey "<NumpadEnter>"
-        bzhao.Pause 1000
+        bzhao.Pause 300
         HandleCloseoutErrors = True
     Else
         HandleCloseoutErrors = False
@@ -299,7 +299,7 @@ End Sub
 
 Sub EnterText(bzhao, textToEnter)
     bzhao.SendKey textToEnter
-    bzhao.Pause 100 ' Small delay to allow text to register
+    bzhao.Pause 50 ' Small delay to allow text to register (optimized from 100ms)
     bzhao.SendKey "<Enter>"
 End Sub
 
