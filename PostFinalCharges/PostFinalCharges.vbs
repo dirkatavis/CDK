@@ -531,6 +531,7 @@ Sub ProcessPromptSequence(prompts)
             ' Add extra logging for problematic prompts
             If InStr(bestMatchKey, "ADD A LABOR OPERATION") > 0 Then
                 Call LogEvent("comm", "med", "Responded to ADD A LABOR OPERATION prompt", "ProcessPromptSequence", "Waiting for screen to stabilize", "")
+                ' Extra wait needed: This prompt triggers screen mode change that requires additional processing time
                 Call WaitMs(800) ' Extra wait for this specific prompt (optimized from 2000ms)
                 Call LogEvent("comm", "high", "Screen after ADD A LABOR OPERATION response", "ProcessPromptSequence", "", GetScreenSnapshot(5))
                 

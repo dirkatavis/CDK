@@ -1,5 +1,6 @@
 
 Dim POLL_INTERVAL: POLL_INTERVAL = 1 ' 1 second polling interval for development
+Dim WAIT_FOR_TEXT_POLL_MS: WAIT_FOR_TEXT_POLL_MS = 250 ' Polling interval for WaitForTextAtBottom (optimized from 500ms)
 Dim CSV_FILE_PATH
 Dim LOG_FILE_PATH
 Dim DebugLevel ' 0=None, 1=Error, 2=Info, 3=Debug
@@ -143,8 +144,8 @@ Sub WaitForTextAtBottom(targetText)
     LogResult "DEBUG", "Waiting for text at bottom: '" & targetText & "'"
     Do
         'LogResult "DEBUG", "Waiting for text at bottom: '" & targetText & "'. Elapsed time: " & elapsed & " ms"
-        bzhao.Pause 250
-        elapsed = elapsed + 250
+        bzhao.Pause WAIT_FOR_TEXT_POLL_MS
+        elapsed = elapsed + WAIT_FOR_TEXT_POLL_MS
         bzhao.ReadScreen screenContentBuffer, screenLength, row, col
         Dim debugLine
         debugLine = Left(screenContentBuffer, 40)

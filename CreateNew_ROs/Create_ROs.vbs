@@ -224,7 +224,8 @@ Sub WaitForPrompt(promptText, valueToEnter, sendEnter, timeoutMs)
         ' Apply slow mode delay if enabled
         If IsSlowModeEnabled() Then Call WaitMs(1000)
         
-        ' Check if the value is a special key command (removed redundant bzhao.Pause)
+        ' Check if the value is a special key command
+        ' Removed redundant bzhao.Pause: FastKey and FastText functions already handle all necessary timing
         If InStr(1, valueToEnter, "<") > 0 And InStr(1, valueToEnter, ">") > 0 Then
             LOG "Sending key command: " & valueToEnter
             Call FastKey(valueToEnter)
