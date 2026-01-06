@@ -204,6 +204,16 @@ Function CreateLineItemPromptDictionary()
     Call AddPromptToDictEx(dict, "TECHNICIAN \([A-Za-z0-9]+\)\?", "99", "<NumpadEnter>", False, True)
     ' Note: Generic "TECHNICIAN" prompt removed to avoid conflict with "TECHNICIAN FINISHING WORK ?"
     
+    ' TECHNICIAN LINE ASSIGNMENT AND COMPLETION prompts
+    ' Handles: "TECHNICIAN 9903 IS ASSIGNED TO LINE 'A' IS LINE 'A' COMPLETED (Y/N):"
+    ' This is a composite prompt that appears when a technician is assigned to a line
+    ' Response: Y to confirm the line is completed
+    Call AddPromptToDict(dict, "TECHNICIAN \d+ IS ASSIGNED TO LINE '[A-Z]'.*IS LINE '[A-Z]' COMPLETED \(Y/N\)", "Y", "<NumpadEnter>", False)
+    
+    ' Handle standalone technician assignment notification (if it appears separately)
+    ' Handles: "TECHNICIAN 9903 IS ASSIGNED TO LINE 'A'" (just press Enter to acknowledge)
+    Call AddPromptToDict(dict, "TECHNICIAN \d+ IS ASSIGNED TO LINE '[A-Z]'$", "", "<Enter>", False)
+    
     ' HOURS prompts: Uses AddPromptToDictEx with AcceptDefault=True
     ' Accepts defaults like "ACTUAL HOURS (117)?" or sends "0" for "ACTUAL HOURS?"
     Call AddPromptToDictEx(dict, "ACTUAL HOURS \(\d+\)", "0", "<NumpadEnter>", False, True)
@@ -240,6 +250,13 @@ Function CreateFnlPromptDictionary()
     Call AddPromptToDict(dict, "TECHNICIAN FINISHING WORK ?", "99", "<NumpadEnter>", False)
     Call AddPromptToDictEx(dict, "TECHNICIAN \([A-Za-z0-9]+\)\?", "99", "<NumpadEnter>", False, True)
     Call AddPromptToDictEx(dict, "TECHNICIAN\?", "99", "<NumpadEnter>", False, True)
+    
+    ' TECHNICIAN LINE ASSIGNMENT (also handle in FNL context)
+    ' Handles: "TECHNICIAN 9903 IS ASSIGNED TO LINE 'A' IS LINE 'A' COMPLETED (Y/N):"
+    Call AddPromptToDict(dict, "TECHNICIAN \d+ IS ASSIGNED TO LINE '[A-Z]'.*IS LINE '[A-Z]' COMPLETED \(Y/N\)", "Y", "<NumpadEnter>", False)
+    
+    ' Handle standalone technician assignment notification in FNL context
+    Call AddPromptToDict(dict, "TECHNICIAN \d+ IS ASSIGNED TO LINE '[A-Z]'$", "", "<Enter>", False)
     
     ' Hours prompts that may appear after FNL commands
     Call AddPromptToDictEx(dict, "ACTUAL HOURS \(\d+\)", "0", "<NumpadEnter>", False, True)
