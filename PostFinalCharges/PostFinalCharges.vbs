@@ -202,8 +202,7 @@ Function CreateLineItemPromptDictionary()
     Call AddPromptToDictEx(dict, "TECHNICIAN \(\d+\)", "99", "<NumpadEnter>", False, True)
     Call AddPromptToDictEx(dict, "TECHNICIAN?", "99", "<NumpadEnter>", False, True)
     Call AddPromptToDictEx(dict, "TECHNICIAN \([A-Za-z0-9]+\)\?", "99", "<NumpadEnter>", False, True)
-    ' Handle line completion confirmation prompt (always send "Y", no defaults to check)
-    Call AddPromptToDict(dict, "TECHNICIAN", "Y", "<NumpadEnter>", True)
+    ' Note: Generic "TECHNICIAN" prompt removed to avoid conflict with "TECHNICIAN FINISHING WORK ?"
     
     ' HOURS prompts: Uses AddPromptToDictEx with AcceptDefault=True
     ' Accepts defaults like "ACTUAL HOURS (117)?" or sends "0" for "ACTUAL HOURS?"
