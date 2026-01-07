@@ -73,11 +73,13 @@ Function DiscoverLineLetters()
     Dim lineLetters, maxLinesToCheck, i, lineLetter, screenContentBuffer, screenLength
     Dim foundLetters, foundCount
     Dim row, col
+    Dim consecutiveEmptyCount
     
     ' Array to store discovered line letters
     Dim tempLetters(25) ' Max 26 letters A-Z
     foundCount = 0
     maxLinesToCheck = 10 ' Check up to 10 possible line letters
+    consecutiveEmptyCount = 0
     
     ' The LC column header is typically on row 6, and line letters start on row 7
     ' Column 1 contains the line letter (under the "L" in "LC")
@@ -104,7 +106,17 @@ Function DiscoverLineLetters()
             If Asc(UCase(lineLetter)) >= Asc("A") And Asc(UCase(lineLetter)) <= Asc("Z") Then
                 tempLetters(foundCount) = UCase(lineLetter)
                 foundCount = foundCount + 1
+                consecutiveEmptyCount = 0 ' Reset counter when we find a letter
+            Else
+                consecutiveEmptyCount = consecutiveEmptyCount + 1
             End If
+        Else
+            consecutiveEmptyCount = consecutiveEmptyCount + 1
+        End If
+        
+        ' Stop if we encounter 2 consecutive non-letter rows (end of line items)
+        If consecutiveEmptyCount >= 2 Then
+            Exit For
         End If
     Next
     
