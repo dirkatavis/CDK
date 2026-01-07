@@ -85,7 +85,7 @@ End Function
 '       Consider extracting to shared include file if more scripts need this.
 '-----------------------------------------------------------
 Function DiscoverLineLetters()
-    Dim lineLetters, maxLinesToCheck, i, lineLetter, screenContentBuffer, screenLength
+    Dim maxLinesToCheck, i, lineLetter, screenContentBuffer, screenLength
     Dim foundLetters, foundCount
     Dim row, col
     Dim consecutiveEmptyCount

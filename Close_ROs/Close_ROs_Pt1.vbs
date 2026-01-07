@@ -72,7 +72,7 @@ Set bzhao = Nothing
 '       Consider extracting to shared include file if more scripts need this.
 '-----------------------------------------------------------
 Function DiscoverLineLetters()
-    Dim lineLetters, maxLinesToCheck, i, lineLetter, screenContentBuffer, screenLength
+    Dim maxLinesToCheck, i, lineLetter, screenContentBuffer, screenLength
     Dim foundLetters, foundCount
     Dim row, col
     Dim consecutiveEmptyCount
@@ -124,6 +124,7 @@ Function DiscoverLineLetters()
     
     ' If no line letters found, default to A, B, C for backward compatibility
     ' Note: Pt1 includes 'A' in the default because it processes all lines from the beginning
+    ' Using "DiscoverLineLetters" as the identifier in the log instead of RO number since we don't have one here
     If foundCount = 0 Then
         LogResult "DiscoverLineLetters", "WARNING: No line letters discovered, using default A, B, C"
         DiscoverLineLetters = Array("A", "B", "C")
@@ -137,6 +138,7 @@ Function DiscoverLineLetters()
     Next
     
     ' Log discovered line letters for debugging
+    ' Using "DiscoverLineLetters" as the identifier in the log instead of RO number since we don't have one here
     Dim lettersList
     lettersList = Join(foundLetters, ", ")
     LogResult "DiscoverLineLetters", "Discovered line letters: " & lettersList
