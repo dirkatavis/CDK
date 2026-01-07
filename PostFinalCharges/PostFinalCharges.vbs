@@ -43,7 +43,7 @@ Const VERB_MAX = 3
 Const DEBUG_SCREEN_LINES = 3
 Const g_DiagLogQueueSize = 5
 Const LEGACY_BASE_PATH = "C:\Temp\Code\Scripts\VBScript\CDK\PostFinalCharges"
-Const MIDNIGHT_ROLLOVER_THRESHOLD_MS = -30000 ' Conservative threshold for midnight rollover detection
+' Simplified timeout logic - no midnight handling needed for current debugging
 
 ' --- EARLY LOGGING: Force maximum logging for startup ---
 g_CurrentCriticality = CRIT_COMMON ' Log all criticality levels
@@ -202,7 +202,16 @@ Function CreateLineItemPromptDictionary()
     Call AddPromptToDictEx(dict, "TECHNICIAN \(\d+\)", "99", "<NumpadEnter>", False, True)
     Call AddPromptToDictEx(dict, "TECHNICIAN?", "99", "<NumpadEnter>", False, True)
     Call AddPromptToDictEx(dict, "TECHNICIAN \([A-Za-z0-9]+\)\?", "99", "<NumpadEnter>", False, True)
-    ' Note: Generic "TECHNICIAN" prompt removed to avoid conflict with "TECHNICIAN FINISHING WORK ?"
+    
+    ' Specific prompt for "TECHNICIAN FINISHING WORK" - sends technician number
+    Call AddPromptToDict(dict, "TECHNICIAN FINISHING WORK", "99", "<NumpadEnter>", False)
+    
+    ' Handle technician assignment + line completion prompts
+    Call AddPromptToDict(dict, "IS ASSIGNED TO LINE", "Y", "<NumpadEnter>", False)
+    
+    ' Handle line completion confirmation prompt (always send "Y", no defaults to check)
+    ' Make this pattern more specific to avoid matching other TECHNICIAN prompts
+    Call AddPromptToDictEx(dict, "TECHNICIAN \(Y/N\)", "Y", "<NumpadEnter>", True, False)
     
     ' HOURS prompts: Uses AddPromptToDictEx with AcceptDefault=True
     ' Accepts defaults like "ACTUAL HOURS (117)?" or sends "0" for "ACTUAL HOURS?"
@@ -240,6 +249,15 @@ Function CreateFnlPromptDictionary()
     Call AddPromptToDict(dict, "TECHNICIAN FINISHING WORK ?", "99", "<NumpadEnter>", False)
     Call AddPromptToDictEx(dict, "TECHNICIAN \([A-Za-z0-9]+\)\?", "99", "<NumpadEnter>", False, True)
     Call AddPromptToDictEx(dict, "TECHNICIAN\?", "99", "<NumpadEnter>", False, True)
+    
+    ' Handle technician assignment + line completion as a combined prompt
+    ' First line: "TECHNICIAN 12051 IS ASSIGNED TO LINE 'A'"  
+    ' Second line: "Is Line 'A' completed (Y/N):"
+    ' We detect the first line but respond to the second line's question
+    Call AddPromptToDict(dict, "IS ASSIGNED TO LINE", "Y", "<NumpadEnter>", False)
+    
+    ' Also handle direct line completion prompts (in case they appear standalone)
+    Call AddPromptToDictEx(dict, "Is Line '[A-Z]' completed \(Y/N\)", "Y", "<NumpadEnter>", False, False)
     
     ' Hours prompts that may appear after FNL commands
     Call AddPromptToDictEx(dict, "ACTUAL HOURS \(\d+\)", "0", "<NumpadEnter>", False, True)
@@ -311,12 +329,6 @@ Function WaitForScreenStable(timeoutMs, stabilityMs)
             ' Content same, check if we've been stable long enough
             If stableStart > 0 Then
                 stableElapsed = (Timer - stableStart) * 1000
-                ' Handle midnight rollover conservatively - only adjust if magnitude is large
-                If stableElapsed < MIDNIGHT_ROLLOVER_THRESHOLD_MS Then
-                    stableElapsed = stableElapsed + 86400000
-                ElseIf stableElapsed < 0 Then
-                    stableElapsed = 0 ' Small negative values are precision issues
-                End If
                 If stableElapsed >= stabilityMs Then
                     ' Screen has been stable for required period
                     Call LogEvent("comm", "high", "Screen stable for required period", "WaitForScreenStable", Int(stableElapsed) & "ms >= " & stabilityMs & "ms", "")
@@ -331,12 +343,6 @@ Function WaitForScreenStable(timeoutMs, stabilityMs)
         
         ' Check overall timeout
         waitElapsed = (Timer - waitStart) * 1000
-        ' Handle midnight rollover conservatively - only adjust if magnitude is large
-        If waitElapsed < MIDNIGHT_ROLLOVER_THRESHOLD_MS Then
-            waitElapsed = waitElapsed + 86400000
-        ElseIf waitElapsed < 0 Then
-            waitElapsed = 0 ' Small negative values are precision issues
-        End If
         If waitElapsed > timeoutMs Then
             ' Overall timeout exceeded
             Call LogEvent("min", "med", "WaitForScreenStable timeout exceeded", "WaitForScreenStable", Int(waitElapsed) & "ms > " & timeoutMs & "ms", "Last content: '" & Left(currentContent, 50) & "'")
@@ -348,7 +354,18 @@ Function WaitForScreenStable(timeoutMs, stabilityMs)
     Loop
 End Function
 
-
+'-----------------------------------------------------------------------------------
+' **FUNCTION NAME:** TimerToClockTime
+' **FUNCTIONALITY:** Converts Timer value (seconds since midnight) to HH:MM:SS format
+'-----------------------------------------------------------------------------------
+Function TimerToClockTime(timerValue)
+    Dim hours, minutes, seconds, totalSeconds
+    totalSeconds = Int(timerValue)
+    hours = totalSeconds \ 3600
+    minutes = (totalSeconds Mod 3600) \ 60
+    seconds = totalSeconds Mod 60
+    TimerToClockTime = Right("0" & hours, 2) & ":" & Right("0" & minutes, 2) & ":" & Right("0" & seconds, 2) & "." & Right("0" & Int((timerValue - totalSeconds) * 100), 2)
+End Function
 
 ' Generic state machine to process a sequence of prompts from a given dictionary.
 Sub ProcessPromptSequence(prompts)
@@ -356,6 +373,9 @@ Sub ProcessPromptSequence(prompts)
     Dim sequenceStartTime, sequenceElapsed
     finished = False
     sequenceStartTime = Now() ' Use actual date/time instead of Timer
+    
+    ' DIAGNOSTIC: Log Timer behavior at start
+    Call LogEvent("comm", "high", "ProcessPromptSequence started", "ProcessPromptSequence", "Timer diagnostics", "sequenceStartTime=" & sequenceStartTime & " (Now() at start)")
     
     ' Initialize no-prompt counter for this sequence
     g_NoPromptCount = 0
@@ -366,8 +386,40 @@ Sub ProcessPromptSequence(prompts)
     End If
 
     Do While Not finished
+        ' DIAGNOSTIC: Log Timer values with clock time conversion to expose stale start times
+        Dim currentTimer, currentTimerClock, sequenceStartTimer, sequenceStartClock
+        currentTimer = Timer
+        currentTimerClock = TimerToClockTime(currentTimer)
+        
+        ' Extract Timer value from sequenceStartTime (might be Now() date or Timer value)
+        On Error Resume Next
+        If IsDate(sequenceStartTime) Then
+            ' If sequenceStartTime is a Date from Now(), calculate equivalent Timer value
+            Dim startHour, startMin, startSec
+            startHour = Hour(sequenceStartTime)
+            startMin = Minute(sequenceStartTime) 
+            startSec = Second(sequenceStartTime)
+            sequenceStartTimer = startHour * 3600 + startMin * 60 + startSec
+        Else
+            ' If sequenceStartTime is already a Timer value
+            sequenceStartTimer = CDbl(sequenceStartTime)
+        End If
+        On Error GoTo 0
+        
+        sequenceStartClock = TimerToClockTime(sequenceStartTimer)
+        
+        Call LogEvent("comm", "high", "TIMER DIAGNOSTIC - Current vs Start", "ProcessPromptSequence", "currentTimer=" & currentTimer & " (" & currentTimerClock & ") sequenceStartTime=" & sequenceStartTime & " (" & sequenceStartClock & ")", "")
+        
         ' Check for timeout - using real wall clock time
         sequenceElapsed = DateDiff("s", sequenceStartTime, Now()) * 1000
+        
+        ' DIAGNOSTIC: Log the calculation step by step
+        Call LogEvent("comm", "high", "Timeout calculation details", "ProcessPromptSequence", "Now()=" & Now() & " minus " & sequenceStartTime & " equals " & DateDiff("s", sequenceStartTime, Now()) & " seconds = " & sequenceElapsed & "ms", "")
+        
+        ' DIAGNOSTIC: Show Timer calculation for comparison to expose discrepancy
+        Dim timerElapsed
+        timerElapsed = (currentTimer - sequenceStartTimer) 
+        Call LogEvent("comm", "high", "TIMER vs CLOCK COMPARISON", "ProcessPromptSequence", "Timer elapsed: " & timerElapsed & " seconds", "Clock: " & currentTimerClock & " - " & sequenceStartClock)
         
         If sequenceElapsed > 30000 Then ' 30-second timeout
             Call LogEvent("crit", "low", "ProcessPromptSequence timed out after 30 seconds", "ProcessPromptSequence", "Automation stopped", "Now()=" & Now() & " sequenceStartTime=" & sequenceStartTime & " calculated=" & sequenceElapsed & "ms > 30000ms")
@@ -382,11 +434,27 @@ Sub ProcessPromptSequence(prompts)
         Dim mainPromptText
         mainPromptText = GetScreenLine(MainPromptLine)
         
-        If Len(mainPromptText) > 0 And Not IsPromptInConfig(mainPromptText, prompts) Then
-            Call LogEvent("crit", "low", "Unknown prompt on line " & MainPromptLine & ": '" & mainPromptText & "'", "ProcessPromptSequence", "Aborting script - requires manual review", "prompt not found in prompts dictionary")
-            SafeMsg "Unknown prompt detected on line " & MainPromptLine & ": '" & mainPromptText & "\nAutomation stopped for manual review.", True, "Unknown Prompt Error"
-            g_ShouldAbort = True
-            Exit Sub
+        ' DIAGNOSTIC: Log detailed prompt matching information at Max verbosity
+        Call LogEvent("comm", "max", "Prompt detection analysis", "ProcessPromptSequence", "MainPromptLine=" & MainPromptLine & " Text='" & mainPromptText & "'", "Length=" & Len(mainPromptText))
+        
+        If Len(mainPromptText) > 0 Then
+            ' Log all dictionary keys being checked against
+            Dim diagKeys, diagKeyList, diagKey
+            diagKeys = prompts.Keys
+            diagKeyList = ""
+            For Each diagKey In diagKeys
+                If diagKeyList <> "" Then diagKeyList = diagKeyList & ", "
+                diagKeyList = diagKeyList & "'" & diagKey & "'"
+            Next
+            Call LogEvent("comm", "max", "Checking against prompt dictionary", "ProcessPromptSequence", "Dictionary contains " & prompts.Count & " entries", "Keys: " & diagKeyList)
+            
+            If Not IsPromptInConfig(mainPromptText, prompts) Then
+                Call LogEvent("comm", "max", "Prompt matching failed", "ProcessPromptSequence", "No dictionary entry matched '" & mainPromptText & "'", "Checked " & prompts.Count & " patterns")
+                Call LogEvent("crit", "low", "Unknown prompt on line " & MainPromptLine & ": '" & mainPromptText & "'", "ProcessPromptSequence", "Aborting script - requires manual review", "prompt not found in prompts dictionary")
+                SafeMsg "Unknown prompt detected on line " & MainPromptLine & ": '" & mainPromptText & vbCrLf & "Automation stopped for manual review.", True, "Unknown Prompt Error"
+                g_ShouldAbort = True
+                Exit Sub
+            End If
         End If
 
         ' --- Find the longest (most specific) matching prompt ---
@@ -569,12 +637,6 @@ Sub ProcessPromptSequence(prompts)
             Do While IsTextPresent(bestMatchKey)
                 Call WaitMs(500)
                 clearElapsed = (Timer - clearStart) * 1000
-                ' Handle midnight rollover conservatively - only adjust if magnitude is large
-                If clearElapsed < MIDNIGHT_ROLLOVER_THRESHOLD_MS Then
-                    clearElapsed = clearElapsed + 86400000
-                ElseIf clearElapsed < 0 Then
-                    clearElapsed = 0 ' Small negative values are precision issues
-                End If
                 If clearElapsed > POST_PROMPT_WAIT_MS Then ' Configurable prompt clear timeout
                     Call LogEvent("min", "med", "Prompt did not clear within timeout", "ProcessPromptSequence", "'" & bestMatchKey & "' - " & POST_PROMPT_WAIT_MS & " ms", "clearElapsed=" & Int(clearElapsed) & "ms")
                     Exit Do
@@ -643,12 +705,6 @@ Function WaitForScreenTransition(expectedText, timeoutMs, description)
         
         Call WaitMs(50) ' Fast polling for quick detection
         waitElapsed = (Timer - waitStart) * 1000
-        ' Handle midnight rollover conservatively - only adjust if magnitude is large
-        If waitElapsed < MIDNIGHT_ROLLOVER_THRESHOLD_MS Then
-            waitElapsed = waitElapsed + 86400000
-        ElseIf waitElapsed < 0 Then
-            waitElapsed = 0 ' Small negative values are precision issues
-        End If
         
         If waitElapsed > timeoutMs Then
             Call LogEvent("min", "med", "Timeout waiting for " & description, "WaitForScreenTransition", "After " & timeoutMs & "ms - Expected: '" & expectedText & "'", "")
@@ -2308,12 +2364,6 @@ Function WaitForTextSilent(textToFind, timeoutMs)
 
         Call WaitMs(120)
         elapsedMs = (Timer - startTime) * 1000
-        ' Handle midnight rollover conservatively - only adjust if magnitude is large
-        If elapsedMs < MIDNIGHT_ROLLOVER_THRESHOLD_MS Then
-            elapsedMs = elapsedMs + 86400000
-        ElseIf elapsedMs < 0 Then
-            elapsedMs = 0 ' Small negative values are precision issues
-        End If
     Loop While elapsedMs < timeoutMs
 
     WaitForTextSilent = False
@@ -2519,7 +2569,21 @@ End Sub
 '-----------------------------------------------------------------------------------
 Sub Closeout_ReadyToPost()
     Call LogInfo("Executing READY TO POST closeout procedure", "Closeout_ReadyToPost")
-    Call Closeout_Default() ' Use standard procedure for now
+    
+    ' For READY TO POST status ROs, process each line individually: R A -> FNL A -> R B -> FNL B, etc.
+    Call ProcessLinesSequentially()
+    
+    ' Send the File (F) command
+    Call LogInfo("Sending file command after READY TO POST processing", "Closeout_ReadyToPost")
+    WaitForPrompt "COMMAND:", "F", True, g_PromptWait, ""
+    If HandleCloseoutErrors() Then Exit Sub
+    
+    ' Handle the "ALL LABOR POSTED (Y/N)?" prompt after F command
+    Call LogInfo("Waiting for 'ALL LABOR POSTED (Y/N)?' prompt", "Closeout_ReadyToPost")
+    WaitForPrompt "ALL LABOR POSTED (Y/N)?", "Y", True, g_PromptWait, ""
+    
+    lastRoResult = "Successfully filed"
+    Call LogInfo("RO filed successfully - ready for downstream review", "Closeout_ReadyToPost")
 End Sub
 
 '-----------------------------------------------------------------------------------
@@ -2533,7 +2597,21 @@ End Sub
 '-----------------------------------------------------------------------------------
 Sub Closeout_Preassigned()
     Call LogInfo("Executing PREASSIGNED closeout procedure", "Closeout_Preassigned")
-    Call Closeout_Default() ' Use standard procedure for now - can be customized
+    
+    ' For PREASSIGNED status ROs, process each line individually: R A -> FNL A -> R B -> FNL B, etc.
+    Call ProcessLinesSequentially()
+    
+    ' Send the File (F) command
+    Call LogInfo("Sending file command after PREASSIGNED processing", "Closeout_Preassigned")
+    WaitForPrompt "COMMAND:", "F", True, g_PromptWait, ""
+    If HandleCloseoutErrors() Then Exit Sub
+    
+    ' Handle the "ALL LABOR POSTED (Y/N)?" prompt after F command
+    Call LogInfo("Waiting for 'ALL LABOR POSTED (Y/N)?' prompt", "Closeout_Preassigned")
+    WaitForPrompt "ALL LABOR POSTED (Y/N)?", "Y", True, g_PromptWait, ""
+    
+    lastRoResult = "Successfully filed"
+    Call LogInfo("RO filed successfully - ready for downstream review", "Closeout_Preassigned")
 End Sub
 
 '-----------------------------------------------------------------------------------
@@ -2549,12 +2627,8 @@ End Sub
 Sub Closeout_Open()
     Call LogInfo("Executing OPEN closeout procedure", "Closeout_Open")
     
-    ' For OPEN status ROs, we need to process lines differently
-    ' First, close any open lines using FNL X commands
-    Call ProcessOpenStatusLines()
-    
-    ' After closing individual lines, perform standard line processing
-    Call ProcessLineItems()
+    ' For OPEN status ROs, process each line individually: R A -> FNL A -> R B -> FNL B, etc.
+    Call ProcessLinesSequentially()
     
     ' Finally, send the File (F) command
     Call LogInfo("Sending file command after OPEN status processing", "Closeout_Open")
@@ -2570,28 +2644,182 @@ Sub Closeout_Open()
 End Sub
 
 '-----------------------------------------------------------------------------------
+' **PROCEDURE NAME:** ProcessLinesSequentially
+' **DATE CREATED:** 2026-01-07
+' **AUTHOR:** GitHub Copilot
+' 
+' **FUNCTIONALITY:**
+' Processes OPEN status lines in proper sequence: R A -> FNL A -> R B -> FNL B, etc.
+' Each line is reviewed then immediately closed before moving to the next line.
+'-----------------------------------------------------------------------------------
+Sub ProcessLinesSequentially()
+    Call LogInfo("Starting sequential line processing (R then FNL per line)", "ProcessLinesSequentially")
+    Call LogEvent("comm", "high", "ProcessLinesSequentially called", "ProcessLinesSequentially", "Processing lines in R->FNL sequence", "Starting line A")
+    
+    Dim lineLetterChar, i, lineItemPrompts, fnlPrompts
+    Set lineItemPrompts = CreateLineItemPromptDictionary()
+    Set fnlPrompts = CreateFnlPromptDictionary()
+    
+    ' Initialize line tracking
+    g_LastSuccessfulLine = ""
+
+    For i = 65 To 90 ' ASCII for A to Z
+        lineLetterChar = Chr(i)
+        Call LogEvent("comm", "med", "Processing line " & lineLetterChar & " - Review then Close", "ProcessLinesSequentially", "", "")
+        
+        ' Step 1: Review the line with R command
+        Call LogEvent("comm", "med", "Running R " & lineLetterChar & " command", "ProcessLinesSequentially", "", "")
+        Call WaitForPrompt("COMMAND:", "R " & lineLetterChar, True, g_PromptWait, "")
+        
+        ' Brief wait to let the response appear
+        Call WaitMs(500)
+        
+        ' Check if the line exists FIRST
+        If IsTextPresent("LINE CODE " & lineLetterChar & " IS NOT ON FILE") Then
+            Dim rScreenResponse
+            rScreenResponse = GetScreenSnapshot(24)
+            Call LogEvent("comm", "high", "R " & lineLetterChar & " command response", "ProcessLinesSequentially", rScreenResponse, "")
+            If g_LastSuccessfulLine = "" Then
+                Call LogEvent("comm", "low", "No line items found to process", "ProcessLinesSequentially", "Line " & lineLetterChar & " does not exist", "")
+            Else
+                Call LogEvent("comm", "low", "Finished processing lines. No more lines found after " & g_LastSuccessfulLine, "ProcessLinesSequentially", "Line " & lineLetterChar & " does not exist", "")
+            End If
+            Exit For ' Exit the For loop
+        End If
+        
+        ' Wait for the line item screen to appear
+        Dim expectedLineText, lineScreenLoaded
+        expectedLineText = "LINE " & lineLetterChar & " STORY :"
+        lineScreenLoaded = WaitForScreenTransition(expectedLineText, 3000, "line " & lineLetterChar & " screen")
+        
+        If Not lineScreenLoaded Then
+            Call LogEvent("crit", "low", "CRITICAL: Line " & lineLetterChar & " screen failed to load", "ProcessLinesSequentially", "Cannot continue", "")
+            Call FastKey("<Enter>")
+            Exit For
+        End If
+        
+        ' Process review prompts for this line
+        Call LogDebug("Processing R " & lineLetterChar & " prompts", "ProcessLinesSequentially")
+        Call ProcessPromptSequence(lineItemPrompts)
+        
+        ' Step 2: Close the line with FNL command  
+        Call LogEvent("comm", "med", "Running FNL " & lineLetterChar & " command", "ProcessLinesSequentially", "", "")
+        Call WaitForPrompt("COMMAND:", "FNL " & lineLetterChar, True, g_PromptWait, "")
+        
+        ' Check if the line is already finished
+        If IsTextPresent("LINE " & lineLetterChar & " IS ALREADY FINISHED") Then
+            Call LogEvent("comm", "high", "Line " & lineLetterChar & " already finished", "ProcessLinesSequentially", "Skipping FNL processing", "")
+        Else
+            ' Process FNL prompts for this line
+            Call LogDebug("Processing FNL " & lineLetterChar & " prompts", "ProcessLinesSequentially")
+            Call ProcessPromptSequence(fnlPrompts)
+        End If
+        
+        ' Track successful line processing
+        g_LastSuccessfulLine = lineLetterChar
+        Call LogInfo("Completed sequential processing for line " & lineLetterChar, "ProcessLinesSequentially")
+    Next
+    
+    Call LogEvent("comm", "low", "All lines processed sequentially (R->FNL per line)", "ProcessLinesSequentially", "", "")
+End Sub
+
+'-----------------------------------------------------------------------------------
+' **PROCEDURE NAME:** ProcessReviewLines
+' **DATE CREATED:** 2026-01-07
+' **AUTHOR:** GitHub Copilot
+' 
+' **FUNCTIONALITY:**
+' Processes line review for OPEN status ROs using R commands.
+' This is Phase 2 extracted from ProcessLineItems for proper workflow ordering.
+' Reviews each line (A-Z) without doing FNL commands.
+'-----------------------------------------------------------------------------------
+Sub ProcessReviewLines()
+    Call LogInfo("Starting line review process with R commands", "ProcessReviewLines")
+    Call LogEvent("comm", "high", "ProcessReviewLines called", "ProcessReviewLines", "About to process R commands for line review", "Starting line A")
+    
+    Dim lineLetterChar, i, lineItemPrompts
+    Set lineItemPrompts = CreateLineItemPromptDictionary()
+    
+    ' Initialize line tracking
+    g_LastSuccessfulLine = ""
+
+    ' Process R commands and prompts for all lines
+    Call LogEvent("comm", "med", "Processing line prompts with R commands", "ProcessReviewLines", "", "")
+    For i = 65 To 90 ' ASCII for A to Z
+        lineLetterChar = Chr(i)
+        Call LogEvent("comm", "med", "Running R " & lineLetterChar & " command", "ProcessReviewLines", "", "")
+        
+        ' Wait for the COMMAND prompt and then enter "R" + the current line letter.
+        Call WaitForPrompt("COMMAND:", "R " & lineLetterChar, True, g_PromptWait, "")
+        
+        ' Brief wait to let the response appear
+        Call WaitMs(500)
+        
+        ' Check if the line exists FIRST - this avoids inappropriate timeout errors
+        If IsTextPresent("LINE CODE " & lineLetterChar & " IS NOT ON FILE") Then
+            Dim rScreenResponse
+            rScreenResponse = GetScreenSnapshot(24)
+            Call LogEvent("comm", "high", "R " & lineLetterChar & " command response", "ProcessReviewLines", rScreenResponse, "")
+            If g_LastSuccessfulLine = "" Then
+                Call LogEvent("comm", "low", "Finished processing line items. No line items found to process", "ProcessReviewLines", "Line " & lineLetterChar & " does not exist", "")
+            Else
+                Call LogEvent("comm", "low", "Finished processing line items. No more lines found after " & g_LastSuccessfulLine, "ProcessReviewLines", "Line " & lineLetterChar & " does not exist", "")
+            End If
+            ' System automatically returns to COMMAND prompt without manual ENTER
+            Exit For ' Exit the For loop.
+        End If
+        
+        ' Wait for the specific line item screen to appear using generic transition function
+        Dim expectedLineText, lineScreenLoaded
+        expectedLineText = "LINE " & lineLetterChar & " STORY :"
+        lineScreenLoaded = WaitForScreenTransition(expectedLineText, 3000, "line " & lineLetterChar & " screen")
+        
+        If Not lineScreenLoaded Then
+            Call LogEvent("crit", "low", "CRITICAL: Line " & lineLetterChar & " screen failed to load within timeout", "ProcessReviewLines", "Screen state uncertain", "")
+            Call LogEvent("crit", "low", "Cannot safely continue processing with unknown screen state", "ProcessReviewLines", "Exiting line processing", "")
+            ' Press Enter to attempt clearing any pending screen state
+            Call FastKey("<Enter>")
+            Exit For ' Exit the For loop due to critical screen loading failure
+        End If
+        ' Use the new state machine method for all prompt handling
+        Call LogDebug("Processing line item " & lineLetterChar & " using ProcessPromptSequence", "ProcessReviewLines")
+
+        ' Process all prompts for this line item using the new state machine
+        Call ProcessPromptSequence(lineItemPrompts)
+        
+        ' Track successful line processing for R commands
+        g_LastSuccessfulLine = lineLetterChar
+        Call LogInfo("Completed processing line item " & lineLetterChar, "ProcessReviewLines")
+    Next
+    Call LogEvent("comm", "low", "All line charges have been reviewed", "ProcessReviewLines", "", "")
+End Sub
+
+'-----------------------------------------------------------------------------------
 ' **PROCEDURE NAME:** ProcessOpenStatusLines
 ' **DATE CREATED:** 2025-12-30
 ' **AUTHOR:** GitHub Copilot
 ' 
 ' **FUNCTIONALITY:**
 ' Processes individual lines (A-Z) for OPEN status ROs by sending FNL X commands
-' to close open lines, followed by R X processes for each line that exists.
-' Stops when encountering "NOT ON FILE" errors.
+' to close open lines. This runs AFTER ProcessReviewLines() to ensure proper workflow order.
+' Stops when encountering "NOT ON FILE" errors or "ALREADY FINISHED" messages.
 '-----------------------------------------------------------------------------------
 Sub ProcessOpenStatusLines()
     Call LogInfo("Starting OPEN status line processing with FNL commands", "ProcessOpenStatusLines")
+    Call LogEvent("comm", "high", "ProcessOpenStatusLines called", "ProcessOpenStatusLines", "About to process FNL commands for open lines", "Starting line A")
     
     Dim lineLetterChar, i
     For i = 65 To 90 ' ASCII for A to Z
         lineLetterChar = Chr(i)
         Call LogInfo("Processing OPEN status for line " & lineLetterChar, "ProcessOpenStatusLines")
+        Call LogEvent("comm", "high", "Attempting FNL command", "ProcessOpenStatusLines", "Line " & lineLetterChar, "Sending 'FNL " & lineLetterChar & "' command")
         
         ' First, try to send FNL (Final Line) command for this line
         Call WaitForPrompt("COMMAND:", "FNL " & lineLetterChar, True, g_PromptWait, "")
         
         ' Check if the line exists by looking for "NOT ON FILE" error
         If IsTextPresent("LINE CODE " & lineLetterChar & " IS NOT ON FILE") Then
+            Call LogEvent("comm", "high", "LINE NOT ON FILE detected", "ProcessOpenStatusLines", "Line " & lineLetterChar & " does not exist", "Exiting FNL processing")
             If i = 65 Then ' First line (A) not found
                 Call LogInfo("No line A found - no open lines to process with FNL commands", "ProcessOpenStatusLines")
             Else ' Subsequent line not found
@@ -2605,16 +2833,12 @@ Sub ProcessOpenStatusLines()
         
         ' Check for "Line X is already finished" message
         If IsTextPresent("LINE " & lineLetterChar & " IS ALREADY FINISHED") Then
+            Call LogEvent("comm", "high", "LINE ALREADY FINISHED detected", "ProcessOpenStatusLines", "Line " & lineLetterChar & " is already closed", "Skipping to next line")
             Call LogInfo("Line " & lineLetterChar & " is already finished, moving to next line", "ProcessOpenStatusLines")
             ' System automatically returns to COMMAND prompt without manual ENTER
         Else
-            ' Check for technician prompt after FNL command
-            If IsTextPresent("TECHNICIAN FINISHING WORK ?") Then
-                Call LogInfo("Found TECHNICIAN FINISHING WORK prompt for line " & lineLetterChar & ", responding with 99", "ProcessOpenStatusLines")
-                Call WaitForPrompt("TECHNICIAN FINISHING WORK ?", "99", True, g_PromptWait, "")
-            End If
-            
-            ' If line exists, handle any other prompts that appear after FNL command
+            Call LogEvent("comm", "high", "FNL command succeeded", "ProcessOpenStatusLines", "Line " & lineLetterChar & " accepted FNL command", "Processing FNL prompts")
+            ' If line exists, handle any prompts that appear after FNL command
             Call LogInfo("FNL command processed for line " & lineLetterChar, "ProcessOpenStatusLines")
             
             ' Small delay to allow screen updates
@@ -2743,10 +2967,11 @@ End Sub
 ' The standard/default closeout procedure. Contains the original closeout logic.
 '-----------------------------------------------------------------------------------
 Sub Closeout_Default()
-    ' Process all line items before proceeding to final closeout.
-    Call ProcessLineItems
+    ' Process each line individually: R A -> FNL A -> R B -> FNL B, etc.
+    Call ProcessLinesSequentially()
 
     ' Send the File (F) command
+    Call LogInfo("Sending file command after default processing", "Closeout_Default")
     WaitForPrompt "COMMAND:", "F", True, g_PromptWait, ""
     If HandleCloseoutErrors() Then Exit Sub
 
@@ -2783,12 +3008,6 @@ Sub HandleOptionalComebackPrompt()
         Do While IsTextPresent(comebackPrompt)
             Call WaitMs(100)
             clearElapsed = (Timer - clearStart) * 1000
-            ' Handle midnight rollover conservatively - only adjust if magnitude is large
-            If clearElapsed < MIDNIGHT_ROLLOVER_THRESHOLD_MS Then
-                clearElapsed = clearElapsed + 86400000
-            ElseIf clearElapsed < 0 Then
-                clearElapsed = 0 ' Small negative values are precision issues
-            End If
             If clearElapsed > 2000 Then
                 Call LogWarn("Comeback prompt did not clear within 2 seconds", "HandleOptionalComebackPrompt")
                 Exit Do
@@ -3278,12 +3497,6 @@ Sub WaitForContinuePrompt()
         End If
         Call WaitMs(120)
         elapsedMs = (Timer - startTime) * 1000
-        ' Handle midnight rollover conservatively - only adjust if magnitude is large
-        If elapsedMs < MIDNIGHT_ROLLOVER_THRESHOLD_MS Then
-            elapsedMs = elapsedMs + 86400000
-        ElseIf elapsedMs < 0 Then
-            elapsedMs = 0 ' Small negative values are precision issues
-        End If
     Loop While elapsedMs < timeoutMs
     ' If not found, log and continue
     Call LogWarn("Timeout waiting for continue prompt: " & promptText, "WaitForContinuePrompt")
