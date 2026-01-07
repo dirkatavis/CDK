@@ -81,6 +81,8 @@ End Function
 ' DiscoverLineLetters: Detects which line letters (A, B, C, etc.) are present
 ' on the current RO Detail screen by reading the LC column.
 ' Returns: Array of line letters found (e.g., Array("A", "C") if B is missing)
+' Note: This function is duplicated in Close_ROs_Pt1.vbs for independence.
+'       Consider extracting to shared include file if more scripts need this.
 '-----------------------------------------------------------
 Function DiscoverLineLetters()
     Dim lineLetters, maxLinesToCheck, i, lineLetter, screenContentBuffer, screenLength
@@ -89,9 +91,9 @@ Function DiscoverLineLetters()
     Dim consecutiveEmptyCount
     
     ' Array to store discovered line letters
-    Dim tempLetters(25) ' Max 26 letters A-Z
+    Dim tempLetters(25) ' Max 26 letters A-Z (sized for theoretical maximum)
     foundCount = 0
-    maxLinesToCheck = 10 ' Check up to 10 possible line letters
+    maxLinesToCheck = 10 ' Practical limit: Check up to 10 line letters (business logic constraint)
     consecutiveEmptyCount = 0
     
     ' The LC column header is typically on row 6, and line letters start on row 7
@@ -134,6 +136,7 @@ Function DiscoverLineLetters()
     Next
     
     ' If no line letters found, default to B, C for backward compatibility
+    ' Note: Pt2 excludes 'A' from the default because line A is typically processed elsewhere (in Pt1)
     If foundCount = 0 Then
         LogResult "WARNING", "No line letters discovered, using default B, C"
         DiscoverLineLetters = Array("B", "C")
