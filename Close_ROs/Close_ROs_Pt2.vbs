@@ -85,30 +85,30 @@ End Function
 '       Consider extracting to shared include file if more scripts need this.
 '-----------------------------------------------------------
 Function DiscoverLineLetters()
-    Dim maxLinesToCheck, i, lineLetter, screenContentBuffer, screenLength
+    Dim maxLinesToCheck, i, capturedLetter, screenContentBuffer, readLength
     Dim foundLetters, foundCount
-    Dim row, col
-    Dim consecutiveEmptyCount
+    Dim startReadRow, startReadColumn
+    Dim missingLetters
     
     ' Array to store discovered line letters
     Dim tempLetters(25) ' Max 26 letters A-Z (sized for theoretical maximum)
     foundCount = 0
     maxLinesToCheck = 10 ' Practical limit: Check up to 10 line letters (business logic constraint)
-    consecutiveEmptyCount = 0
+    missingLetters = 0
     
-    ' The LC column header is typically on row 6, and line letters start on row 7
+    ' The LC column header is typically on row 6, and line letters start on row 10
     ' Column 1 contains the line letter (under the "L" in "LC")
     Dim startRow
-    startRow = 7 ' First data row after header (adjust if needed)
+    startRow = 10 ' First data row (line letters always start at row 10)
     
     ' Read the screen area where line letters appear (column 1, multiple rows)
     For i = 0 To maxLinesToCheck - 1
-        row = startRow + i
-        col = 1
-        screenLength = 1 ' Read just 1 character (the line letter)
+        startReadRow = startRow + i
+        startReadColumn = 1
+        readLength = 1 ' Read just 1 character (the line letter)
         
         On Error Resume Next
-        bzhao.ReadScreen screenContentBuffer, screenLength, row, col
+        bzhao.ReadScreen screenContentBuffer, readLength, startReadRow, startReadColumn
         If Err.Number <> 0 Then
             Err.Clear
             Exit For
@@ -116,30 +116,29 @@ Function DiscoverLineLetters()
         On Error GoTo 0
         
         ' Trim and check if it's a valid letter (A-Z)
-        lineLetter = Trim(screenContentBuffer)
-        If Len(lineLetter) = 1 Then
-            If Asc(UCase(lineLetter)) >= Asc("A") And Asc(UCase(lineLetter)) <= Asc("Z") Then
-                tempLetters(foundCount) = UCase(lineLetter)
+        capturedLetter = Trim(screenContentBuffer)
+        If Len(capturedLetter) = 1 Then
+            If Asc(UCase(capturedLetter)) >= Asc("A") And Asc(UCase(capturedLetter)) <= Asc("Z") Then
+                tempLetters(foundCount) = UCase(capturedLetter)
                 foundCount = foundCount + 1
-                consecutiveEmptyCount = 0 ' Reset counter when we find a letter
+                missingLetters = 0 ' Reset counter when we find a letter
             Else
-                consecutiveEmptyCount = consecutiveEmptyCount + 1
+                missingLetters = missingLetters + 1
             End If
         Else
-            consecutiveEmptyCount = consecutiveEmptyCount + 1
+            missingLetters = missingLetters + 1
         End If
         
         ' Stop if we encounter 2 consecutive non-letter rows (end of line items)
-        If consecutiveEmptyCount >= 2 Then
+        If missingLetters >= 2 Then
             Exit For
         End If
     Next
     
-    ' If no line letters found, default to B, C for backward compatibility
-    ' Note: Pt2 excludes 'A' from the default because line A is typically processed elsewhere (in Pt1)
+    ' If no line letters found, log error and return empty array to skip this RO
     If foundCount = 0 Then
-        LogResult "WARNING", "No line letters discovered, using default B, C"
-        DiscoverLineLetters = Array("B", "C")
+        LogResult "ERROR", "No line letters discovered - skipping RO"
+        DiscoverLineLetters = Array()
         Exit Function
     End If
     
@@ -165,6 +164,12 @@ Sub Closeout_Ro()
     ' Discover which line letters are present on the screen
     Dim lineLetters, i
     lineLetters = DiscoverLineLetters()
+    
+    ' If no line letters discovered, log error and exit
+    If IsEmpty(lineLetters) Or UBound(lineLetters) = -1 Then
+        LogResult "ERROR", "No line letters discovered - Skipping closeout"
+        Exit Sub
+    End If
     
     ' Add stories for each discovered line letter (skip A if present, as it's usually done elsewhere)
     For i = 0 To UBound(lineLetters)
