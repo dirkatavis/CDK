@@ -2649,12 +2649,12 @@ End Sub
 ' **AUTHOR:** GitHub Copilot
 ' 
 ' **FUNCTIONALITY:**
-' Processes OPEN status lines in proper sequence: R A -> FNL A -> R B -> FNL B, etc.
-' Each line is reviewed then immediately closed before moving to the next line.
+' Processes lines in correct CDK workflow: Close all lines first (FNL A, B, C...), 
+' then review all lines (R A, B, C...). This prevents "Line not finished" errors.
 '-----------------------------------------------------------------------------------
 Sub ProcessLinesSequentially()
-    Call LogInfo("Starting sequential line processing (R then FNL per line)", "ProcessLinesSequentially")
-    Call LogEvent("comm", "high", "ProcessLinesSequentially called", "ProcessLinesSequentially", "Processing lines in R->FNL sequence", "Starting line A")
+    Call LogInfo("Starting sequential line processing (FNL all lines, then R all lines)", "ProcessLinesSequentially")
+    Call LogEvent("comm", "high", "ProcessLinesSequentially called", "ProcessLinesSequentially", "Processing lines in FNL->R sequence", "Phase 1: Close all lines")
     
     Dim lineLetterChar, i, lineItemPrompts, fnlPrompts
     Set lineItemPrompts = CreateLineItemPromptDictionary()
@@ -2663,29 +2663,56 @@ Sub ProcessLinesSequentially()
     ' Initialize line tracking
     g_LastSuccessfulLine = ""
 
+    ' PHASE 1: Close all lines first (FNL commands)
+    Call LogEvent("comm", "med", "Phase 1: Running FNL commands for all lines", "ProcessLinesSequentially", "", "")
     For i = 65 To 90 ' ASCII for A to Z
         lineLetterChar = Chr(i)
-        Call LogEvent("comm", "med", "Processing line " & lineLetterChar & " - Review then Close", "ProcessLinesSequentially", "", "")
-        
-        ' Step 1: Review the line with R command
-        Call LogEvent("comm", "med", "Running R " & lineLetterChar & " command", "ProcessLinesSequentially", "", "")
-        Call WaitForPrompt("COMMAND:", "R " & lineLetterChar, True, g_PromptWait, "")
+        Call LogEvent("comm", "med", "Running FNL " & lineLetterChar & " command", "ProcessLinesSequentially", "", "")
+        Call WaitForPrompt("COMMAND:", "FNL " & lineLetterChar, True, g_PromptWait, "")
         
         ' Brief wait to let the response appear
         Call WaitMs(500)
         
-        ' Check if the line exists FIRST
+        ' Check if the line exists
         If IsTextPresent("LINE CODE " & lineLetterChar & " IS NOT ON FILE") Then
-            Dim rScreenResponse
-            rScreenResponse = GetScreenSnapshot(24)
-            Call LogEvent("comm", "high", "R " & lineLetterChar & " command response", "ProcessLinesSequentially", rScreenResponse, "")
+            Dim fnlScreenResponse
+            fnlScreenResponse = GetScreenSnapshot(24)
+            Call LogEvent("comm", "high", "FNL " & lineLetterChar & " command response", "ProcessLinesSequentially", fnlScreenResponse, "")
             If g_LastSuccessfulLine = "" Then
                 Call LogEvent("comm", "low", "No line items found to process", "ProcessLinesSequentially", "Line " & lineLetterChar & " does not exist", "")
             Else
-                Call LogEvent("comm", "low", "Finished processing lines. No more lines found after " & g_LastSuccessfulLine, "ProcessLinesSequentially", "Line " & lineLetterChar & " does not exist", "")
+                Call LogEvent("comm", "low", "Finished processing line items. No more lines found after " & g_LastSuccessfulLine, "ProcessLinesSequentially", "Line " & lineLetterChar & " does not exist", "")
             End If
             Exit For ' Exit the For loop
         End If
+        
+        ' Check if the line is already finished
+        If IsTextPresent("LINE " & lineLetterChar & " IS ALREADY FINISHED") Then
+            Call LogEvent("comm", "high", "Line " & lineLetterChar & " already finished", "ProcessLinesSequentially", "Skipping FNL processing", "")
+        Else
+            ' Process FNL prompts for this line
+            Call LogDebug("Processing FNL " & lineLetterChar & " prompts", "ProcessLinesSequentially")
+            Call ProcessPromptSequence(fnlPrompts)
+        End If
+        
+        ' Track successful line processing
+        g_LastSuccessfulLine = lineLetterChar
+    Next
+    
+    Call LogEvent("comm", "low", "Phase 1 completed - All lines finalized", "ProcessLinesSequentially", "", "")
+    
+    ' PHASE 2: Review all lines (R commands)
+    Call LogEvent("comm", "med", "Phase 2: Processing line prompts with R commands", "ProcessLinesSequentially", "", "")
+    For i = 65 To 90 ' ASCII for A to Z
+        lineLetterChar = Chr(i)
+        
+        ' Only process lines that were successfully closed
+        If Asc(lineLetterChar) > Asc(g_LastSuccessfulLine) Then
+            Exit For ' Don't process lines beyond what was successfully closed
+        End If
+        
+        Call LogEvent("comm", "med", "Running R " & lineLetterChar & " command", "ProcessLinesSequentially", "", "")
+        Call WaitForPrompt("COMMAND:", "R " & lineLetterChar, True, g_PromptWait, "")
         
         ' Wait for the line item screen to appear
         Dim expectedLineText, lineScreenLoaded
@@ -2702,25 +2729,10 @@ Sub ProcessLinesSequentially()
         Call LogDebug("Processing R " & lineLetterChar & " prompts", "ProcessLinesSequentially")
         Call ProcessPromptSequence(lineItemPrompts)
         
-        ' Step 2: Close the line with FNL command  
-        Call LogEvent("comm", "med", "Running FNL " & lineLetterChar & " command", "ProcessLinesSequentially", "", "")
-        Call WaitForPrompt("COMMAND:", "FNL " & lineLetterChar, True, g_PromptWait, "")
-        
-        ' Check if the line is already finished
-        If IsTextPresent("LINE " & lineLetterChar & " IS ALREADY FINISHED") Then
-            Call LogEvent("comm", "high", "Line " & lineLetterChar & " already finished", "ProcessLinesSequentially", "Skipping FNL processing", "")
-        Else
-            ' Process FNL prompts for this line
-            Call LogDebug("Processing FNL " & lineLetterChar & " prompts", "ProcessLinesSequentially")
-            Call ProcessPromptSequence(fnlPrompts)
-        End If
-        
-        ' Track successful line processing
-        g_LastSuccessfulLine = lineLetterChar
-        Call LogInfo("Completed sequential processing for line " & lineLetterChar, "ProcessLinesSequentially")
+        Call LogInfo("Completed review processing for line " & lineLetterChar, "ProcessLinesSequentially")
     Next
     
-    Call LogEvent("comm", "low", "All lines processed sequentially (R->FNL per line)", "ProcessLinesSequentially", "", "")
+    Call LogEvent("comm", "low", "All lines processed sequentially (FNL all, then R all)", "ProcessLinesSequentially", "", "")
 End Sub
 
 '-----------------------------------------------------------------------------------
