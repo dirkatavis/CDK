@@ -328,11 +328,11 @@ Sub AddStory(bzhao, storyCode)
         WaitForTextAtBottom "OPERATION CODE FOR "
         EnterText bzhao, ""
         
-        'Review story description. Accepting default
+        'Entering story description. Accepting default
         WaitForTextAtBottom "DESC:"
         EnterText bzhao, ""
         
-        'Entering technician id for review
+        'Entering technician id
         WaitForTextAtBottom "TECHNICIAN"
         EnterText bzhao, "99"
         
@@ -377,9 +377,8 @@ Sub AddStory(bzhao, storyCode)
         'Add a labor operation? Defaulting to No
         WaitForTextAtBottom "ADD A LABOR OPERATION"
         EnterText bzhao, ""
-    End If  
-
-    If storyCode = "C" Then
+    
+    ElseIf storyCode = "C" Then
         ' Wait for the expected prompt at the bottom before sending the story command
         WaitForTextAtBottom "LABOR TYPE FOR LINE" ' Wait up to 15s for command prompt (adjust text as needed)
         EnterText bzhao, ""
