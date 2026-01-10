@@ -171,14 +171,11 @@ Sub Closeout_Ro()
         Exit Sub
     End If
     
-    ' Add stories for each discovered line letter (skip A if present, as it's usually done elsewhere)
+    ' Add stories for each discovered line letter (including A which now requires review)
     For i = 0 To UBound(lineLetters)
-        ' Skip line A as it's typically already processed
-        If UCase(lineLetters(i)) <> "A" Then
-            WaitForTextAtBottom "COMMAND:"
-            AddStory bzhao, lineLetters(i)
-            'If HandleCloseoutErrors() Then Exit Sub
-        End If
+        WaitForTextAtBottom "COMMAND:"
+        AddStory bzhao, lineLetters(i)
+        'If HandleCloseoutErrors() Then Exit Sub
     Next
 
     
@@ -317,10 +314,41 @@ Function HandleCloseoutErrors()
 End Function
 
 Sub AddStory(bzhao, storyCode)
-    ' Use the storyCode variable (e.g., "B" or "C") to make the code dynamic.
+    ' Use the storyCode variable (e.g., "A", "B" or "C") to make the code dynamic.
     EnterText bzhao, "R " & storyCode 
 
-    If storyCode = "B" Then
+    If storyCode = "A" Then
+        ' Line A review step - now required per business requirements
+        
+        ' Wait for the expected prompt at the bottom before proceeding with review
+        WaitForTextAtBottom "LABOR TYPE FOR LINE"
+        EnterText bzhao, ""
+        
+        'Entering Operations Code. Defaulting to system default
+        WaitForTextAtBottom "OPERATION CODE FOR "
+        EnterText bzhao, ""
+        
+        'Review story description. Accepting default
+        WaitForTextAtBottom "DESC:"
+        EnterText bzhao, ""
+        
+        'Entering technician id for review
+        WaitForTextAtBottom "TECHNICIAN"
+        EnterText bzhao, "99"
+        
+        'Entering Actual hours. Defaulting to 0
+        WaitForTextAtBottom "ACTUAL HOURS"
+        EnterText bzhao, ""
+        
+        'Entering sold hours. Using default
+        WaitForTextAtBottom "SOLD HOURS"
+        EnterText bzhao, ""
+        
+        'Add a labor operation? Defaulting to No
+        WaitForTextAtBottom "ADD A LABOR OPERATION"
+        EnterText bzhao, ""
+        
+    ElseIf storyCode = "B" Then
 
         ' Wait for the expected prompt at the bottom before sending the story command
         WaitForTextAtBottom "LABOR TYPE FOR LINE" ' Wait up to 15s for command prompt (adjust text as needed)
