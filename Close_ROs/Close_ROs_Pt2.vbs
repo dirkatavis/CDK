@@ -180,10 +180,10 @@ Sub Closeout_Ro()
 
     
     '*******************************************************
-    ' Final Closeout Steps
+    ' Filing Steps
     '*******************************************************
     WaitForTextAtBottom "COMMAND:"
-    EnterTextAndWait "FC", 1000
+    EnterTextAndWait "F", 1000
     If HandleCloseoutErrors() Then Exit Sub
     
     ' Have all hours been entered
@@ -192,20 +192,20 @@ Sub Closeout_Ro()
     If HandleCloseoutErrors() Then Exit Sub
 
     
-    ' OUT MILEAGE
-    WaitForTextAtBottom "MILEAGE OUT"
-    EnterTextAndWait "", 1000
-    If HandleCloseoutErrors() Then Exit Sub
+    ' ' OUT MILEAGE
+    ' WaitForTextAtBottom "MILEAGE OUT"
+    ' EnterTextAndWait "", 1000
+    ' If HandleCloseoutErrors() Then Exit Sub
     
-    ' IN MILEAGE
-    WaitForTextAtBottom "MILEAGE IN"
-    EnterTextAndWait "", 1000
-    If HandleCloseoutErrors() Then Exit Sub
+    ' ' IN MILEAGE
+    ' WaitForTextAtBottom "MILEAGE IN"
+    ' EnterTextAndWait "", 1000
+    ' If HandleCloseoutErrors() Then Exit Sub
     
-    ' OK TO CLOSE THE RO?
-    WaitForTextAtBottom "O.K. TO CLOSE RO"
-    EnterTextAndWait "Y", 1000
-    If HandleCloseoutErrors() Then Exit Sub
+    ' ' OK TO CLOSE THE RO?
+    ' WaitForTextAtBottom "O.K. TO CLOSE RO"
+    ' EnterTextAndWait "Y", 1000
+    ' If HandleCloseoutErrors() Then Exit Sub
     
     ' SEND TO PRINTER 2
     bzhao.Pause 2000
