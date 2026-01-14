@@ -183,7 +183,7 @@ Sub Closeout_Ro()
     ' Final Closeout Steps
     '*******************************************************
     WaitForTextAtBottom "COMMAND:"
-    EnterTextAndWait "FC", 1000
+    EnterTextAndWait "F", 1000
     If HandleCloseoutErrors() Then Exit Sub
     
     ' Have all hours been entered
