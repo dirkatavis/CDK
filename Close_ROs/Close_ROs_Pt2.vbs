@@ -10,8 +10,8 @@ Dim bzhao: Set bzhao = CreateObject("BZWhll.WhllObj")
 '-----------------------------------------------------------
 ' Define file paths and connect to BlueZone
 '-----------------------------------------------------------
-CSV_FILE_PATH = "C:\Temp\Code\Scripts\VBScript\CDK\Close_ROs\Close_ROs_Pt1.csv"
-LOG_FILE_PATH = "C:\Temp\Code\Scripts\VBScript\CDK\Close_ROs\Close_ROs_Pt2.log"
+CSV_FILE_PATH = "C:\Temp_alt\CDK\Close_ROs\Close_ROs_Pt1.csv"
+LOG_FILE_PATH = "C:\Temp_alt\CDK\Close_ROs\Close_ROs_Pt2.log"
 
 
 '-----------------------------------------------------------
@@ -87,23 +87,20 @@ End Function
 Function DiscoverLineLetters()
     Dim maxLinesToCheck, i, capturedLetter, screenContentBuffer, readLength
     Dim foundLetters, foundCount
-    Dim startReadRow, startReadColumn
-    Dim missingLetters
+    Dim startReadRow, startReadColumn, emptyRowCount
     
     ' Array to store discovered line letters
-    Dim tempLetters(25) ' Max 26 letters A-Z (sized for theoretical maximum)
+    Dim tempLetters(25) ' Max 26 letters A-Z
     foundCount = 0
-    maxLinesToCheck = 10 ' Practical limit: Check up to 10 line letters (business logic constraint)
-    missingLetters = 0
+    emptyRowCount = 0
     
-    ' The LC column header is typically on row 6, and line letters start on row 10
-    ' Column 1 contains the line letter (under the "L" in "LC")
-    Dim startRow
-    startRow = 10 ' First data row (line letters always start at row 10)
+    ' The prompt area starts at row 23, so we must stop at row 22 to avoid 
+    ' misidentifying prompt characters (like 'C' in 'COMMAND:') as line letters.
+    Dim startRow, endRow
+    startRow = 10 ' First data row
+    endRow = 22   ' Last possible data row before prompt area
     
-    ' Read the screen area where line letters appear (column 1, multiple rows)
-    For i = 0 To maxLinesToCheck - 1
-        startReadRow = startRow + i
+    For startReadRow = startRow To endRow
         startReadColumn = 1
         readLength = 1 ' Read just 1 character (the line letter)
         
@@ -121,18 +118,16 @@ Function DiscoverLineLetters()
             If Asc(UCase(capturedLetter)) >= Asc("A") And Asc(UCase(capturedLetter)) <= Asc("Z") Then
                 tempLetters(foundCount) = UCase(capturedLetter)
                 foundCount = foundCount + 1
-                missingLetters = 0 ' Reset counter when we find a letter
+                emptyRowCount = 0 ' Reset when a letter is found
             Else
-                missingLetters = missingLetters + 1
+                emptyRowCount = emptyRowCount + 1
             End If
         Else
-            missingLetters = missingLetters + 1
+            emptyRowCount = emptyRowCount + 1
         End If
-        
-        ' Stop if we encounter 2 consecutive non-letter rows (end of line items)
-        If missingLetters >= 2 Then
-            Exit For
-        End If
+
+        ' If we hit 3 consecutive rows without a letter, we've likely finished the list
+        If emptyRowCount >= 3 Then Exit For
     Next
     
     ' If no line letters found, log error and return empty array to skip this RO
@@ -162,7 +157,7 @@ End Function
 '-----------------------------------------------------------
 Sub Closeout_Ro()
     ' Discover which line letters are present on the screen
-    Dim lineLetters, i
+    Dim lineLetters, i, screenContent
     lineLetters = DiscoverLineLetters()
     
     ' If no line letters discovered, log error and exit
@@ -171,11 +166,21 @@ Sub Closeout_Ro()
         Exit Sub
     End If
     
-    ' Add stories for each discovered line letter (including A which now requires review)
+    ' Add stories for each discovered line letter
     For i = 0 To UBound(lineLetters)
-        WaitForTextAtBottom "COMMAND:"
+        ' Wait for either the main COMMAND prompt or any story review prompt
+        ' This handles cases where CDK might auto-advance to the next line
+        LogResult "INFO", "Syncing for line " & lineLetters(i)
+        Call WaitForTextAtBottom("COMMAND:|LABOR TYPE|OPERATION CODE|DESC:|TECHNICIAN")
+        
+        ' Read the screen to see if we need to send the 'R' command
+        bzhao.ReadScreen screenContent, 160, 23, 1
+        If InStr(UCase(screenContent), "COMMAND:") > 0 Then
+            EnterText bzhao, "R " & lineLetters(i) 
+        End If
+
+        ' Process the prompts for this story
         AddStory bzhao, lineLetters(i)
-        'If HandleCloseoutErrors() Then Exit Sub
     Next
 
     
@@ -183,7 +188,7 @@ Sub Closeout_Ro()
     ' Filing Steps
     '*******************************************************
     WaitForTextAtBottom "COMMAND:"
-    EnterTextAndWait "F", 1000
+    EnterTextAndWait "FC", 1000
     If HandleCloseoutErrors() Then Exit Sub
     
     ' Have all hours been entered
@@ -193,19 +198,19 @@ Sub Closeout_Ro()
 
     
     ' ' OUT MILEAGE
-    ' WaitForTextAtBottom "MILEAGE OUT"
-    ' EnterTextAndWait "", 1000
-    ' If HandleCloseoutErrors() Then Exit Sub
+    WaitForTextAtBottom "MILEAGE OUT"
+    EnterTextAndWait "", 1000
+    If HandleCloseoutErrors() Then Exit Sub
     
     ' ' IN MILEAGE
-    ' WaitForTextAtBottom "MILEAGE IN"
-    ' EnterTextAndWait "", 1000
-    ' If HandleCloseoutErrors() Then Exit Sub
+    WaitForTextAtBottom "MILEAGE IN"
+    EnterTextAndWait "", 1000
+    If HandleCloseoutErrors() Then Exit Sub
     
     ' ' OK TO CLOSE THE RO?
-    ' WaitForTextAtBottom "O.K. TO CLOSE RO"
-    ' EnterTextAndWait "Y", 1000
-    ' If HandleCloseoutErrors() Then Exit Sub
+    WaitForTextAtBottom "O.K. TO CLOSE RO"
+    EnterTextAndWait "Y", 1000
+    If HandleCloseoutErrors() Then Exit Sub
     
     ' SEND TO PRINTER 2
     bzhao.Pause 2000
@@ -221,27 +226,40 @@ End Sub
 ' timeout: ms before giving up
 '-----------------------------------------------------------
 Sub WaitForTextAtBottom(targetText)
-    Dim elapsed, screenContentBuffer, screenLength, found, row, col
+    Dim elapsed, screenContentBuffer, screenLength, found, col
     elapsed = 0
-    row = 23 ' correct line for debug
     col = 1
     screenLength = 80 ' one line
     LogResult "DEBUG", "Waiting for text at bottom: '" & targetText & "'"
+    
+    ' Split targetText by | in case multiple options are provided
+    Dim targets: targets = Split(targetText, "|")
+    Dim i
+    
     Do
-        'LogResult "DEBUG", "Waiting for text at bottom: '" & targetText & "'. Elapsed time: " & elapsed & " ms"
         bzhao.Pause 500
         elapsed = elapsed + 500
-        bzhao.ReadScreen screenContentBuffer, screenLength, row, col
-        Dim debugLine
-        debugLine = Left(screenContentBuffer, 40)
-    LogResult "DEBUG", "Last line (row " & row & "): '" & debugLine & "' | Expected: '" & targetText & "' | Match: " & (InStr(debugLine, targetText) > 0)
-        found = (InStr(screenContentBuffer, targetText) > 0)
+        
+        ' Read both rows 23 and 24
+        Dim buffer23, buffer24
+        bzhao.ReadScreen buffer23, screenLength, 23, col
+        bzhao.ReadScreen buffer24, screenLength, 24, col
+        screenContentBuffer = UCase(buffer23 & " " & buffer24)
+
+        found = False
+        For i = 0 To UBound(targets)
+            If InStr(screenContentBuffer, UCase(targets(i))) > 0 Then
+                found = True
+                Exit For
+            End If
+        Next
+        
         If found Then
             Exit Do
         End If
-        'LogResult "DEBUG", "Text not found yet. Continuing to wait."
-        If elapsed >= 5000 Then
-            MsgBox "ERROR: Timeout waiting for text '" & targetText & "' to appear at bottom of screen. Script will exit.", vbCritical
+        
+        If elapsed >= 10000 Then
+            MsgBox "ERROR: Timeout waiting for text '" & targetText & "' to appear at bottom of screen. Script will exit." & vbCrLf & "Last 2 lines: " & vbCrLf & buffer23 & vbCrLf & buffer24, vbCritical
             bzhao.StopScript
         End If
     Loop
@@ -314,109 +332,86 @@ Function HandleCloseoutErrors()
 End Function
 
 Sub AddStory(bzhao, storyCode)
-    ' Use the storyCode variable (e.g., "A", "B" or "C") to make the code dynamic.
-    EnterText bzhao, "R " & storyCode 
-
-    If storyCode = "A" Then
-        ' Line A review step - now required per business requirements
-        
-        ' Wait for the expected prompt at the bottom before proceeding with review
-        WaitForTextAtBottom "LABOR TYPE FOR LINE"
-        EnterText bzhao, ""
-        
-        'Entering Operations Code. Defaulting to system default
-        WaitForTextAtBottom "OPERATION CODE FOR "
-        EnterText bzhao, ""
-        
-        'Entering story description. Accepting default
-        WaitForTextAtBottom "DESC:"
-        EnterText bzhao, ""
-        
-        'Entering technician id
-        WaitForTextAtBottom "TECHNICIAN"
-        EnterText bzhao, "99"
-        
-        'Entering Actual hours. Defaulting to 0
-        WaitForTextAtBottom "ACTUAL HOURS"
-        EnterText bzhao, ""
-        
-        'Entering sold hours. Using default
-        WaitForTextAtBottom "SOLD HOURS"
-        EnterText bzhao, ""
-        
-        'Add a labor operation? Defaulting to No
-        WaitForTextAtBottom "ADD A LABOR OPERATION"
-        EnterText bzhao, ""
-        
-    ElseIf storyCode = "B" Then
-
-        ' Wait for the expected prompt at the bottom before sending the story command
-        WaitForTextAtBottom "LABOR TYPE FOR LINE" ' Wait up to 15s for command prompt (adjust text as needed)
-        EnterText bzhao, ""
-
-        'Entering Operations Code. Defaulting to 'CATP'
-        WaitForTextAtBottom "OPERATION CODE FOR "
-        EnterText bzhao, ""
-                
-        'Entering story description. Accepting default
-        WaitForTextAtBottom "DESC: CHECK AND ADJ"
-        EnterText bzhao, ""
-
-        'Entering technician id
-        WaitForTextAtBottom "TECHNICIAN"
-        EnterText bzhao, "99"    
-
-        'Entering Actual hours. Defaulting to 0
-        WaitForTextAtBottom "ACTUAL HOURS"
-        EnterText bzhao, ""
-
-        'Entering sold hours. defaulting to 10
-        WaitForTextAtBottom "SOLD HOURS"
-        EnterText bzhao, ""        
+    ' This subroutine now uses a state-aware loop to handle prompts in any order.
+    ' It exits when it detects the "COMMAND:" prompt or "ADD A LABOR OPERATION" is completed.
     
-        'Add a labor operation? Defaulting to No
-        WaitForTextAtBottom "ADD A LABOR OPERATION"
-        EnterText bzhao, ""
+    Dim screenContent, startTime, elapsed, lastPrompt, sameCount
+    startTime = Timer
+    lastPrompt = ""
+    sameCount = 0
     
-    ElseIf storyCode = "C" Then
-        ' Wait for the expected prompt at the bottom before sending the story command
-        WaitForTextAtBottom "LABOR TYPE FOR LINE" ' Wait up to 15s for command prompt (adjust text as needed)
-        EnterText bzhao, ""
+    Do
+        bzhao.Pause 500
+        ' Read the prompt area (bottom 2 lines)
+        bzhao.ReadScreen screenContent, 160, 23, 1
+        screenContent = UCase(screenContent)
         
-        'Entering Operations Code. Defaulting to 'CATP'
-        WaitForTextAtBottom "OPERATION CODE FOR "
-        EnterText bzhao, ""
-
-        WaitForTextAtBottom "DESC: MEASURE AND"
-        EnterText bzhao, ""
+        ' 1. Check for exit condition (back to main screen)
+        If InStr(screenContent, "COMMAND:") > 0 Then
+            LogResult "INFO", "Story " & storyCode & " review complete (COMMAND: detected)."
+            Exit Sub
+        End If
         
-
-        'Entering technician id
-        WaitForTextAtBottom "TECHNICIAN"
-        EnterText bzhao, "99"  
-
+        ' 2. Detect and respond to specific prompts
+        Dim currentMatched: currentMatched = ""
         
-        'Entering Actual hours. Defaulting to 0
-        WaitForTextAtBottom "ACTUAL HOURS"
-        EnterText bzhao, ""
-
-        'Entering sold hours. defaulting to 10
-        WaitForTextAtBottom "SOLD HOURS"
-        EnterText bzhao, ""     
-         
-        'Add a labor operation? Defaulting to No
-        WaitForTextAtBottom "ADD A LABOR OPERATION"
-        EnterText bzhao, ""
-
-    End If
-
-
+        If InStr(screenContent, "LABOR TYPE") > 0 Then
+            currentMatched = "LABOR TYPE"
+            EnterText bzhao, ""
+        ElseIf InStr(screenContent, "OPERATION CODE") > 0 Then
+            currentMatched = "OPERATION CODE"
+            EnterText bzhao, ""
+        ElseIf InStr(screenContent, "DESC:") > 0 Then
+            currentMatched = "DESC:"
+            EnterText bzhao, ""
+        ElseIf InStr(screenContent, "TECHNICIAN") > 0 Or InStr(screenContent, "TECH...") > 0 Then
+            currentMatched = "TECHNICIAN"
+            EnterText bzhao, "99"
+        ElseIf InStr(screenContent, "ACTUAL HOURS") > 0 Then
+            currentMatched = "ACTUAL HOURS"
+            EnterText bzhao, ""
+        ElseIf InStr(screenContent, "SOLD HOURS") > 0 Then
+            currentMatched = "SOLD HOURS"
+            EnterText bzhao, ""
+        ElseIf InStr(screenContent, "ADD A LABOR OPERATION") > 0 Then
+            currentMatched = "ADD A LABOR OPERATION"
+            EnterText bzhao, ""
+            ' After "Add a labor operation", we expect to exit soon
+        ElseIf InStr(screenContent, "(END OF DISPLAY)") > 0 Then
+            currentMatched = "END OF DISPLAY"
+            EnterText bzhao, ""
+        End If
+        
+        ' 3. Stuck detection
+        If currentMatched <> "" Then
+            If currentMatched = lastPrompt Then
+                sameCount = sameCount + 1
+            Else
+                sameCount = 0
+                lastPrompt = currentMatched
+            End If
+            
+            ' If we've sent the same response 3 times, try a generic Enter to force a move
+            If sameCount >= 3 Then
+                LogResult "DEBUG", "Stuck at prompt '" & currentMatched & "'. Sending extra Enter."
+                EnterText bzhao, ""
+                sameCount = 0
+            End If
+        End If
+        
+        ' 4. Timeout (20 seconds per story)
+        elapsed = Timer - startTime
+        If elapsed > 20 Then
+            MsgBox "ERROR: Timeout in AddStory for " & storyCode & ". Script will exit to prevent data corruption." & vbCrLf & "Current screen prompt area: " & vbCrLf & screenContent, vbCritical
+            bzhao.StopScript
+        End If
+    Loop
 End Sub
 
 Sub EnterText(bzhao, textToEnter)
     bzhao.SendKey textToEnter
-    bzhao.Pause 100 ' Small delay to allow text to register
-    bzhao.SendKey "<Enter>"
+    bzhao.Pause 150 ' Small delay to allow text to register
+    bzhao.SendKey "<NumpadEnter>"
 End Sub
 
 bzhao.Disconnect

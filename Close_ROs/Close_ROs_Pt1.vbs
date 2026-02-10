@@ -9,7 +9,7 @@ Option Explicit
 
 
 ' --- Configuration ---
-Const CSV_FILE = "C:\Temp\Code\Scripts\VBScript\CDK\Close_ROs\Close_ROs_Pt1.csv" ' Update path if needed
+Const CSV_FILE = "C:\Temp_alt\CDK\Close_ROs\Close_ROs_Pt1.csv" ' Update path if needed
 Const NUM_COLUMN = 0 ' This constant is now largely redundant but kept for clarity
 
 ' --- VBScript Objects ---
@@ -274,7 +274,7 @@ End Sub
 '-----------------------------------------------------------
 Sub LogResult(ro, result)
     Dim fsoLog, logFile, logPath
-    logPath = "C:\Temp\Code\Scripts\VBScript\CDK\Close_ROs\Close_ROs_Pt1.log"
+    logPath = "C:\Temp_alt\CDK\Close_ROs\Close_ROs_Pt1.log"
     Set fsoLog = CreateObject("Scripting.FileSystemObject")
     Set logFile = fsoLog.OpenTextFile(logPath, 8, True)
     logFile.WriteLine Now & "  " & ro & " - Result: " & result
