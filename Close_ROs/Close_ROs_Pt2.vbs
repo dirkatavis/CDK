@@ -402,8 +402,8 @@ Sub AddStory(bzhao, storyCode)
         ' 4. Timeout (20 seconds per story)
         elapsed = Timer - startTime
         If elapsed > 20 Then
-            LogResult "ERROR", "Timeout in AddStory for " & storyCode & ". Current screen: " & screenContent
-            Exit Sub
+            MsgBox "ERROR: Timeout in AddStory for " & storyCode & ". Script will exit to prevent data corruption." & vbCrLf & "Current screen prompt area: " & vbCrLf & screenContent, vbCritical
+            bzhao.StopScript
         End If
     Loop
 End Sub
