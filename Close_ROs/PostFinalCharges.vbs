@@ -70,8 +70,8 @@ End Sub
 
 Sub InitializeConfig()
     ' Hardcode file paths
-    CSV_FILE_PATH = "C:\Temp\Code\Scripts\VBScript\CDK\Close_ROs\Close_ROs_Pt1.csv"
-    LOG_FILE_PATH = "C:\Temp\Code\Scripts\VBScript\CDK\Close_ROs\PostFinalCharges.log"
+    CSV_FILE_PATH = "C:\Temp_alt\CDK\Close_ROs\Close_ROs_Pt1.csv"
+    LOG_FILE_PATH = "C:\Temp_alt\CDK\Close_ROs\PostFinalCharges.log"
 
     ' Default wait times (can be moved to constants if not configurable)
     g_DefaultWait = 1000
