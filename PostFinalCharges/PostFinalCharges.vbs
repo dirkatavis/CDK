@@ -219,7 +219,7 @@ Function CreateLineItemPromptDictionary()
     ' SOLD HOURS: Advanced pattern handles both with and without parentheses
     ' "SOLD HOURS (10)?" -> accepts default 10, "SOLD HOURS?" -> sends "0"
     Call AddPromptToDictEx(dict, "SOLD HOURS( \(\d+\))?\?", "0", "<NumpadEnter>", False, True)
-    Call AddPromptToDict(dict, "ADD A LABOR OPERATION", "", "<Enter>", True)
+    Call AddPromptToDict(dict, "ADD A LABOR OPERATION( \(N\)\?)?", "N", "<NumpadEnter>", True)
     ' Note: COMMAND: success condition removed - handled by checking MainPromptLine specifically
     ' to avoid false positives when COMMAND appears elsewhere on screen
     Call AddPromptToDict(dict, "Is this a comeback \(Y/N\)\.\.\.", "Y", "<NumpadEnter>", False)
@@ -637,11 +637,18 @@ Sub ProcessPromptSequence(prompts)
             Do While IsTextPresent(bestMatchKey)
                 Call WaitMs(500)
                 clearElapsed = (Timer - clearStart) * 1000
+                If clearElapsed < 0 Then clearElapsed = clearElapsed + 86400000 ' Handle midnight rollover
                 If clearElapsed > POST_PROMPT_WAIT_MS Then ' Configurable prompt clear timeout
-                    Call LogEvent("min", "med", "Prompt did not clear within timeout", "ProcessPromptSequence", "'" & bestMatchKey & "' - " & POST_PROMPT_WAIT_MS & " ms", "clearElapsed=" & Int(clearElapsed) & "ms")
+                    Call LogEvent("min", "med", "Prompt '" & bestMatchKey & "' did not clear within " & POST_PROMPT_WAIT_MS & " ms.", "ProcessPromptSequence", "Timeout reached", "clearElapsed=" & Int(clearElapsed) & "ms")
                     Exit Do
                 End If
             Loop
+
+            If promptDetails.IsSuccess Then
+                finished = True
+                Call LogDebug("Success prompt reached: " & bestMatchKey, "ProcessPromptSequence")
+                Call LogTrace("Exiting ProcessPromptSequence on success.", "ProcessPromptSequence")
+            End If
             ' The loop will now naturally restart and rescan for the next prompt
         Else
             ' No prompt found, wait a moment before trying again
@@ -2506,8 +2513,22 @@ Sub ProcessLineItems()
             Call FastKey("<Enter>")
             Exit For ' Exit the For loop due to critical screen loading failure
         End If
+        
+        ' Check if the line exists. If not, we are done with line processing.
+        If IsTextPresent("LINE CODE " & lineLetterChar & " IS NOT ON FILE") Then
+            If i = 65 Then ' First line (A) not found
+                Call LogInfo("Finished processing line items. No line A found - no line items to process", "ProcessLineItems")
+            Else ' Subsequent line not found
+                Call LogInfo("Finished processing line items. No more lines found after " & Chr(i-1), "ProcessLineItems")
+            End If
+            ' Press Enter to clear the "NOT ON FILE" message from the screen.
+            Call FastKey("<Enter>")
+            Exit For ' Exit the For loop.
+        End If
+
         ' Use the new state machine method for all prompt handling
         Call LogDebug("Processing line item " & lineLetterChar & " using ProcessSingleLine_Dynamic", "ProcessLineItems")
+        Call LogDetailed("INFO", "Processing line item " & lineLetterChar & " using ProcessPromptSequence", "ProcessLineItems")
 
         ' Process all prompts for this line item using the new state machine
         Call ProcessPromptSequence(lineItemPrompts)
