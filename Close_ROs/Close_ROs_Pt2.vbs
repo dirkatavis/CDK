@@ -87,20 +87,20 @@ End Function
 Function DiscoverLineLetters()
     Dim maxLinesToCheck, i, capturedLetter, screenContentBuffer, readLength
     Dim foundLetters, foundCount
-    Dim startReadRow, startReadColumn
+    Dim startReadRow, startReadColumn, emptyRowCount
     
     ' Array to store discovered line letters
     Dim tempLetters(25) ' Max 26 letters A-Z
     foundCount = 0
-    maxLinesToCheck = 15 ' Check 15 rows to ensure we catch letters even with gaps
+    emptyRowCount = 0
     
-    ' The LC column header is typically on row 6, and line letters start on row 10
-    ' Column 1 contains the line letter (under the "L" in "LC")
-    Dim startRow
+    ' The prompt area starts at row 23, so we must stop at row 22 to avoid 
+    ' misidentifying prompt characters (like 'C' in 'COMMAND:') as line letters.
+    Dim startRow, endRow
     startRow = 10 ' First data row
+    endRow = 22   ' Last possible data row before prompt area
     
-    For i = 0 To maxLinesToCheck - 1
-        startReadRow = startRow + i
+    For startReadRow = startRow To endRow
         startReadColumn = 1
         readLength = 1 ' Read just 1 character (the line letter)
         
@@ -118,8 +118,16 @@ Function DiscoverLineLetters()
             If Asc(UCase(capturedLetter)) >= Asc("A") And Asc(UCase(capturedLetter)) <= Asc("Z") Then
                 tempLetters(foundCount) = UCase(capturedLetter)
                 foundCount = foundCount + 1
+                emptyRowCount = 0 ' Reset when a letter is found
+            Else
+                emptyRowCount = emptyRowCount + 1
             End If
+        Else
+            emptyRowCount = emptyRowCount + 1
         End If
+
+        ' If we hit 3 consecutive rows without a letter, we've likely finished the list
+        If emptyRowCount >= 3 Then Exit For
     Next
     
     ' If no line letters found, log error and return empty array to skip this RO
