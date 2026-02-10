@@ -46,3 +46,16 @@ This codebase automates interactions with the CDK Dealership Management System (
 - **Input**: CSV files containing lists of RO numbers or vehicle data.
 - **Output**: Logs and terminal state changes in BlueZone.
 - **PowerShell**: Used for utility tasks like log parsing (`Parse_Data.ps1`).
+
+## Code Review Instructions
+The underlying application for this project will be deprecated soon. To minimize noise and focus only on essential changes, follow these rules:
+
+- **What to IGNORE**:
+    - **Refrain from raising NIT issues**: Do not comment on naming conventions, styling, or minor readability improvements.
+    - **Ignore Security issues**: Standard security hardening is not required for this legacy app.
+    - **Ignore Performance issues**: Optimization is not a priority.
+- **What to FLAG**:
+    - **Critical Bugs**: Only report issues that will cause immediate system failure or data corruption.
+    - **Important Logic Errors**: Flag issues where the code does not perform the intended business logic.
+    - **Breaking Changes**: Flag anything that breaks existing integrations or deployment pipelines.
+- **Review Tone**: Be direct and concise. If an issue isn't Critical or Important, stay silent.
