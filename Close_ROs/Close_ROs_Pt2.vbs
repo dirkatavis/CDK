@@ -78,26 +78,112 @@ End Function
 
 
 '-----------------------------------------------------------
+' DiscoverLineLetters: Detects which line letters (A, B, C, etc.) are present
+' on the current RO Detail screen by reading the LC column.
+' Returns: Array of line letters found (e.g., Array("A", "C") if B is missing)
+' Note: This function is duplicated in Close_ROs_Pt1.vbs for independence.
+'       Consider extracting to shared include file if more scripts need this.
+'-----------------------------------------------------------
+Function DiscoverLineLetters()
+    Dim maxLinesToCheck, i, capturedLetter, screenContentBuffer, readLength
+    Dim foundLetters, foundCount
+    Dim startReadRow, startReadColumn
+    Dim missingLetters
+    
+    ' Array to store discovered line letters
+    Dim tempLetters(25) ' Max 26 letters A-Z (sized for theoretical maximum)
+    foundCount = 0
+    maxLinesToCheck = 10 ' Practical limit: Check up to 10 line letters (business logic constraint)
+    missingLetters = 0
+    
+    ' The LC column header is typically on row 6, and line letters start on row 10
+    ' Column 1 contains the line letter (under the "L" in "LC")
+    Dim startRow
+    startRow = 10 ' First data row (line letters always start at row 10)
+    
+    ' Read the screen area where line letters appear (column 1, multiple rows)
+    For i = 0 To maxLinesToCheck - 1
+        startReadRow = startRow + i
+        startReadColumn = 1
+        readLength = 1 ' Read just 1 character (the line letter)
+        
+        On Error Resume Next
+        bzhao.ReadScreen screenContentBuffer, readLength, startReadRow, startReadColumn
+        If Err.Number <> 0 Then
+            Err.Clear
+            Exit For
+        End If
+        On Error GoTo 0
+        
+        ' Trim and check if it's a valid letter (A-Z)
+        capturedLetter = Trim(screenContentBuffer)
+        If Len(capturedLetter) = 1 Then
+            If Asc(UCase(capturedLetter)) >= Asc("A") And Asc(UCase(capturedLetter)) <= Asc("Z") Then
+                tempLetters(foundCount) = UCase(capturedLetter)
+                foundCount = foundCount + 1
+                missingLetters = 0 ' Reset counter when we find a letter
+            Else
+                missingLetters = missingLetters + 1
+            End If
+        Else
+            missingLetters = missingLetters + 1
+        End If
+        
+        ' Stop if we encounter 2 consecutive non-letter rows (end of line items)
+        If missingLetters >= 2 Then
+            Exit For
+        End If
+    Next
+    
+    ' If no line letters found, log error and return empty array to skip this RO
+    If foundCount = 0 Then
+        LogResult "ERROR", "No line letters discovered - skipping RO"
+        DiscoverLineLetters = Array()
+        Exit Function
+    End If
+    
+    ' Create properly sized array with found letters
+    ReDim foundLetters(foundCount - 1)
+    For i = 0 To foundCount - 1
+        foundLetters(i) = tempLetters(i)
+    Next
+    
+    ' Log discovered line letters for debugging
+    Dim lettersList
+    lettersList = Join(foundLetters, ", ")
+    LogResult "INFO", "Discovered line letters: " & lettersList
+    
+    DiscoverLineLetters = foundLetters
+End Function
+
+'-----------------------------------------------------------
 ' Closeout_Ro script subroutines
 ' (replace EnterText(...) calls with EnterTextAndWait(..., 1))
 '-----------------------------------------------------------
 Sub Closeout_Ro()
-    ' Use the new subroutine to add the 'B' story.
-        WaitForTextAtBottom "COMMAND:"
-        AddStory bzhao, "B"
-    'If HandleCloseoutErrors() Then Exit Sub
+    ' Discover which line letters are present on the screen
+    Dim lineLetters, i
+    lineLetters = DiscoverLineLetters()
     
-    ' Use the new subroutine to add the 'C' story.
-    WaitForTextAtBottom "COMMAND:"
-    AddStory bzhao, "C"
-    'If HandleCloseoutErrors() Then Exit Sub
+    ' If no line letters discovered, log error and exit
+    If IsEmpty(lineLetters) Or UBound(lineLetters) = -1 Then
+        LogResult "ERROR", "No line letters discovered - Skipping closeout"
+        Exit Sub
+    End If
+    
+    ' Add stories for each discovered line letter (including A which now requires review)
+    For i = 0 To UBound(lineLetters)
+        WaitForTextAtBottom "COMMAND:"
+        AddStory bzhao, lineLetters(i)
+        'If HandleCloseoutErrors() Then Exit Sub
+    Next
 
     
     '*******************************************************
-    ' Final Closeout Steps
+    ' Filing Steps
     '*******************************************************
     WaitForTextAtBottom "COMMAND:"
-    EnterTextAndWait "FC", 1000
+    EnterTextAndWait "F", 1000
     If HandleCloseoutErrors() Then Exit Sub
     
     ' Have all hours been entered
@@ -106,20 +192,20 @@ Sub Closeout_Ro()
     If HandleCloseoutErrors() Then Exit Sub
 
     
-    ' OUT MILEAGE
-    WaitForTextAtBottom "MILEAGE OUT"
-    EnterTextAndWait "", 1000
-    If HandleCloseoutErrors() Then Exit Sub
+    ' ' OUT MILEAGE
+    ' WaitForTextAtBottom "MILEAGE OUT"
+    ' EnterTextAndWait "", 1000
+    ' If HandleCloseoutErrors() Then Exit Sub
     
-    ' IN MILEAGE
-    WaitForTextAtBottom "MILEAGE IN"
-    EnterTextAndWait "", 1000
-    If HandleCloseoutErrors() Then Exit Sub
+    ' ' IN MILEAGE
+    ' WaitForTextAtBottom "MILEAGE IN"
+    ' EnterTextAndWait "", 1000
+    ' If HandleCloseoutErrors() Then Exit Sub
     
-    ' OK TO CLOSE THE RO?
-    WaitForTextAtBottom "O.K. TO CLOSE RO"
-    EnterTextAndWait "Y", 1000
-    If HandleCloseoutErrors() Then Exit Sub
+    ' ' OK TO CLOSE THE RO?
+    ' WaitForTextAtBottom "O.K. TO CLOSE RO"
+    ' EnterTextAndWait "Y", 1000
+    ' If HandleCloseoutErrors() Then Exit Sub
     
     ' SEND TO PRINTER 2
     bzhao.Pause 2000
@@ -228,10 +314,41 @@ Function HandleCloseoutErrors()
 End Function
 
 Sub AddStory(bzhao, storyCode)
-    ' Use the storyCode variable (e.g., "B" or "C") to make the code dynamic.
+    ' Use the storyCode variable (e.g., "A", "B" or "C") to make the code dynamic.
     EnterText bzhao, "R " & storyCode 
 
-    If storyCode = "B" Then
+    If storyCode = "A" Then
+        ' Line A review step - now required per business requirements
+        
+        ' Wait for the expected prompt at the bottom before proceeding with review
+        WaitForTextAtBottom "LABOR TYPE FOR LINE"
+        EnterText bzhao, ""
+        
+        'Entering Operations Code. Defaulting to system default
+        WaitForTextAtBottom "OPERATION CODE FOR "
+        EnterText bzhao, ""
+        
+        'Entering story description. Accepting default
+        WaitForTextAtBottom "DESC:"
+        EnterText bzhao, ""
+        
+        'Entering technician id
+        WaitForTextAtBottom "TECHNICIAN"
+        EnterText bzhao, "99"
+        
+        'Entering Actual hours. Defaulting to 0
+        WaitForTextAtBottom "ACTUAL HOURS"
+        EnterText bzhao, ""
+        
+        'Entering sold hours. Using default
+        WaitForTextAtBottom "SOLD HOURS"
+        EnterText bzhao, ""
+        
+        'Add a labor operation? Defaulting to No
+        WaitForTextAtBottom "ADD A LABOR OPERATION"
+        EnterText bzhao, ""
+        
+    ElseIf storyCode = "B" Then
 
         ' Wait for the expected prompt at the bottom before sending the story command
         WaitForTextAtBottom "LABOR TYPE FOR LINE" ' Wait up to 15s for command prompt (adjust text as needed)
@@ -260,9 +377,8 @@ Sub AddStory(bzhao, storyCode)
         'Add a labor operation? Defaulting to No
         WaitForTextAtBottom "ADD A LABOR OPERATION"
         EnterText bzhao, ""
-    End If  
-
-    If storyCode = "C" Then
+    
+    ElseIf storyCode = "C" Then
         ' Wait for the expected prompt at the bottom before sending the story command
         WaitForTextAtBottom "LABOR TYPE FOR LINE" ' Wait up to 15s for command prompt (adjust text as needed)
         EnterText bzhao, ""
