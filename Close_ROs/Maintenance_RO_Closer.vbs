@@ -9,7 +9,7 @@
 Option Explicit
 
 ' --- Execution Parameters ---
-Dim START_RO: START_RO = 872080 ' Edit this number as needed
+Dim START_RO: START_RO = 872150 ' Edit this number as needed
 Dim TARGET_COUNT: TARGET_COUNT = 500
 Dim MAIN_PROMPT: MAIN_PROMPT = "R.O. NUMBER" ' Reduced to substring for better matching
 Dim LOG_FILE_PATH: LOG_FILE_PATH = "C:\Temp_alt\CDK\Close_ROs\Maintenance_RO_Closer.log"
@@ -83,13 +83,13 @@ End Sub
 Function IsRoProcessable(roNumber)
     Dim screenContent
     bzhao.Pause 2000
-    bzhao.ReadScreen screenContent, 80, 2, 1
+    bzhao.ReadScreen screenContent, 120, 2, 1 ' Increased width to catch full status messages
     
-    If InStr(screenContent, "NOT ON FILE") > 0 Then
+    If InStr(1, screenContent, "NOT ON FILE", vbTextCompare) > 0 Then
         LogResult "INFO", "RO " & roNumber & " NOT ON FILE. Skipping."
         IsRoProcessable = False
         Exit Function
-    ElseIf InStr(screenContent, "is closed") > 0 Or InStr(screenContent, "ALREADY CLOSED") > 0 Then
+    ElseIf InStr(1, screenContent, "is closed", vbTextCompare) > 0 Or InStr(1, screenContent, "ALREADY CLOSED", vbTextCompare) > 0 Then
         LogResult "INFO", "RO " & roNumber & " ALREADY CLOSED. Skipping."
         IsRoProcessable = False
         Exit Function
@@ -279,7 +279,7 @@ Sub ReturnToMainPrompt()
     For i = 1 To 3
         ' Read the entire screen (1920 chars) to find the main prompt anywhere (e.g., Row 11)
         bzhao.ReadScreen screenContent, 1920, 1, 1
-        If InStr(screenContent, MAIN_PROMPT) > 0 Then Exit Sub
+        If InStr(1, screenContent, MAIN_PROMPT, vbTextCompare) > 0 Then Exit Sub
         
         bzhao.SendKey "E"
         bzhao.SendKey "<NumpadEnter>"
@@ -288,10 +288,11 @@ Sub ReturnToMainPrompt()
 End Sub
 
 Sub WaitForText(targetText)
-    Dim elapsed, screenContent, targets, found, i, isMainPrompt
+    Dim elapsed, screenContent, targets, found, i, isMainPrompt, recoveryAttempted
     targets = Split(targetText, "|")
     elapsed = 0
-    isMainPrompt = (InStr(UCase(targetText), UCase(MAIN_PROMPT)) > 0)
+    recoveryAttempted = False
+    isMainPrompt = (InStr(1, targetText, MAIN_PROMPT, vbTextCompare) > 0)
     
     Do
         bzhao.Pause 500
@@ -299,11 +300,10 @@ Sub WaitForText(targetText)
         
         ' Read the entire screen (24 rows * 80 cols) to be robust
         bzhao.ReadScreen screenContent, 1920, 1, 1
-        screenContent = UCase(screenContent)
         
         found = False
         For i = 0 To UBound(targets)
-            If InStr(screenContent, UCase(targets(i))) > 0 Then
+            If InStr(1, screenContent, targets(i), vbTextCompare) > 0 Then
                 found = True
                 Exit For
             End If
@@ -311,15 +311,16 @@ Sub WaitForText(targetText)
         
         If found Then Exit Sub
         
-        ' Blind Entry Fallback: If we are looking for the main RO prompt and 5 seconds have passed,
-        ' we will "blindly" assume we are there (or the prompt is hidden/scrolled) and try to proceed.
-        If isMainPrompt And elapsed >= 5000 Then
-            LogResult "INFO", "Prompt '" & targetText & "' not detected after 5s. Proceeding blindly."
-            Exit Sub
+        ' Recovery logic for Main Prompt: If not found after 5s, try sending "E" once to clear screens
+        If isMainPrompt And elapsed >= 5000 And Not recoveryAttempted Then
+            LogResult "INFO", "Main prompt not found after 5s. Attempting recovery (sending 'E')."
+            bzhao.SendKey "E"
+            bzhao.SendKey "<NumpadEnter>"
+            recoveryAttempted = True
         End If
 
-        If elapsed >= 15000 Then
-            LogResult "ERROR", "Timeout waiting for: " & targetText
+        If elapsed >= 30000 Then ' Increased timeout for safety
+            LogResult "ERROR", "Critical Timeout waiting for: " & targetText
             bzhao.StopScript
         End If
     Loop
