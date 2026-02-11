@@ -82,7 +82,8 @@ Function IsRoProcessable(roNumber)
     Dim screenContent
     bzhao.Pause 2000
     ' Read screen starting from Row 2 down to Row 6 to catch status (Row 5) and RO info
-    bzhao.ReadScreen screenContent, 400, 2, 1 
+    ' We also read more to catch system errors (Pick/BASIC errors)
+    bzhao.ReadScreen screenContent, 1920, 1, 1 
     
     If InStr(1, screenContent, "NOT ON FILE", vbTextCompare) > 0 Then
         LogResult "INFO", "RO " & roNumber & " NOT ON FILE. Skipping."
@@ -90,6 +91,14 @@ Function IsRoProcessable(roNumber)
         Exit Function
     ElseIf InStr(1, screenContent, "is closed", vbTextCompare) > 0 Or InStr(1, screenContent, "ALREADY CLOSED", vbTextCompare) > 0 Then
         LogResult "INFO", "RO " & roNumber & " ALREADY CLOSED. Skipping."
+        IsRoProcessable = False
+        Exit Function
+    ElseIf InStr(1, screenContent, "VARIABLE HAS NOT BEEN ASSIGNED", vbTextCompare) > 0 Then
+        LogResult "ERROR", "DMS System Error detected for RO " & roNumber & ". Skipping."
+        IsRoProcessable = False
+        Exit Function
+    ElseIf InStr(1, screenContent, "ENTER SEQUENCE NUMBER", vbTextCompare) > 0 Then
+        LogResult "INFO", "RO " & roNumber & " returned a selection list. Skipping complex lookup."
         IsRoProcessable = False
         Exit Function
     ElseIf InStr(1, screenContent, "READY TO POST", vbTextCompare) = 0 Then
@@ -358,21 +367,30 @@ Function CloseRoFinal()
 End Function
 
 Sub ReturnToMainPrompt()
-    Dim screenContent, i
+    Dim screenContent, i, promptPos
     ' Try sending "E" a couple of times to get back to the RO number prompt
-    For i = 1 To 3
-        ' Read the entire screen (1920 chars) to find the main prompt anywhere (e.g., Row 11)
+    For i = 1 To 5
         bzhao.ReadScreen screenContent, 1920, 1, 1
-        If InStr(1, screenContent, MAIN_PROMPT, vbTextCompare) > 0 Then Exit Sub
+        promptPos = InStr(1, screenContent, MAIN_PROMPT, vbTextCompare)
+        
+        ' Valid main prompt is usually in Row 11 (pos > 800). 
+        ' If found in first few rows, it's a header in a list selection.
+        If promptPos > 400 Then Exit Sub
         
         bzhao.SendKey "E"
         bzhao.SendKey "<NumpadEnter>"
-        bzhao.Pause 1000
+        bzhao.Pause 1500
+        
+        ' If stuck on error/selection screen, extra enters can help clear it
+        If i > 2 Then
+            bzhao.SendKey "<NumpadEnter>"
+            bzhao.Pause 1000
+        End If
     Next
 End Sub
 
 Sub WaitForText(targetText)
-    Dim elapsed, screenContent, targets, found, i, isMainPrompt, recoveryAttempted
+    Dim elapsed, screenContent, targets, found, i, isMainPrompt, recoveryAttempted, promptPos
     targets = Split(targetText, "|")
     elapsed = 0
     recoveryAttempted = False
@@ -387,9 +405,15 @@ Sub WaitForText(targetText)
         
         found = False
         For i = 0 To UBound(targets)
-            If InStr(1, screenContent, targets(i), vbTextCompare) > 0 Then
+            promptPos = InStr(1, screenContent, targets(i), vbTextCompare)
+            If promptPos > 0 Then
                 found = True
-                Exit For
+                ' Special check for Main Prompt to avoid matching headers in selection lists
+                If isMainPrompt And promptPos < 400 Then
+                    found = False
+                End If
+                
+                If found Then Exit For
             End If
         Next
         
