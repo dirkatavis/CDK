@@ -381,18 +381,17 @@ Sub ReturnToMainPrompt()
         bzhao.ReadScreen screenContent, 1920, 1, 1
         promptPos = InStr(1, screenContent, MAIN_PROMPT, vbTextCompare)
         
-        ' NEW GUARD: If the prompt is visible ANYWHERE, we stop sending 'E' 
-        ' to avoid triggering the selection list/system error loop.
+        ' NEW GUARD: Allow prompts appearing as high as Row 4 (pos 241+)
+        ' while still blocking headers in Row 1-2 (pos 1-160).
         If promptPos > 0 Then
-            ' Only exit if it's in the correct lower portion (Row 9+)
-            If promptPos > 640 Then 
-                LogResult "INFO", "At main prompt (Pos: " & promptPos & "). Ready."
+            If promptPos > 240 Then 
+                LogResult "INFO", "At valid prompt (Pos: " & promptPos & "). Proceeding."
                 Exit Sub
             End If
-            LogResult "INFO", "Found prompt label in header (Pos: " & promptPos & "). Attempting exit."
+            LogResult "INFO", "Found prompt label in header area (Pos: " & promptPos & "). Attempting exit."
         End If
         
-        ' If we don't see the prompt at all, or it's just in the header, try to escape
+        ' If we don't see the prompt at all, or it's stuck in headers, try to escape
         bzhao.SendKey "E"
         bzhao.SendKey "<NumpadEnter>"
         bzhao.Pause 1500
@@ -423,11 +422,12 @@ Sub WaitForText(targetText)
             promptPos = InStr(1, screenContent, targets(i), vbTextCompare)
             If promptPos > 0 Then
                 isFoundAnywhere = True
-                ' Check if it's in the correct position for a prompt (not a header)
+                
+                ' Check if it's in a valid prompt position (Row 4+: pos 241+)
                 If isMainPrompt Then
-                    If promptPos > 640 Then found = True
+                    If promptPos > 240 Then found = True
                 Else
-                    found = True ' For other prompts like "COMMAND:", any location is fine
+                    found = True ' For other technical prompts, any location is fine
                 End If
                 
                 If found Then Exit For
