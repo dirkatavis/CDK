@@ -9,9 +9,9 @@
 Option Explicit
 
 ' --- Execution Parameters ---
-Dim START_RO: START_RO = 872200 ' Edit this number as needed
+Dim START_RO: START_RO = 123 ' Injected for "NOT ON FILE" testing
 Dim TARGET_COUNT: TARGET_COUNT = 500
-Dim MAIN_PROMPT: MAIN_PROMPT = "R.O. NUMBER|SEQUENCE NUMBER" ' Accept both as valid input states
+Dim MAIN_PROMPT: MAIN_PROMPT = "R.O. NUMBER|SEQUENCE NUMBER|ENTER SEQUENCE NUMBER" ' Accept both as valid input states
 Dim LOG_FILE_PATH: LOG_FILE_PATH = "C:\Temp_alt\CDK\Maintenance_RO_Closer\Maintenance_RO_Closer.log"
 Dim CRITERIA_FILE: CRITERIA_FILE = "C:\Temp_alt\CDK\Maintenance_RO_Closer\PM_Match_Criteria.txt"
 Dim DEBUG_LEVEL: DEBUG_LEVEL = 2 ' 1=Error, 2=Info
@@ -375,32 +375,42 @@ Function CloseRoFinal()
 End Function
 
 Sub ReturnToMainPrompt()
-    Dim screenContent, i, promptPos
-    ' Try sending "E" and "^" a couple of times to get back to the RO number prompt
+    Dim screenContent, i, promptPos, targets, j, isFound
+    targets = Split(MAIN_PROMPT, "|")
+    
+    ' Try sending "^" then "E" a couple of times to get back to the RO number prompt
     For i = 1 To 5
         bzhao.ReadScreen screenContent, 1920, 1, 1
-        promptPos = InStr(1, screenContent, MAIN_PROMPT, vbTextCompare)
         
-        ' NEW GUARD: Allow prompts appearing as high as Row 4 (pos 241+)
-        ' while still blocking headers in Row 1-2 (pos 1-160).
-        If promptPos > 0 Then
-            If promptPos > 240 Then 
+        ' Check all possible prompts
+        promptPos = 0
+        isFound = False
+        For j = 0 To UBound(targets)
+            promptPos = InStr(1, screenContent, targets(j), vbTextCompare)
+            If promptPos > 0 Then
+                isFound = True
+                Exit For
+            End If
+        Next
+        
+        If isFound Then
+            ' Row 4 is Pos 241, but let's be even more generous to catch it
+            If promptPos > 200 Then 
                 LogResult "INFO", "At valid prompt (Pos: " & promptPos & "). Proceeding."
                 Exit Sub
             End If
             LogResult "INFO", "Found prompt label in header area (Pos: " & promptPos & "). Attempting exit."
         End If
         
-        ' If we don't see the prompt at all, or it's stuck in headers, try to escape
-        bzhao.SendKey "E"
+        ' Use Caret first if we are stuck, it's safer than E
+        If i = 1 Then
+            bzhao.SendKey "^" ' Caret (Back/Clear)
+        Else
+            bzhao.SendKey "E" ' Exit
+        End If
+        
         bzhao.SendKey "<NumpadEnter>"
         bzhao.Pause 1500
-        
-        If i > 2 Then
-            bzhao.SendKey "^"
-            bzhao.SendKey "<NumpadEnter>"
-            bzhao.Pause 1500
-        End If
     Next
 End Sub
 
