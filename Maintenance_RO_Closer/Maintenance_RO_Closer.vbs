@@ -378,9 +378,10 @@ Sub ReturnToMainPrompt()
     Dim screenContent, i, promptPos, targets, j, isFound
     targets = Split(MAIN_PROMPT, "|")
     
-    ' Try sending "^" then "E" a couple of times to get back to the RO number prompt
+    ' SAFETY NET: We only send keys IF we are truly lost.
+    ' If the prompt is visible anywhere (even shifted by an error), we stay put.
     For i = 1 To 5
-        bzhao.Pause 2000 ' Slower loop so you can see the state
+        bzhao.Pause 1000 ' Brief pause to let screen settle
         bzhao.ReadScreen screenContent, 1920, 1, 1
         
         ' Check all possible prompts
@@ -394,24 +395,18 @@ Sub ReturnToMainPrompt()
             End If
         Next
         
-        If isFound Then
-            ' Row 2 starts at 81, Row 3 at 161. 
-            ' If the prompt is anywhere from Row 2 down, it is VALID.
-            If promptPos > 120 Then 
-                LogResult "INFO", "At valid prompt (Pos: " & promptPos & "). Proceeding."
-                Exit Sub
-            End If
-            LogResult "INFO", "Found prompt label in strict header area (Pos: " & promptPos & ")."
+        ' If prompt is anywhere from Row 2 down to the bottom, we are HAPPY.
+        ' Row 2 starts at Pos 81.
+        If isFound And promptPos > 80 Then
+            LogResult "INFO", "Prompt found and satisfied (Pos: " & promptPos & ")."
+            Exit Sub
         End If
         
-        ' RECOVERY: Only send keys if we are NOT at a valid prompt
-        LogResult "INFO", "Prompt not satisfied. i=" & i & ". Sending recovery key..."
+        ' RECOVERY: Only reached if prompt is missing or in Row 1 (Header)
+        LogResult "INFO", "Self-Correction Required (Attempt " & i & "). Searching for prompt..."
         If i = 1 Then
             bzhao.SendKey "^" ' Caret (Back/Clear)
             bzhao.SendKey "<NumpadEnter>"
-        ElseIf i = 2 Then
-            ' If we see the label in the header (Row 1), try a single Enter to shift it
-            bzhao.SendKey "<NumpadEnter>" 
         Else
             bzhao.SendKey "E" ' Exit (Last Resort)
             bzhao.SendKey "<NumpadEnter>"
