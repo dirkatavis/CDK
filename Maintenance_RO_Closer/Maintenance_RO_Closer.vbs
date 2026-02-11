@@ -9,7 +9,7 @@
 Option Explicit
 
 ' --- Execution Parameters ---
-Dim START_RO: START_RO = 123 ' Injected for "NOT ON FILE" testing
+Dim START_RO: START_RO = 872200 ' Edit this number as needed
 Dim TARGET_COUNT: TARGET_COUNT = 500
 Dim MAIN_PROMPT: MAIN_PROMPT = "R.O. NUMBER|SEQUENCE NUMBER|ENTER SEQUENCE NUMBER" ' Accept both as valid input states
 Dim LOG_FILE_PATH: LOG_FILE_PATH = "C:\Temp_alt\CDK\Maintenance_RO_Closer\Maintenance_RO_Closer.log"
@@ -374,7 +374,7 @@ Sub ReturnToMainPrompt()
     ' SAFETY NET: We only send keys IF we are truly lost.
     ' If the prompt is visible anywhere (even shifted by an error), we stay put.
     For i = 1 To 5
-        bzhao.Pause 1000 ' Brief pause to let screen settle
+        bzhao.Pause 500 ' Reduced to 500ms for production speed
         bzhao.ReadScreen screenContent, 1920, 1, 1
         
         ' Check all possible prompts
@@ -396,7 +396,7 @@ Sub ReturnToMainPrompt()
         End If
         
         ' RECOVERY: Only reached if prompt is missing or in Row 1 (Header)
-        LogResult "INFO", "Self-Correction Required (Attempt " & i & "). Searching for prompt..."
+        LogResult "INFO", "Self-Correction Required (Attempt " & i & ")..."
         If i = 1 Then
             bzhao.SendKey "^" ' Caret (Back/Clear)
             bzhao.SendKey "<NumpadEnter>"
@@ -405,7 +405,7 @@ Sub ReturnToMainPrompt()
             bzhao.SendKey "<NumpadEnter>"
         End If
         
-        bzhao.Pause 2000
+        bzhao.Pause 1500 ' Reduced for production
     Next
 End Sub
 
