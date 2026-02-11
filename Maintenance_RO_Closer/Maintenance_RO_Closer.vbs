@@ -485,26 +485,30 @@ Sub WaitForText(targetText)
                 isFoundAnywhere = True
                 
                 ' VALIDATION: Primary entry prompts (RO Number/Sequence) typically appear 
-                ' between Row 11 and Row 23. Row 11 starts at character position 801.
-                ' Position 1-800 is reserved for headers/status where prompts can be false positives.
+                ' between Row 10 and Row 23. Row 10 starts at character position 721.
+                ' Positions 1-700 are reserved for headers where prompts are false positives.
                 If isSeekingMainPrompt Then
-                    If promptPos > 800 Then found = True
+                    If promptPos > 700 Then 
+                        found = True
+                    End If
                 Else
-                    ' For sub-screen prompts (e.g. "COMMAND:"), we prioritize the lower 
-                    ' half of the screen but allow flexibility.
-                    If promptPos > 800 Then found = True
+                    ' For sub-screen prompts (e.g. "COMMAND:"), any position below Row 9 is fine.
+                    If promptPos > 700 Then found = True
                 End If
                 
                 If found Then Exit For
             End If
         Next
         
-        If found Then Exit Sub
+        If found Then 
+            LogResult "INFO", "Prompt '" & targets(i) & "' validated at Pos " & promptPos & ". Proceeding."
+            Exit Sub
+        End If
         
         ' Recovery logic: Only send 'E' if we are truly lost while seeking the main entry point.
         If isSeekingMainPrompt And elapsed >= 10000 Then
             If elapsed Mod 5000 = 0 Then 
-                LogResult "INFO", "Primary entry prompt missing from input area (Rows 11-23). Attempting escape (E)."
+                LogResult "INFO", "Primary entry prompt missing from input area (Rows 10-23). Attempting escape (E)."
                 bzhao.SendKey "E"
                 bzhao.SendKey "<NumpadEnter>"
                 bzhao.Pause 1000
@@ -518,6 +522,7 @@ Sub WaitForText(targetText)
 End Sub
 
 Sub EnterTextWithStability(text)
+    LogResult "INFO", "Input State: Sending text '" & text & "' to terminal."
     bzhao.SendKey CStr(text)
     bzhao.Pause 150
     bzhao.SendKey "<NumpadEnter>"
