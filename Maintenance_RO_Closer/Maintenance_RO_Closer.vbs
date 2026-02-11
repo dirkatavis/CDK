@@ -9,7 +9,7 @@
 Option Explicit
 
 ' --- Execution Parameters ---
-Dim MAIN_PROMPT: MAIN_PROMPT = "R.O. NUMBER|SEQUENCE NUMBER|ENTER SEQUENCE NUMBER" ' Accept both as valid input states
+Dim MAIN_PROMPT: MAIN_PROMPT = "R.O. NUMBER"
 Dim LOG_FILE_PATH: LOG_FILE_PATH = "C:\Temp_alt\CDK\Maintenance_RO_Closer\Maintenance_RO_Closer.log"
 Dim CRITERIA_FILE: CRITERIA_FILE = "C:\Temp_alt\CDK\Maintenance_RO_Closer\PM_Match_Criteria.txt"
 Dim DEBUG_LEVEL: DEBUG_LEVEL = 2 ' 1=Error, 2=Info
@@ -426,49 +426,35 @@ Function CloseRoFinal()
 End Function
 
 Sub ReturnToMainPrompt()
-    Dim screenContent, i, promptPos, targets, j, isFound
+    Dim screenContent, i, targets, j, isFound
     targets = Split(MAIN_PROMPT, "|")
     
-    ' SAFETY NET: We only send keys IF we are truly lost.
-    ' If the prompt is visible anywhere (even shifted by an error), we stay put.
     For i = 1 To 5
-        bzhao.Pause 500 ' Reduced to 500ms for production speed
+        bzhao.Pause 500
         bzhao.ReadScreen screenContent, 1920, 1, 1
         
-        ' Check all possible prompts
-        promptPos = 0
         isFound = False
         For j = 0 To UBound(targets)
-            promptPos = InStr(1, screenContent, targets(j), vbTextCompare)
-            If promptPos > 0 Then
+            If InStr(1, screenContent, targets(j), vbTextCompare) > 0 Then
                 isFound = True
                 Exit For
             End If
         Next
         
-        ' If prompt is anywhere from Row 2 down to the bottom, we are HAPPY.
-        ' Row 2 starts at Pos 81.
-        If isFound And promptPos > 80 Then
-            LogResult "INFO", "Prompt found and satisfied (Pos: " & promptPos & ")."
-            Exit Sub
-        End If
+        If isFound Then Exit Sub
         
-        ' RECOVERY: Only reached if prompt is missing or in Row 1 (Header)
-        LogResult "INFO", "Self-Correction Required (Attempt " & i & ")..."
-        bzhao.SendKey "E" ' Exit (Standard Recovery)
+        LogResult "INFO", "Returning to main prompt (Attempt " & i & ")..."
+        bzhao.SendKey "E"
         bzhao.SendKey "<NumpadEnter>"
-        
-        bzhao.Pause 1500 ' Reduced for production
+        bzhao.Pause 1000
     Next
 End Sub
 
 Sub WaitForText(targetText)
-    Dim elapsed, screenContent, targets, found, i, isSeekingMainPrompt, promptPos
+    Dim elapsed, screenContent, targets, found, i, isMainPrompt
     targets = Split(targetText, "|")
     elapsed = 0
-    ' Determine if we are seeking the primary entry point (RO Number entry).
-    ' We use a strict comparison to prevent sub-screens from accidentally triggering recovery.
-    isSeekingMainPrompt = (StrComp(targetText, MAIN_PROMPT, vbTextCompare) = 0)
+    isMainPrompt = (InStr(1, targetText, MAIN_PROMPT, vbTextCompare) > 0)
     
     Do
         bzhao.Pause 500
@@ -478,22 +464,18 @@ Sub WaitForText(targetText)
         
         found = False
         For i = 0 To UBound(targets)
-            promptPos = InStr(1, screenContent, targets(i), vbTextCompare)
-            If promptPos > 0 Then
+            If InStr(1, screenContent, targets(i), vbTextCompare) > 0 Then
                 found = True
                 Exit For
             End If
         Next
         
-        If found Then 
-            LogResult "INFO", "Prompt '" & targets(i) & "' found at Pos " & promptPos & ". Proceeding."
-            Exit Sub
-        End If
+        If found Then Exit Sub
         
-        ' Recovery logic: Only send 'E' if we are truly lost while seeking the main entry point.
-        If isSeekingMainPrompt And elapsed >= 10000 Then
+        ' Simple recovery if lost while seeking main prompt
+        If isMainPrompt And elapsed >= 5000 Then
             If elapsed Mod 5000 = 0 Then 
-                LogResult "INFO", "Primary entry prompt missing. Attempting escape (E)."
+                LogResult "INFO", "Seeking main prompt. Sending 'E' to clear screen."
                 bzhao.SendKey "E"
                 bzhao.SendKey "<NumpadEnter>"
                 bzhao.Pause 1000
@@ -501,7 +483,7 @@ Sub WaitForText(targetText)
         End If
 
         If elapsed >= 60000 Then 
-            TerminateScript "Critical timeout waiting for valid prompt on expected line."
+            TerminateScript "Critical timeout waiting for: " & targetText
         End If
     Loop
 End Sub
