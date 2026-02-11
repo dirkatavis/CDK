@@ -36,6 +36,8 @@ This codebase automates interactions with the CDK Dealership Management System (
 - **MVA**: Motor Vehicle Account/Asset (used in vehicle identification).
 
 ## Developer Workflows
+- **Branching Policy**: **NEVER merge into `main` automatically.** All changes must be performed in a feature or bugfix branch.
+- **Pull Requests (PR)**: After completing changes in a branch, push the branch to the remote and inform the user that a PR is ready for review. Do not perform the merge command yourself.
 - **Execution**: Run scripts using `cscript.exe` for console output.
   ```cmd
   cscript.exe Close_ROs_Pt2.vbs
