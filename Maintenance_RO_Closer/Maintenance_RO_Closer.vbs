@@ -9,12 +9,11 @@
 Option Explicit
 
 ' --- Execution Parameters ---
-Dim START_RO: START_RO = 872200 ' Edit this number as needed
-Dim TARGET_COUNT: TARGET_COUNT = 500
-Dim MAIN_PROMPT: MAIN_PROMPT = "R.O. NUMBER|SEQUENCE NUMBER|ENTER SEQUENCE NUMBER" ' Accept both as valid input states
+Dim MAIN_PROMPT: MAIN_PROMPT = "R.O. NUMBER"
 Dim LOG_FILE_PATH: LOG_FILE_PATH = "C:\Temp_alt\CDK\Maintenance_RO_Closer\Maintenance_RO_Closer.log"
 Dim CRITERIA_FILE: CRITERIA_FILE = "C:\Temp_alt\CDK\Maintenance_RO_Closer\PM_Match_Criteria.txt"
 Dim DEBUG_LEVEL: DEBUG_LEVEL = 2 ' 1=Error, 2=Info
+Dim RO_LIST_PATH: RO_LIST_PATH = "C:\Temp_alt\CDK\Maintenance_RO_Closer\RO_List.csv"
 
 ' --- Picky Match State ---
 Dim CriteriaA, CriteriaB, CriteriaC
@@ -24,56 +23,115 @@ Dim bzhao: Set bzhao = CreateObject("BZWhll.WhllObj")
 
 ' --- Main Loop ---
 Sub RunAutomation()
-    Dim currentRo, successfulCount, i
-    currentRo = START_RO
+    Dim currentRo, successfulCount, fso, scriptDir, csvPath, ts, strLine, roFromCsv
     successfulCount = 0
 
-    LogResult "INFO", "Starting Maintenance RO Auto-Closer at RO: " & START_RO
+    Set fso = CreateObject("Scripting.FileSystemObject")
+
+    ' Check file existence *before* terminal connection to avoid orphaned objects
+    If Not fso.FileExists(RO_LIST_PATH) Then
+        LogResult "ERROR", "Mandatory RO List file missing: " & RO_LIST_PATH
+        MsgBox "Error: RO List file not found at: " & RO_LIST_PATH, vbCritical, "File Not Found"
+        Exit Sub
+    End If
+
+    LogResult "INFO", "Starting Maintenance RO Auto-Closer using list: " & RO_LIST_PATH
     
-    ' Load Matching Criteria from External File
+    ' Load Matching Criteria and verify local configuration integrity
     LoadMatchCriteria()
     
+    ' Connect to terminal only after configuration and file existence are verified
+    On Error Resume Next
     bzhao.Connect ""
+    If Err.Number <> 0 Then
+        LogResult "ERROR", "Failed to connect to BlueZone: " & Err.Description
+        MsgBox "Failed to connect to BlueZone terminal session.", vbCritical
+        Exit Sub
+    End If
+    On Error GoTo 0
     
-    For i = 1 To TARGET_COUNT
-        LogResult "INFO", "Processing RO: " & currentRo & " (" & i & "/" & TARGET_COUNT & ")"
-        
-        ' Ensure we are at the main prompt (Checks Row 11 as confirmed)
-        WaitForText MAIN_PROMPT
-        
-        ' Enter RO Number
-        EnterTextWithStability currentRo
-        
-        ' Check for errors or closed status
-        If IsRoProcessable(currentRo) Then
-            ' Check "Picky" Match Logic
-            If CheckPickyMatch() Then
-                LogResult "INFO", "Match found for RO: " & currentRo & ". Proceeding to review."
-                If ProcessRoReview() Then
-                    If CloseRoFinal() Then
-                        LogResult "INFO", "SUCCESS: RO " & currentRo & " finalized and closed."
-                        successfulCount = successfulCount + 1
-                    Else
-                        LogResult "ERROR", "Failed to close RO: " & currentRo & " during Phase II."
-                    End If
-                Else
-                    LogResult "ERROR", "Failed to complete review for RO: " & currentRo & " during Phase I."
-                End If
-            Else
-                LogResult "INFO", "RO: " & currentRo & " does not match footprint. Skipping."
-            End If
-        End If
-
-        ' Always send "E" to return to main prompt
-        ReturnToMainPrompt()
-        
-        currentRo = currentRo + 1
-    Next
+    ' Start processing with unified error handling
+    ProcessRoList fso, successfulCount
+    
+    ' Final graceful disconnect
+    On Error Resume Next
+    If Not bzhao Is Nothing Then bzhao.Disconnect
+    On Error GoTo 0
 
     LogResult "INFO", "Automation complete. Total successful closures: " & successfulCount
     MsgBox "Maintenance RO Auto-Closer Finished." & vbCrLf & "Successful Closures: " & successfulCount, vbInformation
+End Sub
+
+' --- Helper Subroutines & Functions ---
+
+Sub ProcessRoList(fso, ByRef successfulCount)
+    Dim ts, strLine, roFromCsv, currentRo
     
-    bzhao.Disconnect
+    On Error Resume Next
+    Set ts = fso.OpenTextFile(RO_LIST_PATH, 1) ' 1 = ForReading
+    
+    If Err.Number <> 0 Then
+        LogResult "ERROR", "CRITICAL: Failed to open RO List file: " & Err.Description
+        MsgBox "Failed to open RO List: " & RO_LIST_PATH, vbCritical
+        Exit Sub
+    End If
+
+    Do While Not ts.AtEndOfStream
+        If Err.Number <> 0 Then 
+            LogResult "ERROR", "Unexpected runtime error: " & Err.Description
+            Err.Clear
+        End If
+
+        strLine = Trim(ts.ReadLine)
+        If strLine <> "" Then
+            ' Handle potential CSV splitting (take first column)
+            roFromCsv = Split(strLine, ",")(0)
+            currentRo = Trim(roFromCsv)
+            
+            ' Validate 6-digit RO
+            If Len(currentRo) = 6 And IsNumeric(currentRo) Then
+                LogResult "INFO", "Processing RO: " & currentRo
+                
+                ' Ensure we are at the main prompt
+                WaitForText MAIN_PROMPT
+                
+                ' Enter RO Number
+                EnterTextWithStability currentRo
+                
+                ' Check for errors or closed status
+                If IsRoProcessable(currentRo) Then
+                    ' Check "Picky" Match Logic
+                    If CheckPickyMatch() Then
+                        LogResult "INFO", "Match found for RO: " & currentRo & ". Proceeding to review."
+                        If ProcessRoReview() Then
+                            If CloseRoFinal() Then
+                                LogResult "INFO", "SUCCESS: RO " & currentRo & " finalized and closed."
+                                successfulCount = successfulCount + 1
+                            Else
+                                LogResult "ERROR", "Failed to close RO: " & currentRo & " during Phase II."
+                            End If
+                        Else
+                            LogResult "ERROR", "Failed to complete review for RO: " & currentRo & " during Phase I."
+                        End If
+                    Else
+                        LogResult "INFO", "RO: " & currentRo & " does not match footprint. Skipping."
+                    End If
+                End If
+
+                ' Always return to main prompt for safety
+                ReturnToMainPrompt()
+            ElseIf Len(currentRo) > 0 Then
+                LogResult "INFO", "Skipping invalid format row: '" & currentRo & "'"
+                ReturnToMainPrompt()
+            End If
+        End If
+    Loop
+    
+    If Not ts Is Nothing Then
+        ts.Close
+        Set ts = Nothing
+    End If
+    On Error GoTo 0
 End Sub
 
 ' --- Helper Subroutines & Functions ---
@@ -181,7 +239,7 @@ Sub LoadMatchCriteria()
     If Not fso.FileExists(CRITERIA_FILE) Then
         LogResult "ERROR", "CRITICAL ERROR: Configuration file missing: " & CRITERIA_FILE
         MsgBox "Missing mandatory config file: " & CRITERIA_FILE, vbCritical
-        bzhao.StopScript
+        TerminateScript "Missing configuration file."
     End If
     
     Set txtFile = fso.OpenTextFile(CRITERIA_FILE, 1)
@@ -368,49 +426,32 @@ Function CloseRoFinal()
 End Function
 
 Sub ReturnToMainPrompt()
-    Dim screenContent, i, promptPos, targets, j, isFound
+    Dim screenContent, i, targets, j, isFound
     targets = Split(MAIN_PROMPT, "|")
     
-    ' SAFETY NET: We only send keys IF we are truly lost.
-    ' If the prompt is visible anywhere (even shifted by an error), we stay put.
     For i = 1 To 5
-        bzhao.Pause 500 ' Reduced to 500ms for production speed
+        bzhao.Pause 500
         bzhao.ReadScreen screenContent, 1920, 1, 1
         
-        ' Check all possible prompts
-        promptPos = 0
         isFound = False
         For j = 0 To UBound(targets)
-            promptPos = InStr(1, screenContent, targets(j), vbTextCompare)
-            If promptPos > 0 Then
+            If InStr(1, screenContent, targets(j), vbTextCompare) > 0 Then
                 isFound = True
                 Exit For
             End If
         Next
         
-        ' If prompt is anywhere from Row 2 down to the bottom, we are HAPPY.
-        ' Row 2 starts at Pos 81.
-        If isFound And promptPos > 80 Then
-            LogResult "INFO", "Prompt found and satisfied (Pos: " & promptPos & ")."
-            Exit Sub
-        End If
+        If isFound Then Exit Sub
         
-        ' RECOVERY: Only reached if prompt is missing or in Row 1 (Header)
-        LogResult "INFO", "Self-Correction Required (Attempt " & i & ")..."
-        If i = 1 Then
-            bzhao.SendKey "^" ' Caret (Back/Clear)
-            bzhao.SendKey "<NumpadEnter>"
-        Else
-            bzhao.SendKey "E" ' Exit (Last Resort)
-            bzhao.SendKey "<NumpadEnter>"
-        End If
-        
-        bzhao.Pause 1500 ' Reduced for production
+        LogResult "INFO", "Returning to main prompt (Attempt " & i & ")..."
+        bzhao.SendKey "E"
+        bzhao.SendKey "<NumpadEnter>"
+        bzhao.Pause 1000
     Next
 End Sub
 
 Sub WaitForText(targetText)
-    Dim elapsed, screenContent, targets, found, i, isMainPrompt, promptPos, isFoundAnywhere
+    Dim elapsed, screenContent, targets, found, i, isMainPrompt
     targets = Split(targetText, "|")
     elapsed = 0
     isMainPrompt = (InStr(1, targetText, MAIN_PROMPT, vbTextCompare) > 0)
@@ -422,52 +463,33 @@ Sub WaitForText(targetText)
         bzhao.ReadScreen screenContent, 1920, 1, 1
         
         found = False
-        isFoundAnywhere = False
         For i = 0 To UBound(targets)
-            promptPos = InStr(1, screenContent, targets(i), vbTextCompare)
-            If promptPos > 0 Then
-                isFoundAnywhere = True
-                
-                ' Check if it's in a valid prompt position (Row 4+: pos 241+)
-                If isMainPrompt Then
-                    If promptPos > 240 Then found = True
-                Else
-                    found = True ' For other technical prompts, any location is fine
-                End If
-                
-                If found Then Exit For
+            If InStr(1, screenContent, targets(i), vbTextCompare) > 0 Then
+                found = True
+                Exit For
             End If
         Next
         
         If found Then Exit Sub
         
-        ' Recovery logic: ONLY send 'E' if the target text is NOT on the screen at all.
-        ' If we see "R.O. NUMBER" in a header, we'll try to exit.
-        ' If we don't see it at all, we'll try to exit.
-        ' BUT if we see it in the correct prompt area, we won't reach here.
+        ' Simple recovery if lost while seeking main prompt
         If isMainPrompt And elapsed >= 5000 Then
             If elapsed Mod 5000 = 0 Then 
-                ' If it's already on the screen (even in header), be very careful
-                If isFoundAnywhere Then
-                    LogResult "INFO", "Prompt found in unexpected position (" & promptPos & "). Sending Caret (^) to escape."
-                    bzhao.SendKey "^"
-                Else
-                    LogResult "INFO", "Prompt not found. Sending Exit (E)."
-                    bzhao.SendKey "E"
-                End If
+                LogResult "INFO", "Seeking main prompt. Sending 'E' to clear screen."
+                bzhao.SendKey "E"
                 bzhao.SendKey "<NumpadEnter>"
                 bzhao.Pause 1000
             End If
         End If
 
-        If elapsed >= 45000 Then 
-            LogResult "ERROR", "Critical Timeout waiting for: " & targetText
-            bzhao.StopScript
+        If elapsed >= 60000 Then 
+            TerminateScript "Critical timeout waiting for: " & targetText
         End If
     Loop
 End Sub
 
 Sub EnterTextWithStability(text)
+    LogResult "INFO", "Input State: Sending text '" & text & "' to terminal."
     bzhao.SendKey CStr(text)
     bzhao.Pause 150
     bzhao.SendKey "<NumpadEnter>"
@@ -494,6 +516,16 @@ Sub LogResult(logType, message)
         Set logFile = Nothing
         Set fso = Nothing
     End If
+End Sub
+
+Sub TerminateScript(reason)
+    LogResult "ERROR", "TERMINATING SCRIPT: " & reason
+    On Error Resume Next
+    If Not bzhao Is Nothing Then
+        bzhao.Disconnect
+        bzhao.StopScript
+    End If
+    On Error GoTo 0
 End Sub
 
 ' Execute
