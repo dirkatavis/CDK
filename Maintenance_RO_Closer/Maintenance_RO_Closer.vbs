@@ -368,23 +368,24 @@ End Function
 
 Sub ReturnToMainPrompt()
     Dim screenContent, i, promptPos
-    ' Try sending "E" a couple of times to get back to the RO number prompt
+    ' Try sending "E" and "^" a couple of times to get back to the RO number prompt
     For i = 1 To 5
         bzhao.ReadScreen screenContent, 1920, 1, 1
         promptPos = InStr(1, screenContent, MAIN_PROMPT, vbTextCompare)
         
-        ' Valid main prompt is usually in Row 11 (pos > 800). 
-        ' If found in first few rows, it's a header in a list selection.
-        If promptPos > 400 Then Exit Sub
+        ' Valid main prompt is strictly around Row 11 (pos > 800) 
+        ' If found in first few rows, it's just a header in a list selection.
+        If promptPos > 700 Then Exit Sub
         
+        ' Try Exit then Caret (CDK Go Back)
         bzhao.SendKey "E"
         bzhao.SendKey "<NumpadEnter>"
         bzhao.Pause 1500
         
-        ' If stuck on error/selection screen, extra enters can help clear it
         If i > 2 Then
+            bzhao.SendKey "^"
             bzhao.SendKey "<NumpadEnter>"
-            bzhao.Pause 1000
+            bzhao.Pause 1500
         End If
     Next
 End Sub
@@ -409,7 +410,8 @@ Sub WaitForText(targetText)
             If promptPos > 0 Then
                 found = True
                 ' Special check for Main Prompt to avoid matching headers in selection lists
-                If isMainPrompt And promptPos < 400 Then
+                ' Headers are usually in the first 8 rows (pos < 700)
+                If isMainPrompt And promptPos < 700 Then
                     found = False
                 End If
                 
@@ -419,15 +421,21 @@ Sub WaitForText(targetText)
         
         If found Then Exit Sub
         
-        ' Recovery logic for Main Prompt: If not found after 5s, try sending "E" once to clear screens
-        If isMainPrompt And elapsed >= 5000 And Not recoveryAttempted Then
-            LogResult "INFO", "Main prompt not found after 5s. Attempting recovery (sending 'E')."
-            bzhao.SendKey "E"
-            bzhao.SendKey "<NumpadEnter>"
-            recoveryAttempted = True
+        ' Recovery logic for Main Prompt: Try E, then Caret, then Enter to clear screens
+        If isMainPrompt And elapsed >= 5000 Then
+            If elapsed Mod 5000 = 0 Then ' Try recovery every 5 seconds
+                LogResult "INFO", "Clearing screen... (" & elapsed/1000 & "s elapsed)"
+                bzhao.SendKey "E"
+                bzhao.SendKey "<NumpadEnter>"
+                bzhao.Pause 500
+                bzhao.SendKey "^"
+                bzhao.SendKey "<NumpadEnter>"
+                bzhao.Pause 500
+                bzhao.SendKey "<NumpadEnter>"
+            End If
         End If
 
-        If elapsed >= 30000 Then ' Increased timeout for safety
+        If elapsed >= 45000 Then ' Increased timeout for safety
             LogResult "ERROR", "Critical Timeout waiting for: " & targetText
             bzhao.StopScript
         End If
