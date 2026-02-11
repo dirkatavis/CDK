@@ -474,9 +474,6 @@ Sub WaitForText(targetText)
         bzhao.Pause 500
         elapsed = elapsed + 500
         
-        ' Read the specific prompt line (Row 23) in addition to full screen for validation
-        Dim promptLineContent
-        bzhao.ReadScreen promptLineContent, 80, 23, 1
         bzhao.ReadScreen screenContent, 1920, 1, 1
         
         found = False
@@ -487,15 +484,14 @@ Sub WaitForText(targetText)
             If promptPos > 0 Then
                 isFoundAnywhere = True
                 
-                ' CRITICAL VALIDATION: Main prompts must exist on the dedicated prompt line (Row 23)
-                ' to prevent false positives from headers or unrelated screen text.
+                ' VALIDATION: Primary entry prompts (RO Number/Sequence) typically appear 
+                ' between Row 11 and Row 23. Row 11 starts at character position 801.
+                ' Position 1-800 is reserved for headers/status where prompts can be false positives.
                 If isSeekingMainPrompt Then
-                    If InStr(1, promptLineContent, targets(i), vbTextCompare) > 0 Then 
-                        found = True
-                    End If
+                    If promptPos > 800 Then found = True
                 Else
-                    ' For sub-screen prompts where location might shift (e.g. Row 11-23)
-                    ' we verify it is at least in the bottom half of the screen (Pos > 800)
+                    ' For sub-screen prompts (e.g. "COMMAND:"), we prioritize the lower 
+                    ' half of the screen but allow flexibility.
                     If promptPos > 800 Then found = True
                 End If
                 
@@ -508,7 +504,7 @@ Sub WaitForText(targetText)
         ' Recovery logic: Only send 'E' if we are truly lost while seeking the main entry point.
         If isSeekingMainPrompt And elapsed >= 10000 Then
             If elapsed Mod 5000 = 0 Then 
-                LogResult "INFO", "Primary entry prompt missing from Row 23. Attempting escape (E)."
+                LogResult "INFO", "Primary entry prompt missing from input area (Rows 11-23). Attempting escape (E)."
                 bzhao.SendKey "E"
                 bzhao.SendKey "<NumpadEnter>"
                 bzhao.Pause 1000
