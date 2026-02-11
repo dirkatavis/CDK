@@ -86,22 +86,15 @@ Function IsRoProcessable(roNumber)
     bzhao.ReadScreen screenContent, 1920, 1, 1 
     
     If InStr(1, screenContent, "NOT ON FILE", vbTextCompare) > 0 Then
-        LogResult "INFO", "RO " & roNumber & " NOT ON FILE. Sending Enter to clear message."
-        ' Clear the error message so the prompt becomes visible again
-        bzhao.SendKey "<NumpadEnter>"
-        bzhao.Pause 3000 ' Increased to 3s so you can see the message clear
+        LogResult "INFO", "RO " & roNumber & " NOT ON FILE. Skipping."
         IsRoProcessable = False
         Exit Function
     ElseIf InStr(1, screenContent, "is closed", vbTextCompare) > 0 Or InStr(1, screenContent, "ALREADY CLOSED", vbTextCompare) > 0 Then
-        LogResult "INFO", "RO " & roNumber & " ALREADY CLOSED. Clearing message."
-        bzhao.SendKey "<NumpadEnter>"
-        bzhao.Pause 3000
+        LogResult "INFO", "RO " & roNumber & " ALREADY CLOSED. Skipping."
         IsRoProcessable = False
         Exit Function
     ElseIf InStr(1, screenContent, "VARIABLE HAS NOT BEEN ASSIGNED", vbTextCompare) > 0 Then
-        LogResult "ERROR", "DMS System Error detected for RO " & roNumber & ". Attempting to clear."
-        bzhao.SendKey "<NumpadEnter>" 
-        bzhao.Pause 1000
+        LogResult "ERROR", "DMS System Error detected for RO " & roNumber & ". Skipping."
         IsRoProcessable = False
         Exit Function
     ElseIf InStr(1, screenContent, "ENTER SEQUENCE NUMBER", vbTextCompare) > 0 Then
