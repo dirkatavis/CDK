@@ -11,7 +11,7 @@ Option Explicit
 ' --- Execution Parameters ---
 Dim START_RO: START_RO = 872200 ' Edit this number as needed
 Dim TARGET_COUNT: TARGET_COUNT = 500
-Dim MAIN_PROMPT: MAIN_PROMPT = "R.O. NUMBER" ' Reduced to substring for better matching
+Dim MAIN_PROMPT: MAIN_PROMPT = "R.O. NUMBER|SEQUENCE NUMBER" ' Accept both as valid input states
 Dim LOG_FILE_PATH: LOG_FILE_PATH = "C:\Temp_alt\CDK\Maintenance_RO_Closer\Maintenance_RO_Closer.log"
 Dim CRITERIA_FILE: CRITERIA_FILE = "C:\Temp_alt\CDK\Maintenance_RO_Closer\PM_Match_Criteria.txt"
 Dim DEBUG_LEVEL: DEBUG_LEVEL = 2 ' 1=Error, 2=Info
@@ -86,19 +86,27 @@ Function IsRoProcessable(roNumber)
     bzhao.ReadScreen screenContent, 1920, 1, 1 
     
     If InStr(1, screenContent, "NOT ON FILE", vbTextCompare) > 0 Then
-        LogResult "INFO", "RO " & roNumber & " NOT ON FILE. Skipping."
+        LogResult "INFO", "RO " & roNumber & " NOT ON FILE. Sending Enter to clear message."
+        ' Clear the error message so the prompt becomes visible again
+        bzhao.SendKey "<NumpadEnter>"
+        bzhao.Pause 1000
         IsRoProcessable = False
         Exit Function
     ElseIf InStr(1, screenContent, "is closed", vbTextCompare) > 0 Or InStr(1, screenContent, "ALREADY CLOSED", vbTextCompare) > 0 Then
-        LogResult "INFO", "RO " & roNumber & " ALREADY CLOSED. Skipping."
+        LogResult "INFO", "RO " & roNumber & " ALREADY CLOSED. Clearing message."
+        bzhao.SendKey "<NumpadEnter>" ' Clear the "is closed" status message
+        bzhao.Pause 1000
         IsRoProcessable = False
         Exit Function
     ElseIf InStr(1, screenContent, "VARIABLE HAS NOT BEEN ASSIGNED", vbTextCompare) > 0 Then
-        LogResult "ERROR", "DMS System Error detected for RO " & roNumber & ". Skipping."
+        LogResult "ERROR", "DMS System Error detected for RO " & roNumber & ". Attempting to clear."
+        bzhao.SendKey "<NumpadEnter>" 
+        bzhao.Pause 1000
         IsRoProcessable = False
         Exit Function
     ElseIf InStr(1, screenContent, "ENTER SEQUENCE NUMBER", vbTextCompare) > 0 Then
-        LogResult "INFO", "RO " & roNumber & " returned a selection list. Skipping complex lookup."
+        ' This is actually a valid prompt now, but we skip it here to let the main loop handle it
+        LogResult "INFO", "RO " & roNumber & " prompted for Sequence Number. Treating as valid prompt."
         IsRoProcessable = False
         Exit Function
     ElseIf InStr(1, screenContent, "READY TO POST", vbTextCompare) = 0 Then
