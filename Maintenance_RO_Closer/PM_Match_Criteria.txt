@@ -1,0 +1,9 @@
+# PM Match Criteria Configuration
+# --------------------------------------------------
+# Format: LINE_LETTER = Variant 1 | Variant 2
+# --------------------------------------------------
+
+# A = REPLACE OIL AND FILTER,
+A = PM CHANGE OIL & FILTER
+B = CHECK AND ADJUST TIRE PRESSURE
+C = MEASURE AND DOCUMENT TIRE TREAD DEPTH
