@@ -373,11 +373,18 @@ Sub ReturnToMainPrompt()
         bzhao.ReadScreen screenContent, 1920, 1, 1
         promptPos = InStr(1, screenContent, MAIN_PROMPT, vbTextCompare)
         
-        ' Valid main prompt is strictly around Row 11 (pos > 800) 
-        ' If found in first few rows, it's just a header in a list selection.
-        If promptPos > 700 Then Exit Sub
+        ' NEW GUARD: If the prompt is visible ANYWHERE, we stop sending 'E' 
+        ' to avoid triggering the selection list/system error loop.
+        If promptPos > 0 Then
+            ' Only exit if it's in the correct lower portion (Row 9+)
+            If promptPos > 640 Then 
+                LogResult "INFO", "At main prompt (Pos: " & promptPos & "). Ready."
+                Exit Sub
+            End If
+            LogResult "INFO", "Found prompt label in header (Pos: " & promptPos & "). Attempting exit."
+        End If
         
-        ' Try Exit then Caret (CDK Go Back)
+        ' If we don't see the prompt at all, or it's just in the header, try to escape
         bzhao.SendKey "E"
         bzhao.SendKey "<NumpadEnter>"
         bzhao.Pause 1500
@@ -391,28 +398,28 @@ Sub ReturnToMainPrompt()
 End Sub
 
 Sub WaitForText(targetText)
-    Dim elapsed, screenContent, targets, found, i, isMainPrompt, recoveryAttempted, promptPos
+    Dim elapsed, screenContent, targets, found, i, isMainPrompt, promptPos, isFoundAnywhere
     targets = Split(targetText, "|")
     elapsed = 0
-    recoveryAttempted = False
     isMainPrompt = (InStr(1, targetText, MAIN_PROMPT, vbTextCompare) > 0)
     
     Do
         bzhao.Pause 500
         elapsed = elapsed + 500
         
-        ' Read the entire screen (24 rows * 80 cols) to be robust
         bzhao.ReadScreen screenContent, 1920, 1, 1
         
         found = False
+        isFoundAnywhere = False
         For i = 0 To UBound(targets)
             promptPos = InStr(1, screenContent, targets(i), vbTextCompare)
             If promptPos > 0 Then
-                found = True
-                ' Special check for Main Prompt to avoid matching headers in selection lists
-                ' Headers are usually in the first 8 rows (pos < 700)
-                If isMainPrompt And promptPos < 700 Then
-                    found = False
+                isFoundAnywhere = True
+                ' Check if it's in the correct position for a prompt (not a header)
+                If isMainPrompt Then
+                    If promptPos > 640 Then found = True
+                Else
+                    found = True ' For other prompts like "COMMAND:", any location is fine
                 End If
                 
                 If found Then Exit For
@@ -421,21 +428,26 @@ Sub WaitForText(targetText)
         
         If found Then Exit Sub
         
-        ' Recovery logic for Main Prompt: Try E, then Caret, then Enter to clear screens
+        ' Recovery logic: ONLY send 'E' if the target text is NOT on the screen at all.
+        ' If we see "R.O. NUMBER" in a header, we'll try to exit.
+        ' If we don't see it at all, we'll try to exit.
+        ' BUT if we see it in the correct prompt area, we won't reach here.
         If isMainPrompt And elapsed >= 5000 Then
-            If elapsed Mod 5000 = 0 Then ' Try recovery every 5 seconds
-                LogResult "INFO", "Clearing screen... (" & elapsed/1000 & "s elapsed)"
-                bzhao.SendKey "E"
+            If elapsed Mod 5000 = 0 Then 
+                ' If it's already on the screen (even in header), be very careful
+                If isFoundAnywhere Then
+                    LogResult "INFO", "Prompt found in unexpected position (" & promptPos & "). Sending Caret (^) to escape."
+                    bzhao.SendKey "^"
+                Else
+                    LogResult "INFO", "Prompt not found. Sending Exit (E)."
+                    bzhao.SendKey "E"
+                End If
                 bzhao.SendKey "<NumpadEnter>"
-                bzhao.Pause 500
-                bzhao.SendKey "^"
-                bzhao.SendKey "<NumpadEnter>"
-                bzhao.Pause 500
-                bzhao.SendKey "<NumpadEnter>"
+                bzhao.Pause 1000
             End If
         End If
 
-        If elapsed >= 45000 Then ' Increased timeout for safety
+        If elapsed >= 45000 Then 
             LogResult "ERROR", "Critical Timeout waiting for: " & targetText
             bzhao.StopScript
         End If
