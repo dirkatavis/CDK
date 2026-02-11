@@ -37,7 +37,8 @@ This codebase automates interactions with the CDK Dealership Management System (
 
 ## Developer Workflows
 - **Branching Policy**: **NEVER merge into `main` automatically.** All changes must be performed in a feature or bugfix branch.
-- **Pull Requests (PR)**: After completing changes in a branch, push the branch to the remote and inform the user that a PR is ready for review. Do not perform the merge command yourself.
+- **Peer Review Required**: Every code change MUST be reviewed by the user via a Pull Request. GitHub Copilot serves as the implementation driver, but the user remains the validator.
+- **Pull Requests (PR)**: After completing changes in a branch, push the branch to the remote and provide the user with the PR link. Wait for user acknowledgement or feedback. Do not perform the merge command yourself.
 - **Execution**: Run scripts using `cscript.exe` for console output.
   ```cmd
   cscript.exe Close_ROs_Pt2.vbs
