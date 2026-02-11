@@ -9,8 +9,8 @@
 Option Explicit
 
 ' --- Execution Parameters ---
-Dim START_RO: START_RO = 872000 ' Edit this number as needed
-Dim TARGET_COUNT: TARGET_COUNT = 50
+Dim START_RO: START_RO = 872080 ' Edit this number as needed
+Dim TARGET_COUNT: TARGET_COUNT = 500
 Dim MAIN_PROMPT: MAIN_PROMPT = "R.O. NUMBER" ' Reduced to substring for better matching
 Dim LOG_FILE_PATH: LOG_FILE_PATH = "C:\Temp_alt\CDK\Close_ROs\Maintenance_RO_Closer.log"
 Dim DEBUG_LEVEL: DEBUG_LEVEL = 2 ' 1=Error, 2=Info
@@ -214,6 +214,7 @@ End Function
 
 Function CloseRoFinal()
     Dim mileage, screenContent, startTime, elapsed
+    Dim lastActionTime: lastActionTime = Timer
     
     ' Phase II: The Closing
     WaitForText "COMMAND:"
@@ -229,28 +230,43 @@ Function CloseRoFinal()
     mileage = Trim(mileage)
     LogResult "INFO", "Using mileage from header: " & mileage
     
+    ' Define sequence-based state tracking to avoid double-tapping
+    Dim stage: stage = 1 ' 1=MilesOut, 2=MilesIn, 3=OkToClose, 4=Printer
+    
     startTime = Timer
     Do
         bzhao.Pause 1000
         bzhao.ReadScreen screenContent, 1920, 1, 1
         screenContent = UCase(screenContent)
         
-        If InStr(screenContent, "MILES OUT") > 0 Or InStr(screenContent, "MILEAGE OUT") > 0 Then
+        ' Stage 1: MILEAGE OUT
+        If stage = 1 And (InStr(screenContent, "MILES OUT") > 0 Or InStr(screenContent, "MILEAGE OUT") > 0) Then
             EnterTextWithStability mileage
-        ElseIf InStr(screenContent, "MILES IN") > 0 Or InStr(screenContent, "MILEAGE IN") > 0 Then
+            stage = 2
+            startTime = Timer ' Reset timer for next expected prompt due to 5-10s delay
+        
+        ' Stage 2: MILEAGE IN
+        ElseIf stage = 2 And (InStr(screenContent, "MILES IN") > 0 Or InStr(screenContent, "MILEAGE IN") > 0) Then
             EnterTextWithStability mileage
-        ElseIf InStr(screenContent, "O.K. TO CLOSE RO") > 0 Then
+            stage = 3
+            startTime = Timer
+            
+        ' Stage 3: OK TO CLOSE (Sometimes Miles In doesn't appear, or OK appears immediately)
+        ElseIf stage >= 2 And stage <= 3 And InStr(screenContent, "O.K. TO CLOSE RO") > 0 Then
             EnterTextWithStability "Y"
-        ElseIf InStr(screenContent, "INVOICE PRINTER") > 0 Then
+            stage = 4
+            startTime = Timer
+            
+        ' Stage 4: INVOICE PRINTER
+        ElseIf stage >= 3 And InStr(screenContent, "INVOICE PRINTER") > 0 Then
             EnterTextWithStability "2"
-            ' Completion: Look for invoice confirmation or return to main entry screen
             CloseRoFinal = True
             Exit Function
         End If
         
         elapsed = Timer - startTime
-        If elapsed > 60 Then ' Give closing a full minute due to printer spooling etc
-            LogResult "ERROR", "Timeout during Phase II Closing sequence."
+        If elapsed > 120 Then ' Give closing 2 minutes for slow UI/Printer logic
+            LogResult "ERROR", "Timeout during Phase II Closing sequence at Stage " & stage
             CloseRoFinal = False
             Exit Function
         End If
