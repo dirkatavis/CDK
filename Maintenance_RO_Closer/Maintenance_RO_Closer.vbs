@@ -89,13 +89,13 @@ Function IsRoProcessable(roNumber)
         LogResult "INFO", "RO " & roNumber & " NOT ON FILE. Sending Enter to clear message."
         ' Clear the error message so the prompt becomes visible again
         bzhao.SendKey "<NumpadEnter>"
-        bzhao.Pause 1000
+        bzhao.Pause 3000 ' Increased to 3s so you can see the message clear
         IsRoProcessable = False
         Exit Function
     ElseIf InStr(1, screenContent, "is closed", vbTextCompare) > 0 Or InStr(1, screenContent, "ALREADY CLOSED", vbTextCompare) > 0 Then
         LogResult "INFO", "RO " & roNumber & " ALREADY CLOSED. Clearing message."
-        bzhao.SendKey "<NumpadEnter>" ' Clear the "is closed" status message
-        bzhao.Pause 1000
+        bzhao.SendKey "<NumpadEnter>"
+        bzhao.Pause 3000
         IsRoProcessable = False
         Exit Function
     ElseIf InStr(1, screenContent, "VARIABLE HAS NOT BEEN ASSIGNED", vbTextCompare) > 0 Then
@@ -380,6 +380,7 @@ Sub ReturnToMainPrompt()
     
     ' Try sending "^" then "E" a couple of times to get back to the RO number prompt
     For i = 1 To 5
+        bzhao.Pause 2000 ' Slower loop so you can see the state
         bzhao.ReadScreen screenContent, 1920, 1, 1
         
         ' Check all possible prompts
@@ -394,23 +395,25 @@ Sub ReturnToMainPrompt()
         Next
         
         If isFound Then
-            ' Row 4 is Pos 241, but let's be even more generous to catch it
             If promptPos > 200 Then 
                 LogResult "INFO", "At valid prompt (Pos: " & promptPos & "). Proceeding."
                 Exit Sub
             End If
-            LogResult "INFO", "Found prompt label in header area (Pos: " & promptPos & "). Attempting exit."
+            LogResult "INFO", "Found prompt label in header area (Pos: " & promptPos & ")."
         End If
         
-        ' Use Caret first if we are stuck, it's safer than E
+        ' RECOVERY: Only send keys if we are NOT at a valid prompt
+        LogResult "INFO", "Prompt not satisfied. i=" & i & ". Sending recovery key..."
         If i = 1 Then
             bzhao.SendKey "^" ' Caret (Back/Clear)
+        ElseIf i = 2 Then
+            bzhao.SendKey "<NumpadEnter>" ' Extra Enter just in case
         Else
-            bzhao.SendKey "E" ' Exit
+            bzhao.SendKey "E" ' Exit (Last Resort)
         End If
         
         bzhao.SendKey "<NumpadEnter>"
-        bzhao.Pause 1500
+        bzhao.Pause 2000
     Next
 End Sub
 
