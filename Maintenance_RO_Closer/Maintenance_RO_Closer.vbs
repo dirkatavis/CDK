@@ -9,12 +9,11 @@
 Option Explicit
 
 ' --- Execution Parameters ---
-Dim START_RO: START_RO = 872200 ' Edit this number as needed
-Dim TARGET_COUNT: TARGET_COUNT = 500
 Dim MAIN_PROMPT: MAIN_PROMPT = "R.O. NUMBER|SEQUENCE NUMBER|ENTER SEQUENCE NUMBER" ' Accept both as valid input states
 Dim LOG_FILE_PATH: LOG_FILE_PATH = "C:\Temp_alt\CDK\Maintenance_RO_Closer\Maintenance_RO_Closer.log"
 Dim CRITERIA_FILE: CRITERIA_FILE = "C:\Temp_alt\CDK\Maintenance_RO_Closer\PM_Match_Criteria.txt"
 Dim DEBUG_LEVEL: DEBUG_LEVEL = 2 ' 1=Error, 2=Info
+Dim RO_LIST_PATH: RO_LIST_PATH = "C:\Temp_alt\CDK\Maintenance_RO_Closer\RO_List.csv"
 
 ' --- Picky Match State ---
 Dim CriteriaA, CriteriaB, CriteriaC
@@ -24,51 +23,75 @@ Dim bzhao: Set bzhao = CreateObject("BZWhll.WhllObj")
 
 ' --- Main Loop ---
 Sub RunAutomation()
-    Dim currentRo, successfulCount, i
-    currentRo = START_RO
+    Dim currentRo, successfulCount, fso, ts, strLine, roFromCsv
     successfulCount = 0
 
-    LogResult "INFO", "Starting Maintenance RO Auto-Closer at RO: " & START_RO
+    Set fso = CreateObject("Scripting.FileSystemObject")
+
+    If Not fso.FileExists(RO_LIST_PATH) Then
+        MsgBox "Error: RO List file not found at: " & RO_LIST_PATH, vbCritical, "File Not Found"
+        LogResult "ERROR", "RO List file not found: " & RO_LIST_PATH
+        Exit Sub
+    End If
+
+    LogResult "INFO", "Starting Maintenance RO Auto-Closer using list: " & RO_LIST_PATH
     
     ' Load Matching Criteria from External File
     LoadMatchCriteria()
     
     bzhao.Connect ""
     
-    For i = 1 To TARGET_COUNT
-        LogResult "INFO", "Processing RO: " & currentRo & " (" & i & "/" & TARGET_COUNT & ")"
-        
-        ' Ensure we are at the main prompt (Checks Row 11 as confirmed)
-        WaitForText MAIN_PROMPT
-        
-        ' Enter RO Number
-        EnterTextWithStability currentRo
-        
-        ' Check for errors or closed status
-        If IsRoProcessable(currentRo) Then
-            ' Check "Picky" Match Logic
-            If CheckPickyMatch() Then
-                LogResult "INFO", "Match found for RO: " & currentRo & ". Proceeding to review."
-                If ProcessRoReview() Then
-                    If CloseRoFinal() Then
-                        LogResult "INFO", "SUCCESS: RO " & currentRo & " finalized and closed."
-                        successfulCount = successfulCount + 1
+    Set ts = fso.OpenTextFile(RO_LIST_PATH, 1) ' 1 = ForReading
+    
+    ' Skip header row
+    If Not ts.AtEndOfStream Then ts.ReadLine
+    
+    Do While Not ts.AtEndOfStream
+        strLine = Trim(ts.ReadLine)
+        If strLine <> "" Then
+            ' Handle potential CSV splitting (take first column)
+            roFromCsv = Split(strLine, ",")(0)
+            currentRo = Trim(roFromCsv)
+            
+            ' Validate 6-digit RO
+            If Len(currentRo) = 6 And IsNumeric(currentRo) Then
+                LogResult "INFO", "Processing RO: " & currentRo
+                
+                ' Ensure we are at the main prompt (Checks Row 11 as confirmed)
+                WaitForText MAIN_PROMPT
+                
+                ' Enter RO Number
+                EnterTextWithStability currentRo
+                
+                ' Check for errors or closed status
+                If IsRoProcessable(currentRo) Then
+                    ' Check "Picky" Match Logic
+                    If CheckPickyMatch() Then
+                        LogResult "INFO", "Match found for RO: " & currentRo & ". Proceeding to review."
+                        If ProcessRoReview() Then
+                            If CloseRoFinal() Then
+                                LogResult "INFO", "SUCCESS: RO " & currentRo & " finalized and closed."
+                                successfulCount = successfulCount + 1
+                            Else
+                                LogResult "ERROR", "Failed to close RO: " & currentRo & " during Phase II."
+                            End If
+                        Else
+                            LogResult "ERROR", "Failed to complete review for RO: " & currentRo & " during Phase I."
+                        End If
                     Else
-                        LogResult "ERROR", "Failed to close RO: " & currentRo & " during Phase II."
+                        LogResult "INFO", "RO: " & currentRo & " does not match footprint. Skipping."
                     End If
-                Else
-                    LogResult "ERROR", "Failed to complete review for RO: " & currentRo & " during Phase I."
                 End If
-            Else
-                LogResult "INFO", "RO: " & currentRo & " does not match footprint. Skipping."
+
+                ' Always send "E" to return to main prompt
+                ReturnToMainPrompt()
+            ElseIf Len(currentRo) > 0 Then
+                LogResult "INFO", "Skipping invalid RO format: " & currentRo & " (Must be 6 digits)"
             End If
         End If
-
-        ' Always send "E" to return to main prompt
-        ReturnToMainPrompt()
-        
-        currentRo = currentRo + 1
-    Next
+    Loop
+    
+    ts.Close
 
     LogResult "INFO", "Automation complete. Total successful closures: " & successfulCount
     MsgBox "Maintenance RO Auto-Closer Finished." & vbCrLf & "Successful Closures: " & successfulCount, vbInformation
@@ -397,13 +420,8 @@ Sub ReturnToMainPrompt()
         
         ' RECOVERY: Only reached if prompt is missing or in Row 1 (Header)
         LogResult "INFO", "Self-Correction Required (Attempt " & i & ")..."
-        If i = 1 Then
-            bzhao.SendKey "^" ' Caret (Back/Clear)
-            bzhao.SendKey "<NumpadEnter>"
-        Else
-            bzhao.SendKey "E" ' Exit (Last Resort)
-            bzhao.SendKey "<NumpadEnter>"
-        End If
+        bzhao.SendKey "E" ' Exit (Standard Recovery)
+        bzhao.SendKey "<NumpadEnter>"
         
         bzhao.Pause 1500 ' Reduced for production
     Next
@@ -441,20 +459,12 @@ Sub WaitForText(targetText)
         
         If found Then Exit Sub
         
-        ' Recovery logic: ONLY send 'E' if the target text is NOT on the screen at all.
-        ' If we see "R.O. NUMBER" in a header, we'll try to exit.
-        ' If we don't see it at all, we'll try to exit.
-        ' BUT if we see it in the correct prompt area, we won't reach here.
+        ' Recovery logic: ALWAYS send 'E' to exit if we are stuck.
+        ' We previously tried sending Caret (^) but user reports 'E' is more reliable.
         If isMainPrompt And elapsed >= 5000 Then
             If elapsed Mod 5000 = 0 Then 
-                ' If it's already on the screen (even in header), be very careful
-                If isFoundAnywhere Then
-                    LogResult "INFO", "Prompt found in unexpected position (" & promptPos & "). Sending Caret (^) to escape."
-                    bzhao.SendKey "^"
-                Else
-                    LogResult "INFO", "Prompt not found. Sending Exit (E)."
-                    bzhao.SendKey "E"
-                End If
+                LogResult "INFO", "Target text not found at bottom. Sending Exit (E)."
+                bzhao.SendKey "E"
                 bzhao.SendKey "<NumpadEnter>"
                 bzhao.Pause 1000
             End If

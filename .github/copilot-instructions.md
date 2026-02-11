@@ -14,18 +14,28 @@ This codebase automates interactions with the CDK Dealership Management System (
 - **Workflow Segregation**: Logic is separated by task (e.g., `CreateNew_ROs`, `Close_ROs`).
 - **Script Patterns**:
     - **Procedural (Preferred)**: Simple top-down logic using `WaitForTextAtBottom` and `EnterTextAndWait`. Best for quick, high-value fixes.
-    - **State Machine**: Found in `PostFinalCharges.vbs`. Use only if the screen logic is highly circular or unpredictable.
+    - **State Machine**: Found in `PostFinalCharges.vbs`. Use `AddPromptToDictEx` to handle complex/circular screens.
+    - **Dynamic Discovery**: Use `DiscoverLineLetters()` pattern to scan the "LC" column (Column 1, Rows 7+) for active line letters (A-Z) before processing. This prevents infinite loops on non-consecutive lines.
 
 ## Technical Patterns & Conventions
 - **Language**: Primary language is VBScript (`.vbs`). Use `Option Explicit`.
 - **Terminal Interaction**:
     - Always wait for a specific prompt text (e.g., `COMMAND:`) before sending input.
-    - Use `bzhao.ReadScreen` to verify the state.
+    - Use `bzhao.ReadScreen` or `IsTextPresent(text)` to verify state.
     - Common screen row for prompts is 23 (`MainPromptLine = 23`).
-- **Hardcoded Paths**: Scripts often use `C:\Temp\Code\Scripts\VBScript\CDK\...`. Ensure paths are consistent with the current environment (`c:\Temp_alt\CDK`).
+- **Prompt Handling (State Machine)**:
+    - `AddPromptToDict(dict, trigger, response, key, isSuccess)`: Always sends `response`.
+    - `AddPromptToDictEx(dict, trigger, response, key, isSuccess, acceptDefault)`: If `acceptDefault=True`, it detects values in parentheses (e.g., `(72925)`) and sends ONLY the `key` (Enter) to accept it.
+- **Prompt Detection (CRITICAL)**:
+    - **Intervening Text**: Support patterns like `"OPERATION CODE FOR LINE A, L1 (I)?"` where descriptive text exists between the keyword and default value.
+    - **Robust Regex**: Use `".*(\(.*\))?\?"` to capture optional default values safely. Example: `OPERATION CODE FOR LINE.*(\([A-Za-z0-9]*\))?\?`.
+- **Common Terminal States**:
+    - **Success/Entry**: `COMMAND:`, `R.O. NUMBER`, `SEQUENCE NUMBER`.
+    - **Errors**: `NOT ON FILE`, `is closed`, `ALREADY CLOSED`, `VARIABLE HAS NOT BEEN ASSIGNED`.
+- **Hardcoded Paths**: Scripts often use `C:\Temp\Code\Scripts\VBScript\CDK\...`. Ensure paths are consistent with the current environment (`c:\Temp_alt\CDK`). `PostFinalCharges.vbs` may use a `config.ini` for flexibility.
 - **Logging**: 
     - Simple scripts use `LogResult(type, message)`.
-    - `PostFinalCharges.vbs` uses a prioritized system: `LOG_LEVEL_ERROR` (1) to `LOG_LEVEL_TRACE` (5).
+    - `PostFinalCharges.vbs` uses `LogEvent` with `g_CurrentCriticality` (CRIT_COMMON=0 to CRIT_CRITICAL=3) and `g_CurrentVerbosity` (VERB_LOW=0 to VERB_MAX=3).
 - **Classes in VBScript**: Used in advanced scripts for data structures (e.g., `Class Prompt`).
 
 ## Critical Domain Terms
@@ -37,12 +47,15 @@ This codebase automates interactions with the CDK Dealership Management System (
 
 ## Developer Workflows
 - **Branching Policy**: **NEVER merge into `main` automatically.** All changes must be performed in a feature or bugfix branch.
-- **Peer Review Required**: Every code change MUST be reviewed by the user via a Pull Request. GitHub Copilot serves as the implementation driver, but the user remains the validator.
-- **Pull Requests (PR)**: After completing changes in a branch, push the branch to the remote and provide the user with the PR link. Wait for user acknowledgement or feedback. Do not perform the merge command yourself.
 - **Execution**: Run scripts using `cscript.exe` for console output.
   ```cmd
   cscript.exe Close_ROs_Pt2.vbs
   ```
+- **Testing**: 
+    - Use `PostFinalCharges/tests` for validating logic changes.
+    - Run all tests: `cscript run_all_tests.vbs` from the `tests` directory.
+    - Use `MockBzhao` to simulate terminal states without a live BlueZone connection.
+    - **Regression Testing**: If fixing a prompt detection bug, add the specific screen pattern to `test_default_value_detection.vbs`.
 - **Logging/Debugging**: Check the generated `.log` files in the respective folders. Some scripts support a `.debug` file flag to enable "slow mode".
 
 ## Integration Points
