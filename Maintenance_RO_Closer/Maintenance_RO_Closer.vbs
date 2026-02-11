@@ -43,9 +43,6 @@ Sub RunAutomation()
     
     Set ts = fso.OpenTextFile(RO_LIST_PATH, 1) ' 1 = ForReading
     
-    ' Skip header row
-    If Not ts.AtEndOfStream Then ts.ReadLine
-    
     Do While Not ts.AtEndOfStream
         strLine = Trim(ts.ReadLine)
         If strLine <> "" Then
