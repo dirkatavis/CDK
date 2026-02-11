@@ -395,24 +395,28 @@ Sub ReturnToMainPrompt()
         Next
         
         If isFound Then
-            If promptPos > 200 Then 
+            ' Row 2 starts at 81, Row 3 at 161. 
+            ' If the prompt is anywhere from Row 2 down, it is VALID.
+            If promptPos > 120 Then 
                 LogResult "INFO", "At valid prompt (Pos: " & promptPos & "). Proceeding."
                 Exit Sub
             End If
-            LogResult "INFO", "Found prompt label in header area (Pos: " & promptPos & ")."
+            LogResult "INFO", "Found prompt label in strict header area (Pos: " & promptPos & ")."
         End If
         
         ' RECOVERY: Only send keys if we are NOT at a valid prompt
         LogResult "INFO", "Prompt not satisfied. i=" & i & ". Sending recovery key..."
         If i = 1 Then
             bzhao.SendKey "^" ' Caret (Back/Clear)
+            bzhao.SendKey "<NumpadEnter>"
         ElseIf i = 2 Then
-            bzhao.SendKey "<NumpadEnter>" ' Extra Enter just in case
+            ' If we see the label in the header (Row 1), try a single Enter to shift it
+            bzhao.SendKey "<NumpadEnter>" 
         Else
             bzhao.SendKey "E" ' Exit (Last Resort)
+            bzhao.SendKey "<NumpadEnter>"
         End If
         
-        bzhao.SendKey "<NumpadEnter>"
         bzhao.Pause 2000
     Next
 End Sub
