@@ -91,6 +91,10 @@ Function IsRoProcessable(roNumber)
         LogResult "INFO", "RO " & roNumber & " ALREADY CLOSED. Skipping."
         IsRoProcessable = False
         Exit Function
+    ElseIf InStr(1, screenContent, "READY TO POST", vbTextCompare) = 0 Then
+        LogResult "INFO", "RO " & roNumber & " status is NOT 'READY TO POST'. Skipping."
+        IsRoProcessable = False
+        Exit Function
     End If
     
     IsRoProcessable = True
