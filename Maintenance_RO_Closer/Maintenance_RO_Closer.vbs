@@ -9,7 +9,7 @@
 Option Explicit
 
 ' --- Execution Parameters ---
-Dim START_RO: START_RO = 872150 ' Edit this number as needed
+Dim START_RO: START_RO = 872200 ' Edit this number as needed
 Dim TARGET_COUNT: TARGET_COUNT = 500
 Dim MAIN_PROMPT: MAIN_PROMPT = "R.O. NUMBER" ' Reduced to substring for better matching
 Dim LOG_FILE_PATH: LOG_FILE_PATH = "C:\Temp_alt\CDK\Maintenance_RO_Closer\Maintenance_RO_Closer.log"
@@ -81,7 +81,8 @@ End Sub
 Function IsRoProcessable(roNumber)
     Dim screenContent
     bzhao.Pause 2000
-    bzhao.ReadScreen screenContent, 120, 2, 1 ' Increased width to catch full status messages
+    ' Read screen starting from Row 2 down to Row 6 to catch status (Row 5) and RO info
+    bzhao.ReadScreen screenContent, 400, 2, 1 
     
     If InStr(1, screenContent, "NOT ON FILE", vbTextCompare) > 0 Then
         LogResult "INFO", "RO " & roNumber & " NOT ON FILE. Skipping."
@@ -92,12 +93,22 @@ Function IsRoProcessable(roNumber)
         IsRoProcessable = False
         Exit Function
     ElseIf InStr(1, screenContent, "READY TO POST", vbTextCompare) = 0 Then
-        LogResult "INFO", "RO " & roNumber & " status is NOT 'READY TO POST'. Skipping."
+        LogResult "INFO", "RO " & roNumber & " status is NOT 'READY TO POST'. Found instead: " & GetStatusSnip(screenContent)
         IsRoProcessable = False
         Exit Function
     End If
     
     IsRoProcessable = True
+End Function
+
+Function GetStatusSnip(screenContent)
+    ' Helper to grab a small snip of where the status usually is for logging
+    Dim pos: pos = InStr(1, screenContent, "STATUS:", vbTextCompare)
+    If pos > 0 Then
+        GetStatusSnip = "'" & Trim(Mid(screenContent, pos, 30)) & "'"
+    Else
+        GetStatusSnip = "(Status line not found in read buffer)"
+    End If
 End Function
 
 Function CheckPickyMatch()
