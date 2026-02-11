@@ -463,7 +463,7 @@ Sub ReturnToMainPrompt()
 End Sub
 
 Sub WaitForText(targetText)
-    Dim elapsed, screenContent, targets, found, i, isSeekingMainPrompt, promptPos, isFoundAnywhere
+    Dim elapsed, screenContent, targets, found, i, isSeekingMainPrompt, promptPos
     targets = Split(targetText, "|")
     elapsed = 0
     ' Determine if we are seeking the primary entry point (RO Number entry).
@@ -477,38 +477,23 @@ Sub WaitForText(targetText)
         bzhao.ReadScreen screenContent, 1920, 1, 1
         
         found = False
-        isFoundAnywhere = False
         For i = 0 To UBound(targets)
-            ' Check if target exists ANYWHERE (for isFoundAnywhere detection)
             promptPos = InStr(1, screenContent, targets(i), vbTextCompare)
             If promptPos > 0 Then
-                isFoundAnywhere = True
-                
-                ' VALIDATION: Primary entry prompts (RO Number/Sequence) typically appear 
-                ' between Row 10 and Row 23. Row 10 starts at character position 721.
-                ' Positions 1-700 are reserved for headers where prompts are false positives.
-                If isSeekingMainPrompt Then
-                    If promptPos > 700 Then 
-                        found = True
-                    End If
-                Else
-                    ' For sub-screen prompts (e.g. "COMMAND:"), any position below Row 9 is fine.
-                    If promptPos > 700 Then found = True
-                End If
-                
-                If found Then Exit For
+                found = True
+                Exit For
             End If
         Next
         
         If found Then 
-            LogResult "INFO", "Prompt '" & targets(i) & "' validated at Pos " & promptPos & ". Proceeding."
+            LogResult "INFO", "Prompt '" & targets(i) & "' found at Pos " & promptPos & ". Proceeding."
             Exit Sub
         End If
         
         ' Recovery logic: Only send 'E' if we are truly lost while seeking the main entry point.
         If isSeekingMainPrompt And elapsed >= 10000 Then
             If elapsed Mod 5000 = 0 Then 
-                LogResult "INFO", "Primary entry prompt missing from input area (Rows 10-23). Attempting escape (E)."
+                LogResult "INFO", "Primary entry prompt missing. Attempting escape (E)."
                 bzhao.SendKey "E"
                 bzhao.SendKey "<NumpadEnter>"
                 bzhao.Pause 1000
