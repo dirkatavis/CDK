@@ -2594,14 +2594,26 @@ Sub Closeout_ReadyToPost()
     ' For READY TO POST status ROs, process each line individually: R A -> FNL A -> R B -> FNL B, etc.
     Call ProcessLinesSequentially()
     
-    ' Send the File (F) command
+    ' Send the File (FC) command
     Call LogInfo("Sending file command after READY TO POST processing", "Closeout_ReadyToPost")
-    WaitForPrompt "COMMAND:", "F", True, g_PromptWait, ""
+    WaitForPrompt "COMMAND:", "FC", True, g_PromptWait, ""
     If HandleCloseoutErrors() Then Exit Sub
     
     ' Handle the "ALL LABOR POSTED (Y/N)?" prompt after F command
     Call LogInfo("Waiting for 'ALL LABOR POSTED (Y/N)?' prompt", "Closeout_ReadyToPost")
     WaitForPrompt "ALL LABOR POSTED (Y/N)?", "Y", True, g_PromptWait, ""
+
+    Call LogInfo("Waiting for 'MILEAGE OUT' prompt", "Closeout_ReadyToPost")
+    WaitForPrompt "MILEAGE OUT", "", True, g_PromptWait, ""
+
+    Call LogInfo("Waiting for 'MILEAGE IN' prompt", "Closeout_ReadyToPost")
+    WaitForPrompt "MILEAGE IN", "", True, g_PromptWait, ""
+
+    Call LogInfo("Waiting for 'O.K. TO CLOSE RO (Y/N)?' prompt", "Closeout_ReadyToPost")
+    WaitForPrompt "O.K. TO CLOSE RO", "Y", True, g_PromptWait, ""
+
+    Call LogInfo("Waiting for 'INVOICE PRINTER' prompt", "Closeout_ReadyToPost")
+    WaitForPrompt "INVOICE PRINTER", "2", True, g_PromptWait, ""
     
     lastRoResult = "Successfully filed"
     Call LogInfo("RO filed successfully - ready for downstream review", "Closeout_ReadyToPost")
@@ -2622,14 +2634,26 @@ Sub Closeout_Preassigned()
     ' For PREASSIGNED status ROs, process each line individually: R A -> FNL A -> R B -> FNL B, etc.
     Call ProcessLinesSequentially()
     
-    ' Send the File (F) command
+    ' Send the File (FC) command
     Call LogInfo("Sending file command after PREASSIGNED processing", "Closeout_Preassigned")
-    WaitForPrompt "COMMAND:", "F", True, g_PromptWait, ""
+    WaitForPrompt "COMMAND:", "FC", True, g_PromptWait, ""
     If HandleCloseoutErrors() Then Exit Sub
     
     ' Handle the "ALL LABOR POSTED (Y/N)?" prompt after F command
     Call LogInfo("Waiting for 'ALL LABOR POSTED (Y/N)?' prompt", "Closeout_Preassigned")
     WaitForPrompt "ALL LABOR POSTED (Y/N)?", "Y", True, g_PromptWait, ""
+
+    Call LogInfo("Waiting for 'MILEAGE OUT' prompt", "Closeout_Preassigned")
+    WaitForPrompt "MILEAGE OUT", "", True, g_PromptWait, ""
+
+    Call LogInfo("Waiting for 'MILEAGE IN' prompt", "Closeout_Preassigned")
+    WaitForPrompt "MILEAGE IN", "", True, g_PromptWait, ""
+
+    Call LogInfo("Waiting for 'O.K. TO CLOSE RO (Y/N)?' prompt", "Closeout_Preassigned")
+    WaitForPrompt "O.K. TO CLOSE RO", "Y", True, g_PromptWait, ""
+
+    Call LogInfo("Waiting for 'INVOICE PRINTER' prompt", "Closeout_Preassigned")
+    WaitForPrompt "INVOICE PRINTER", "2", True, g_PromptWait, ""
     
     lastRoResult = "Successfully filed"
     Call LogInfo("RO filed successfully - ready for downstream review", "Closeout_Preassigned")
@@ -2651,14 +2675,26 @@ Sub Closeout_Open()
     ' For OPEN status ROs, process each line individually: R A -> FNL A -> R B -> FNL B, etc.
     Call ProcessLinesSequentially()
     
-    ' Finally, send the File (F) command
+    ' Finally, send the File (FC) command
     Call LogInfo("Sending file command after OPEN status processing", "Closeout_Open")
-    WaitForPrompt "COMMAND:", "F", True, g_PromptWait, ""
+    WaitForPrompt "COMMAND:", "FC", True, g_PromptWait, ""
     If HandleCloseoutErrors() Then Exit Sub
     
     ' Handle the "ALL LABOR POSTED (Y/N)?" prompt after F command
     Call LogInfo("Waiting for 'ALL LABOR POSTED (Y/N)?' prompt", "Closeout_Open")
     WaitForPrompt "ALL LABOR POSTED (Y/N)?", "Y", True, g_PromptWait, ""
+
+    Call LogInfo("Waiting for 'MILEAGE OUT' prompt", "Closeout_Open")
+    WaitForPrompt "MILEAGE OUT", "", True, g_PromptWait, ""
+
+    Call LogInfo("Waiting for 'MILEAGE IN' prompt", "Closeout_Open")
+    WaitForPrompt "MILEAGE IN", "", True, g_PromptWait, ""
+
+    Call LogInfo("Waiting for 'O.K. TO CLOSE RO (Y/N)?' prompt", "Closeout_Open")
+    WaitForPrompt "O.K. TO CLOSE RO", "Y", True, g_PromptWait, ""
+
+    Call LogInfo("Waiting for 'INVOICE PRINTER' prompt", "Closeout_Open")
+    WaitForPrompt "INVOICE PRINTER", "2", True, g_PromptWait, ""
     
     lastRoResult = "Successfully filed"
     Call LogInfo("RO filed successfully - ready for downstream review", "Closeout_Open")
@@ -2991,14 +3027,26 @@ Sub Closeout_Default()
     ' Process each line individually: R A -> FNL A -> R B -> FNL B, etc.
     Call ProcessLinesSequentially()
 
-    ' Send the File (F) command
+    ' Send the File (FC) command
     Call LogInfo("Sending file command after default processing", "Closeout_Default")
-    WaitForPrompt "COMMAND:", "F", True, g_PromptWait, ""
+    WaitForPrompt "COMMAND:", "FC", True, g_PromptWait, ""
     If HandleCloseoutErrors() Then Exit Sub
 
     ' Handle the "ALL LABOR POSTED (Y/N)?" prompt after F command
     Call LogInfo("Waiting for 'ALL LABOR POSTED (Y/N)?' prompt", "Closeout_Default")
     WaitForPrompt "ALL LABOR POSTED (Y/N)?", "Y", True, g_PromptWait, ""
+
+    Call LogInfo("Waiting for 'MILEAGE OUT' prompt", "Closeout_Default")
+    WaitForPrompt "MILEAGE OUT", "", True, g_PromptWait, ""
+
+    Call LogInfo("Waiting for 'MILEAGE IN' prompt", "Closeout_Default")
+    WaitForPrompt "MILEAGE IN", "", True, g_PromptWait, ""
+
+    Call LogInfo("Waiting for 'O.K. TO CLOSE RO (Y/N)?' prompt", "Closeout_Default")
+    WaitForPrompt "O.K. TO CLOSE RO", "Y", True, g_PromptWait, ""
+
+    Call LogInfo("Waiting for 'INVOICE PRINTER' prompt", "Closeout_Default")
+    WaitForPrompt "INVOICE PRINTER", "2", True, g_PromptWait, ""
 
     lastRoResult = "Successfully filed"
     Call LogInfo("RO filed successfully - ready for downstream review", "Closeout_Default")
