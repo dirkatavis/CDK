@@ -1,14 +1,30 @@
-# Runtime and environment artifacts
+﻿# Temporary files
+*.tmp
+scanner_checkpoint.tmp
+
+# Log files (all script-generated logs)
 *.log
-*.tmp.ini
+PostFinalCharges/PostFinalCharges.log
+Maintenance_RO_Closer/Maintenance_RO_Scanner.log
+Maintenance_RO_Closer/Maintenance_RO_Closer.log
 
-# Conversation history exports
-Gemini*.json
-gemini-*.json
+# CSV data files (runtime input/output)
+Close_ROs/Close_ROs_Pt1.csv
+Maintenance_RO_Closer/RO_List.csv
+Maintenance_RO_Closer/RO_Status_Report.csv
+Maintenance_RO_Closer/exception_list.csv
 
-# Personal/local copies
-* - Copy.vbs
+# Generated debug/diagnostic files
+Maintenance_RO_Closer/coordinate_check.txt
+Close_ROs/msgboxtext.txt
 
+# BlueZone session files
+*.zsn
 
-*.csv
-*.txt
+# Backup files
+*.bak
+*.old
+*~
+
+# Windows thumbnail cache
+Thumbs.db
