@@ -484,6 +484,7 @@ Sub WaitForText(targetText)
 
         If elapsed >= 60000 Then 
             TerminateScript "Critical timeout waiting for: " & targetText
+            Exit Do
         End If
     Loop
 End Sub
@@ -526,6 +527,7 @@ Sub TerminateScript(reason)
         bzhao.StopScript
     End If
     On Error GoTo 0
+    Wscript.Quit
 End Sub
 
 ' Execute

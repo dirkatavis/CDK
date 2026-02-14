@@ -12,15 +12,42 @@ Option Explicit
 ' - Document all constants
 '=============================================
 
+' --- Load PathHelper for centralized path management ---
+Dim g_fso: Set g_fso = CreateObject("Scripting.FileSystemObject")
+Const BASE_ENV_VAR_LOCAL = "CDK_BASE"
+
+' Find repo root by searching for .cdkroot marker
+Function FindRepoRootForBootstrap()
+    Dim sh: Set sh = CreateObject("WScript.Shell")
+    Dim basePath: basePath = sh.Environment("USER")(BASE_ENV_VAR_LOCAL)
+
+    If basePath = "" Or Not g_fso.FolderExists(basePath) Then
+        Err.Raise 53, "Bootstrap", "Invalid or missing CDK_BASE. Value: " & basePath
+    End If
+
+    If Not g_fso.FileExists(g_fso.BuildPath(basePath, ".cdkroot")) Then
+        Err.Raise 53, "Bootstrap", "Cannot find .cdkroot in base path:" & vbCrLf & basePath
+    End If
+
+    FindRepoRootForBootstrap = basePath
+End Function
+
+Dim helperPath: helperPath = g_fso.BuildPath(FindRepoRootForBootstrap(), "common\PathHelper.vbs")
+ExecuteGlobal g_fso.OpenTextFile(helperPath).ReadAll
+
 ' Replace generic declarations with clearer names and defer creation to initializer.
-Dim CSV_FILE_PATH
 Dim LOG_FILE_PATH
-Dim fso, csvStream, currentLine, roNumber
+Dim fso, roNumber
 Dim bzhao
 Dim lastRoResult
 Dim currentRODisplay
 
 Dim g_DefaultWait, g_LongWait, g_SendRetryCount
+Dim g_StartSequenceNumber, g_EndSequenceNumber
+Dim g_EnableDebugLogging
+Dim g_CloseoutResumeAfterPostingMessages
+Dim g_CloseoutRestartFromCommand
+Dim g_LastPromptFound
 
 ' -- Prompt Detection Constants --
 Const POLL_INTERVAL = 100   ' Check every 100ms (10 times per second)
@@ -44,7 +71,7 @@ If ConnectBlueZone() Then
 Else
     SafeMsg "Unable to connect to BlueZone. Check that it’s open and logged in.", True, "Connection Error"
 End If
-Call FlushLogBuffer() ' Flush any remaining log messages before script ends
+
 
 ' Cleanup
 ' Guard object cleanup with IsObject to avoid 'Object required' when variables are Empty
@@ -69,17 +96,42 @@ Sub InitializeObjects()
 End Sub
 
 Sub InitializeConfig()
-    ' Hardcode file paths
-    CSV_FILE_PATH = "C:\Temp_alt\CDK\Close_ROs\Close_ROs_Pt1.csv"
-    LOG_FILE_PATH = "C:\Temp_alt\CDK\Close_ROs\PostFinalCharges.log"
+    ' Use centralized path configuration
+    LOG_FILE_PATH = GetConfigPath("PostFinalCharges", "Log")
+
+    ' Start each session with a fresh log file
+    On Error Resume Next
+    If fso.FileExists(LOG_FILE_PATH) Then fso.DeleteFile LOG_FILE_PATH, True
+    On Error GoTo 0
+
+    Dim configPath, startValue, endValue
+    configPath = fso.BuildPath(GetRepoRoot(), "config.ini")
+    startValue = ReadIniValueWithDefault(configPath, "PostFinalCharges", "StartSequenceNumber", "")
+    endValue = ReadIniValueWithDefault(configPath, "PostFinalCharges", "EndSequenceNumber", "")
+
+    If Not IsNumeric(startValue) Or Not IsNumeric(endValue) Then
+        Call LogResultWithSource("ERROR", "StartSequenceNumber/EndSequenceNumber missing or invalid in config.ini", "InitializeConfig")
+        g_StartSequenceNumber = -1
+        g_EndSequenceNumber = -1
+    Else
+        g_StartSequenceNumber = CLng(startValue)
+        g_EndSequenceNumber = CLng(endValue)
+        If g_EndSequenceNumber < g_StartSequenceNumber Then
+            Call LogResultWithSource("ERROR", "EndSequenceNumber is less than StartSequenceNumber in config.ini", "InitializeConfig")
+            g_StartSequenceNumber = -1
+            g_EndSequenceNumber = -1
+        End If
+    End If
 
     ' Default wait times (can be moved to constants if not configurable)
     g_DefaultWait = 1000
     g_LongWait = 2000
+    g_CloseoutResumeAfterPostingMessages = False
     g_SendRetryCount = 2
+    g_EnableDebugLogging = False
 End Sub
 
-Function ReadIniValue(filePath, section, key, defaultValue)
+Function ReadIniValueWithDefault(filePath, section, key, defaultValue)
     Dim file, line, inSection, value
     inSection = False
     value = ""
@@ -108,9 +160,9 @@ Function ReadIniValue(filePath, section, key, defaultValue)
     file.Close
 
     If value = "" Then
-        ReadIniValue = defaultValue
+        ReadIniValueWithDefault = defaultValue
     Else
-        ReadIniValue = value
+        ReadIniValueWithDefault = value
     End If
 End Function
 
@@ -132,12 +184,14 @@ Sub WaitForPrompt(promptText, valueToEnter, sendEnter, timeoutMs)
     
     startTime = Timer 
     promptFound = False
+    g_LastPromptFound = False
     
     Do
         ' Check for the prompt text first
-        If IsTextPresent(promptText) Then
+        If IsTextPresentAny(promptText) Then
             Call LogResultWithSource("INFO", "Detected prompt: " & promptText, "WaitForPrompt")
             promptFound = True
+            g_LastPromptFound = True
             Exit Do
         End If
         
@@ -151,13 +205,18 @@ Sub WaitForPrompt(promptText, valueToEnter, sendEnter, timeoutMs)
         
         ' Exit if timeout reached
         If elapsedMs >= timeoutMs Then
-            Call LogResultWithSource("ERROR", "Timeout waiting for prompt: " & promptText, "WaitForPrompt")
+            If Len(Trim(CStr(promptText))) > 0 Then
+                Call LogResultWithSource("ERROR", "Full screen content when '" & promptText & "' was NOT found", "WaitForPrompt")
+            Else
+                Call LogResultWithSource("ERROR", "Timeout waiting for prompt with empty text", "WaitForPrompt")
+            End If
             Exit Do
         End If
     Loop
     
     ' Only send input if prompt was actually found
     If promptFound Then
+        If Len(Trim(CStr(valueToEnter))) = 0 And Not sendEnter Then Exit Sub
         
         ' Check if the value is a special key command
         bzhao.Pause DelayTimeAfterPromptDetection
@@ -173,10 +232,27 @@ Sub WaitForPrompt(promptText, valueToEnter, sendEnter, timeoutMs)
         End If
         
         Call WaitMs(POST_ENTRY_WAIT)
-    Else
-        Call LogResultWithSource("ERROR", "Prompt not found - skipping input for prompt " & promptText, "WaitForPrompt")
     End If
 End Sub
+
+Function IsTextPresentAny(textToFind)
+    Dim parts, idx, part
+    If InStr(1, textToFind, "|", vbTextCompare) > 0 Then
+        parts = Split(textToFind, "|")
+        For idx = 0 To UBound(parts)
+            part = Trim(parts(idx))
+            If Len(part) > 0 Then
+                If IsTextPresent(part) Then
+                    IsTextPresentAny = True
+                    Exit Function
+                End If
+            End If
+        Next
+        IsTextPresentAny = False
+    Else
+        IsTextPresentAny = IsTextPresent(textToFind)
+    End If
+End Function
 
 
 '--------------------------------------------------------------------
@@ -248,34 +324,17 @@ End Function
 
 
 
-' Read/process CSV; uses clearer variable names and closes file handles.
+' Process a sequence range from config.ini (StartSequenceNumber..EndSequenceNumber).
 Sub ProcessCSV()
-    If Not fso.FileExists(CSV_FILE_PATH) Then
-        Call LogResultWithSource("ERROR", "CSV file not found: " & CSV_FILE_PATH, "ProcessCSV")
-        SafeMsg "Error: The file '" & CSV_FILE_PATH & "' was not found.", True, "File Not Found"
+    If g_StartSequenceNumber < 0 Or g_EndSequenceNumber < 0 Then
+        Call LogResultWithSource("ERROR", "Sequence range not configured. Check StartSequenceNumber/EndSequenceNumber in config.ini.", "ProcessCSV")
+        SafeMsg "Error: Sequence range not configured. Check config.ini.", True, "Missing Sequence Range"
         Exit Sub
     End If
-    
-    Set csvStream = fso.OpenTextFile(CSV_FILE_PATH, 1)
-    If Err.Number <> 0 Then
-        Call LogResultWithSource("ERROR", "Failed to open CSV file: " & Err.Description, "ProcessCSV")
-        Err.Clear
-        Exit Sub
-    End If
-    If Not csvStream.AtEndOfStream Then
-        csvStream.ReadLine  ' Skip header row if present
-    End If
-    
-    Dim lineCount
-    lineCount = 0
-    
-    Do While Not csvStream.AtEndOfStream
-        currentLine = csvStream.ReadLine
-        roNumber = Trim(currentLine)
-        lineCount = lineCount + 1
-        
-        Call LogROHeader(roNumber)
-        Call LogResultWithSource("INFO", roNumber & " - Processing Sequence: " & roNumber, "ProcessCSV")
+
+    Dim seq
+    For seq = g_StartSequenceNumber To g_EndSequenceNumber
+        roNumber = CStr(seq)
         
         lastRoResult = ""
         Call Main(roNumber)
@@ -303,18 +362,22 @@ Sub ProcessCSV()
         Call LogResultWithSource("INFO", finalDisplay & " - Result: " & lastRoResult, "ProcessCSV")
     
 
-    Loop
-    Call FlushLogBuffer() ' Final flush after all ROs are processed
+    Next
 End Sub
 
 ' Writes a header to the log for readability
-Sub LogROHeader(ro)
+Sub LogROHeader(sequenceNumber, roDisplay)
     Dim logFSO, logFile, sep
     sep = "==================="
     Set logFSO = CreateObject("Scripting.FileSystemObject")
     Set logFile = logFSO.OpenTextFile(LOG_FILE_PATH, 8, True)
     logFile.WriteLine sep
-    logFile.WriteLine "Sequence: " & CStr(ro)
+    logFile.WriteLine "Sequence: " & CStr(sequenceNumber)
+    If Len(Trim(CStr(roDisplay))) > 0 Then
+        logFile.WriteLine "RO: " & CStr(roDisplay)
+    Else
+        logFile.WriteLine "RO: (unknown)"
+    End If
     logFile.WriteLine sep
     logFile.Close
     Set logFile = Nothing
@@ -326,18 +389,26 @@ End Sub
 ' (renamed parameter to roNumber for clarity)
 '-----------------------------------------------------------
 Sub Main(roNumber)
+    ' Simple initial pause to avoid exiting before the RO screen settles.
+    ' TODO: Replace with a prompt/screen-stability wait once timing issue is reproducible.
+    Call WaitMs(5000)
     '==== INPUT POINT 1: BEFORE ENTERING RO Number ====
     ' NEED TO IDENTIFY: What prompt appears when CDK is ready for RO Number?
-    Call WaitForPrompt("COMMAND: (SEQ#", roNumber, True, g_LongWait)
+    Call WaitForPrompt("COMMAND:", roNumber, True, g_LongWait)
     ' Scrape the actual RO number from the screen (top of screen shows 'RO:  123456')
-    Dim actualRO
+    Dim actualRO, headerRO
     actualRO = GetROFromScreen()
     If Len(Trim(CStr(actualRO))) > 0 Then
         currentRODisplay = actualRO
+        headerRO = actualRO
     Else
         currentRODisplay = roNumber
+        headerRO = ""
     End If
     
+    Call LogROHeader(roNumber, headerRO)
+    Call LogResultWithSource("INFO", roNumber & " - Processing Sequence: " & roNumber, "Main")
+
     If Len(Trim(CStr(currentRODisplay))) > 0 Then
         Call LogResultWithSource("INFO", "Sent RO to BlueZone", "Main")
     Else
@@ -438,6 +509,7 @@ End Sub
 
 Sub LogResultWithSource(level, message, source)
     Dim fso, logFile, logLine
+    If UCase(CStr(level)) = "DEBUG" And Not g_EnableDebugLogging Then Exit Sub
     Set fso = CreateObject("Scripting.FileSystemObject")
     On Error Resume Next
     Set logFile = fso.OpenTextFile(LOG_FILE_PATH, 8, True) ' 8 = ForAppending, True = Create if not exists
@@ -464,8 +536,6 @@ Sub SafeMsg(text, isCritical, title)
     Else
         Call LogResultWithSource("INFO", text, "SafeMsg")
     End If
-
-    Call FlushLogBuffer() ' Flush logs before showing MsgBox
 
     ' Try to show a MsgBox only if MsgBox exists in this host (wrap to avoid errors)
     On Error Resume Next
@@ -502,9 +572,7 @@ Function IsTextPresent(textToFind)
     
     Call LogResultWithSource("DEBUG", "Screen content checked for: '" & textToFind & "'. Result: " & IsTextPresent, "IsTextPresent")
     
-    If Not IsTextPresent Then ' If text not found, log the full screen content
-        Call LogResultWithSource("DEBUG", "Full screen content when '" & textToFind & "' was NOT found:\n" & String(80, "=") & "\n" & screenContentBuffer & "\n" & String(80, "="), "IsTextPresent")
-    End If
+    ' Intentionally no full-screen dump here to reduce log noise.
 End Function
 
 ' GetROFromScreen: reads screen and extracts 'RO:  123456' pattern
@@ -515,30 +583,37 @@ Function GetROFromScreen()
         Exit Function
     End If
 
-    Dim screenContentBuffer, screenLength, re, matches
+    Dim screenContentBuffer, screenLength, re, matches, attempt, maxAttempts
     screenLength = 3 * 80 ' top three lines
-    On Error Resume Next
-    bzhao.ReadScreen screenContentBuffer, screenLength, 1, 1
-    If Err.Number <> 0 Then
-        Call LogResultWithSource("ERROR", "GetROFromScreen ReadScreen failed: " & Err.Description, "GetROFromScreen")
-        Err.Clear
-        GetROFromScreen = ""
-        On Error GoTo 0
-        Exit Function
-    End If
-    On Error GoTo 0
+    maxAttempts = 5
     
     Set re = CreateObject("VBScript.RegExp")
     re.Pattern = "RO:\s*(\d{4,})"
     re.IgnoreCase = True
     re.Global = False
     
-    If re.Test(screenContentBuffer) Then
-        Set matches = re.Execute(screenContentBuffer)
-        GetROFromScreen = matches(0).SubMatches(0)
-    Else
-        GetROFromScreen = ""
-    End If
+    For attempt = 1 To maxAttempts
+        On Error Resume Next
+        bzhao.ReadScreen screenContentBuffer, screenLength, 1, 1
+        If Err.Number <> 0 Then
+            Call LogResultWithSource("ERROR", "GetROFromScreen ReadScreen failed: " & Err.Description, "GetROFromScreen")
+            Err.Clear
+            On Error GoTo 0
+            GetROFromScreen = ""
+            Exit Function
+        End If
+        On Error GoTo 0
+
+        If re.Test(screenContentBuffer) Then
+            Set matches = re.Execute(screenContentBuffer)
+            GetROFromScreen = matches(0).SubMatches(0)
+            Exit Function
+        End If
+
+        Call WaitMs(200)
+    Next
+
+    GetROFromScreen = ""
 End Function
 
 ' IsStatusReady: centralizes status matching (exact + tolerant variants)
@@ -562,33 +637,80 @@ Sub Closeout_Ro()
     '*******************************************************
     ' Final Closeout Steps
     '*******************************************************
-    Call WaitForPrompt("COMMAND", "FC", True, g_DefaultWait)
-    If HandleCloseoutErrors() Then Exit Sub
-    
-    ' Have all hours been entered
-    Call WaitForPrompt("ALL LABOR POSTED", "Y", True, g_DefaultWait)
-    If HandleCloseoutErrors() Then Exit Sub
+    Dim restartAttempts, restartNeeded
+    restartAttempts = 0
 
-    ' Confirming the next screen
-    Call WaitForPrompt("VERIFY", "", True, g_DefaultWait)
-    If HandleCloseoutErrors() Then Exit Sub
-    
-    ' OUT MILEAGE
-    Call WaitForPrompt("MILEAGE OUT", "", True, g_DefaultWait)
-    If HandleCloseoutErrors() Then Exit Sub
-    
-    ' IN MILEAGE
-    Call WaitForPrompt("MILEAGE IN", "", True, g_DefaultWait)
-    If HandleCloseoutErrors() Then Exit Sub
-    
-    ' OK TO CLOSE THE RO?
-    Call WaitForPrompt("O.K. TO CLOSE RO", "Y", True, g_DefaultWait)
-    If HandleCloseoutErrors() Then Exit Sub
-    
-    ' SEND TO PRINTER 2
-    Call WaitForPrompt("INVOICE PRINTER", "2", True, g_DefaultWait)
-    ' Record successful close for the final result summary; avoid immediate duplicate log line
-    lastRoResult = "Successfully closed"
+    Do
+        restartNeeded = False
+        g_CloseoutResumeAfterPostingMessages = False
+        g_CloseoutRestartFromCommand = False
+
+        Call WaitForPrompt("COMMAND", "FC", True, g_DefaultWait)
+        If HandleCloseoutErrors() Then Exit Sub
+        If g_CloseoutRestartFromCommand Then restartNeeded = True
+
+        ' Have all hours been entered
+        If Not restartNeeded Then
+            Call WaitForPrompt("ALL LABOR POSTED", "Y", True, g_DefaultWait)
+            If HandleCloseoutErrors() Then Exit Sub
+            If g_CloseoutRestartFromCommand Then restartNeeded = True
+        End If
+
+        ' Confirming the next screen
+        If Not restartNeeded Then
+            Call WaitForPrompt("VERIFY", "", True, g_DefaultWait)
+            If HandleCloseoutErrors() Then Exit Sub
+            If g_CloseoutResumeAfterPostingMessages Then
+                g_CloseoutResumeAfterPostingMessages = False
+                Call WaitForPrompt("VERIFY", "", True, g_DefaultWait)
+                If HandleCloseoutErrors() Then Exit Sub
+            End If
+            If g_CloseoutRestartFromCommand Then restartNeeded = True
+        End If
+
+        ' OUT MILEAGE - accept default with Enter
+        If Not restartNeeded Then
+            Call WaitForPrompt("MILEAGE OUT|MILES OUT|OUT MILEAGE", "", False, g_LongWait)
+            If Not g_LastPromptFound Then
+                Call WaitMs(500)
+                Call WaitForPrompt("MILEAGE OUT|MILES OUT|OUT MILEAGE", "", False, g_LongWait)
+            End If
+            If g_LastPromptFound Then
+                Call FastKey("<Backspace>")
+                Call FastKey("<NumpadEnter>")
+            End If
+            If HandleCloseoutErrors() Then Exit Sub
+            If g_CloseoutRestartFromCommand Then restartNeeded = True
+        End If
+
+        ' IN MILEAGE
+        If Not restartNeeded Then
+            Call WaitForPrompt("MILEAGE IN", "<NumpadEnter>", False, g_LongWait)
+            If HandleCloseoutErrors() Then Exit Sub
+            If g_CloseoutRestartFromCommand Then restartNeeded = True
+        End If
+
+        ' OK TO CLOSE THE RO?
+        If Not restartNeeded Then
+            Call WaitForPrompt("O.K. TO CLOSE RO", "Y", True, g_DefaultWait)
+            If HandleCloseoutErrors() Then Exit Sub
+            If g_CloseoutRestartFromCommand Then restartNeeded = True
+        End If
+
+        ' SEND TO PRINTER 2
+        If Not restartNeeded Then
+            Call WaitForPrompt("INVOICE PRINTER", "2", True, g_DefaultWait)
+            ' Record successful close for the final result summary; avoid immediate duplicate log line
+            lastRoResult = "Successfully closed"
+        End If
+
+        If restartNeeded Then
+            restartAttempts = restartAttempts + 1
+            If restartAttempts > 1 Then Exit Sub
+        Else
+            Exit Do
+        End If
+    Loop
 End Sub
 
 ' Helper: return the first matching trigger string or empty if none found.
@@ -632,7 +754,21 @@ Function HandleCloseoutErrors()
                 End If
             End If
 
+            If UCase(CStr(key)) = "POSTING MESSAGES:" Then
+                HandlePostingMessages
+                g_CloseoutResumeAfterPostingMessages = True
+                HandleCloseoutErrors = False
+                Exit Function
+            End If
+
             ExecuteActions errorMap.Item(key)
+            If UCase(CStr(key)) = "INVALID" And g_CloseoutResumeAfterPostingMessages Then
+                g_CloseoutRestartFromCommand = True
+                g_CloseoutResumeAfterPostingMessages = False
+                HandleCloseoutErrors = False
+                Exit Function
+            End If
+
             ' Final result: mark the RO as left open for manual closing
             lastRoResult = "Left Open for manual closing"
             HandleCloseoutErrors = True
@@ -664,7 +800,9 @@ Function GetCloseoutErrorMap()
     dict.Add "INVALID", Array("PressEnter", "Send:E", "Wait:2")
     dict.Add "REQUEST CANNOT BE PROCESSED", Array("PressEnter", "Send:E", "Wait:2")
     dict.Add "INCOMPLETE SERVICE", Array("1", "Wait:9", "Send:E", "Wait:2")
-    dict.Add "POSTING MESSAGES:", Array("PressEnter", "PressEnter", "PressEnter", "Send:E", "Wait:2")
+    dict.Add "POSTING MESSAGES:", Array("PressEnter", "Wait:1")
+    dict.Add "OPCODE IS MISSING FOR LINE", Array("PressEnter", "Send:I", "Wait:2")
+    dict.Add "MILEAGE OUT MUST BE BETWEEN", Array("PressKey:<Backspace>", "PressKey:<NumpadEnter>", "Wait:1")
     
     ' Specific handler for:
     ' "NOT ALL LINES HAVE A COMPLETE STATUS...PRESS RETURN TO CONTINUE"
@@ -682,21 +820,23 @@ Function GetCloseoutErrorMap()
     Set GetCloseoutErrorMap = dict
 End Function
 
-Function ExtractMessageNear(key)
-    Dim screenContentBuffer, screenLength, keyPos, i, rowStart, rows, rowText, collected
+Function ExtractMessageNear(key, screenContentBuffer)
+    Dim screenLength, keyPos, i, rowStart, rows, rowText, collected
 
-    ' Read full screen (24 rows x 80 cols)
-    screenLength = 24 * 80
-    On Error Resume Next
-    bzhao.ReadScreen screenContentBuffer, screenLength, 1, 1
-    If Err.Number <> 0 Then
-        Call LogResultWithSource("ERROR", "ReadScreen failed in ExtractMessageNear: " & Err.Description, "ExtractMessageNear")
-        Err.Clear
-        ExtractMessageNear = ""
+    If Len(CStr(screenContentBuffer)) = 0 Then
+        ' Read full screen (24 rows x 80 cols)
+        screenLength = 24 * 80
+        On Error Resume Next
+        bzhao.ReadScreen screenContentBuffer, screenLength, 1, 1
+        If Err.Number <> 0 Then
+            Call LogResultWithSource("ERROR", "ReadScreen failed in ExtractMessageNear: " & Err.Description, "ExtractMessageNear")
+            Err.Clear
+            ExtractMessageNear = ""
+            On Error GoTo 0
+            Exit Function
+        End If
         On Error GoTo 0
-        Exit Function
     End If
-    On Error GoTo 0
 
     keyPos = InStr(1, screenContentBuffer, key, vbTextCompare)
     If keyPos = 0 Then
@@ -767,6 +907,11 @@ Function ExtractMessageNear(key)
     ExtractMessageNear = Trim(collected)
 End Function
 
+' Wrapper for ExecuteActions to send special keys with existing logging/spacing.
+Sub PressKey(key)
+    Call FastKey(key)
+End Sub
+
 Sub ExecuteActions(actions)
     Dim idx, action, parts, cmd, arg
     For idx = LBound(actions) To UBound(actions)
@@ -800,6 +945,19 @@ Sub ExecuteActions(actions)
             Call LogResultWithSource("CLOSEOUT", "Unknown corrective action: " & action, "ExecuteActions")
         End Select
     Next
+End Sub
+
+Sub HandlePostingMessages()
+    Dim attempts
+    attempts = 0
+    Do While IsTextPresent("POSTING MESSAGES:") And attempts < 10
+        Call FastKey("<Enter>")
+        Call WaitMs(800)
+        attempts = attempts + 1
+    Loop
+    If attempts >= 10 Then
+        Call LogResultWithSource("ERROR", "Posting messages persisted after 10 Enter attempts", "HandlePostingMessages")
+    End If
 End Sub
 
 ' Ensure BlueZone is cleanly disconnected and object released

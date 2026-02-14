@@ -32,7 +32,14 @@ This codebase automates interactions with the CDK Dealership Management System (
 - **Common Terminal States**:
     - **Success/Entry**: `COMMAND:`, `R.O. NUMBER`, `SEQUENCE NUMBER`.
     - **Errors**: `NOT ON FILE`, `is closed`, `ALREADY CLOSED`, `VARIABLE HAS NOT BEEN ASSIGNED`.
-- **Hardcoded Paths**: Scripts often use `C:\Temp\Code\Scripts\VBScript\CDK\...`. Ensure paths are consistent with the current environment (`c:\Temp_alt\CDK`). `PostFinalCharges.vbs` may use a `config.ini` for flexibility.
+- **Path Configuration**: All file paths are managed through a centralized `config.ini` file at the repo root. Scripts use `common/PathHelper.vbs` to:
+    - Read the repo root from the `CDK_BASE` user environment variable
+    - Validate `.cdkroot` marker file exists in the repo root
+    - Read relative paths from `config.ini`
+    - Build absolute paths at runtime
+    - **NEVER hardcode absolute paths in scripts** - always use `GetConfigPath(section, key)` from PathHelper
+    - **NEVER use fallback patterns** - fail fast with clear errors instead of silent fallbacks that hide bugs
+    - When adding new file references, add them to `config.ini` first
 - **Logging**: 
     - Simple scripts use `LogResult(type, message)`.
     - `PostFinalCharges.vbs` uses `LogEvent` with `g_CurrentCriticality` (CRIT_COMMON=0 to CRIT_CRITICAL=3) and `g_CurrentVerbosity` (VERB_LOW=0 to VERB_MAX=3).
@@ -47,6 +54,13 @@ This codebase automates interactions with the CDK Dealership Management System (
 
 ## Developer Workflows
 - **Branching Policy**: **NEVER merge into `main` automatically.** All changes must be performed in a feature or bugfix branch.
+- **Path Management**:
+    - Test path configuration: Run `tools\test_path_helper.vbs` in BlueZone
+    - One-time user setup: Run `tools\setup_cdk_base.vbs` to set `CDK_BASE`
+    - New scripts must load PathHelper: See `docs/PATH_CONFIGURATION.md` for pattern
+    - Add file paths to `config.ini` before using them in scripts
+    - Scan for hardcoded paths: Run `tools\scan_hardcoded_paths.vbs`
+    - Ensure `CDK_BASE` user environment variable points to the repo root
 - **Execution**: Run scripts using `cscript.exe` for console output.
   ```cmd
   cscript.exe Close_ROs_Pt2.vbs

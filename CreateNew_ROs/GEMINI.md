@@ -14,7 +14,7 @@ The script is designed to be robust, with features like:
 ### Dependencies
 
 - **BlueZone:** The script requires the BlueZone terminal emulator to be installed and accessible. It specifically uses the `BZWhll.WhllObj` COM object.
-- **CSV Data:** A CSV file named `Create_RO.csv` must be present at `C:\Temp\Code\Scripts\VBScript\CDK\CreateNew_ROs\create_RO.csv`. This file should contain the MVA and Mileage data for the ROs to be created.
+- **CSV Data:** A CSV file named `Create_RO.csv` must be present. The path is configured in `config.ini` under `[CreateNew_ROs] CSV=CreateNew_ROs\create_RO.csv`. See `docs/PATH_CONFIGURATION.md` for details on the centralized path system.
 
 ### Execution
 
