@@ -94,8 +94,11 @@ Next
 - If not, adjust the `startRow` constant in the DiscoverLineLetters function
 
 ### Log File Locations
-- Pt1: `C:\Temp\Code\Scripts\VBScript\CDK\Close_ROs\Close_ROs_Pt1.log`
-- Pt2: `C:\Temp\Code\Scripts\VBScript\CDK\Close_ROs\Close_ROs_Pt2.log`
+Log files are defined in `config.ini`:
+- Pt1: `[Close_ROs_Pt1] Log=Close_ROs\Close_ROs_Pt1.log`
+- Pt2: `[Close_ROs_Pt2] Log=Close_ROs\Close_ROs_Pt2.log`
+
+See `docs/PATH_CONFIGURATION.md` for details on the centralized path system.
 
 ### What to Look For in Logs
 ```
