@@ -1,6 +1,32 @@
 Option Explicit
 
 
+' --- Load PathHelper for centralized path management ---
+Dim g_fso: Set g_fso = CreateObject("Scripting.FileSystemObject")
+Const BASE_ENV_VAR_LOCAL = "CDK_BASE"
+
+Function FindRepoRootForBootstrap()
+    Dim sh: Set sh = CreateObject("WScript.Shell")
+    Dim basePath: basePath = sh.Environment("USER")(BASE_ENV_VAR_LOCAL)
+
+    If basePath = "" Or Not g_fso.FolderExists(basePath) Then
+        Err.Raise 53, "Bootstrap", "Invalid or missing CDK_BASE. Value: " & basePath
+    End If
+
+    If Not g_fso.FileExists(g_fso.BuildPath(basePath, ".cdkroot")) Then
+        Err.Raise 53, "Bootstrap", "Cannot find .cdkroot in base path:" & vbCrLf & basePath
+    End If
+
+    FindRepoRootForBootstrap = basePath
+End Function
+
+Dim helperPath: helperPath = g_fso.BuildPath(FindRepoRootForBootstrap(), "common\PathHelper.vbs")
+ExecuteGlobal g_fso.OpenTextFile(helperPath).ReadAll
+
+' --- Load ValidateSetup for dependency checking ---
+Dim validateSetupPath: validateSetupPath = g_fso.BuildPath(FindRepoRootForBootstrap(), "common\ValidateSetup.vbs")
+ExecuteGlobal g_fso.OpenTextFile(validateSetupPath).ReadAll
+
 ' Global script variables
 Dim CSV_FILE_PATH, LOG_FILE_PATH
 Dim fso, roNumber
@@ -21,7 +47,7 @@ Dim g_ShouldAbort, g_AbortReason
 Dim g_StartSequenceNumber, g_EndSequenceNumber
 Dim g_DebugDelayFactor
 Dim MainPromptLine
-Dim LEGACY_CSV_PATH, LEGACY_LOG_PATH, LEGACY_DIAG_LOG_PATH, LEGACY_COMMONLIB_PATH
+Dim LEGACY_BASE_PATH, LEGACY_CSV_PATH, LEGACY_LOG_PATH, LEGACY_DIAG_LOG_PATH, LEGACY_COMMONLIB_PATH
 Dim g_CurrentCriticality, g_CurrentVerbosity
 Dim g_SessionDateLogged
 Dim g_LastSuccessfulLine
@@ -42,7 +68,7 @@ Const VERB_HIGH = 2
 Const VERB_MAX = 3
 Const DEBUG_SCREEN_LINES = 3
 Const g_DiagLogQueueSize = 5
-Const LEGACY_BASE_PATH = "C:\Temp\Code\Scripts\VBScript\CDK\PostFinalCharges"
+' LEGACY_BASE_PATH is now dynamic (derived from .cdkroot)
 ' Simplified timeout logic - no midnight handling needed for current debugging
 
 ' --- EARLY LOGGING: Force maximum logging for startup ---
@@ -51,18 +77,18 @@ g_CurrentVerbosity = VERB_MAX ' Show maximum detail during startup
 g_SessionDateLogged = False
 
 
-
-LEGACY_CSV_PATH = LEGACY_BASE_PATH & "\CashoutRoList.csv"  '<== DEPRECATED... REMOVE AS PART ANY ANY COMMIT
-LEGACY_LOG_PATH = LEGACY_BASE_PATH & "\PostFinalCharges.log"
-LEGACY_DIAG_LOG_PATH = LEGACY_BASE_PATH & "\PostFinalCharges.screendump.log"
-LEGACY_COMMONLIB_PATH = LEGACY_BASE_PATH & "\CommonLib.vbs"
+LEGACY_BASE_PATH = g_fso.BuildPath(GetRepoRoot(), "PostFinalCharges")
+LEGACY_CSV_PATH = GetConfigPath("PostFinalCharges_Main", "CSV")
+LEGACY_LOG_PATH = GetConfigPath("PostFinalCharges_Main", "Log")
+LEGACY_DIAG_LOG_PATH = GetConfigPath("PostFinalCharges_Main", "DiagnosticLog")
+LEGACY_COMMONLIB_PATH = GetConfigPath("PostFinalCharges_Main", "CommonLib")
 
 
 
 ' Bootstrap defaults so logging works before config initialization
-g_BaseScriptPath = "C:\Temp\Code\Scripts\VBScript\CDK\PostFinalCharges"
-CSV_FILE_PATH = ResolvePath("CashoutRoList.csv", LEGACY_CSV_PATH, True)
-LOG_FILE_PATH = ResolvePath("PostFinalCharges.log", LEGACY_LOG_PATH, False)
+g_BaseScriptPath = LEGACY_BASE_PATH
+CSV_FILE_PATH = LEGACY_CSV_PATH
+LOG_FILE_PATH = LEGACY_LOG_PATH
 commonLibLoaded = False
 g_ShouldAbort = False
 
@@ -744,6 +770,305 @@ Function GetScreenLine(lineNum)
     GetScreenLine = lineText
 End Function
 
+'-----------------------------------------------------------------------------------
+' **FUNCTION NAME:** GetScreenLines
+' **DATE CREATED:** 2026-02-13
+' **AUTHOR:** GitHub Copilot
+' 
+' **FUNCTIONALITY:**
+' Read multiple lines from the BlueZone screen and return as delimited string.
+' Used for screen capture/snapshot for logging and debugging.
+' 
+' **PARAMETERS:**
+' startLine (Integer): Starting line number (1-based)
+' numLines (Integer): Number of lines to read
+' 
+' **RETURN VALUE:**
+' (String) Lines formatted as "Line N: [content]" separated by | delimiter
+'-----------------------------------------------------------------------------------
+Function GetScreenLines(startLine, numLines)
+    Dim lineNum, screenContentBuffer, lineContent, result
+    Dim maxLine
+    
+    result = ""
+    If numLines <= 0 Then numLines = 1
+    If startLine <= 0 Then startLine = 1
+    
+    maxLine = startLine + numLines - 1
+    If maxLine > 24 Then maxLine = 24 ' Don't exceed screen height
+    
+    On Error Resume Next
+    For lineNum = startLine To maxLine
+        screenContentBuffer = ""
+        bzhao.ReadScreen screenContentBuffer, 80, lineNum, 1
+        If Err.Number = 0 Then
+            lineContent = Trim(screenContentBuffer)
+            If Len(lineContent) > 0 Then
+                If Len(result) > 0 Then result = result & " | "
+                result = result & "L" & lineNum & ":[" & lineContent & "]"
+            End If
+        End If
+        Err.Clear
+    Next
+    On Error GoTo 0
+    
+    GetScreenLines = result
+End Function
+
+'-----------------------------------------------------------------------------------
+' **FUNCTION NAME:** GetScreenSnapshot
+' **DATE CREATED:** 2026-02-13
+' **AUTHOR:** GitHub Copilot
+' 
+' **FUNCTIONALITY:**
+' Capture a snapshot of the current BlueZone screen for logging and debugging.
+' Reads the specified number of lines starting from line 1 and returns formatted string.
+' 
+' **PARAMETERS:**
+' numLines (Integer): Number of lines to capture (default: 24 for full screen)
+' 
+' **RETURN VALUE:**
+' (String) Screen snapshot formatted as "L1:[...] | L2:[...] | ..." for easy logging
+'-----------------------------------------------------------------------------------
+Function GetScreenSnapshot(numLines)
+    If numLines <= 0 Then numLines = 24 ' Default to full screen
+    If numLines > 24 Then numLines = 24 ' Don't exceed screen height
+    
+    GetScreenSnapshot = GetScreenLines(1, numLines)
+End Function
+
+'-----------------------------------------------------------------------------------
+' **FUNCTION NAME:** IsTextPresent
+' **DATE CREATED:** 2026-02-13
+' **AUTHOR:** GitHub Copilot
+' 
+' **FUNCTIONALITY:**
+' Check if specific text is visible anywhere on the current BlueZone screen.
+' Scans all screen lines looking for the target text (case-insensitive).
+' 
+' **PARAMETERS:**
+' searchText (String): The text to search for on screen
+' 
+' **RETURN VALUE:**
+' (Boolean) Returns True if text is found, False otherwise
+'-----------------------------------------------------------------------------------
+Function IsTextPresent(searchText)
+    Dim lineNum, screenContentBuffer, lineContent
+    Dim maxLines
+    
+    IsTextPresent = False
+    
+    If Len(searchText) = 0 Then Exit Function
+    
+    maxLines = 24 ' Standard terminal height
+    
+    On Error Resume Next
+    For lineNum = 1 To maxLines
+        screenContentBuffer = ""
+        bzhao.ReadScreen screenContentBuffer, 80, lineNum, 1
+        If Err.Number = 0 Then
+            lineContent = Trim(screenContentBuffer)
+            ' Case-insensitive search
+            If InStr(1, lineContent, searchText, vbTextCompare) > 0 Then
+                IsTextPresent = True
+                Exit For
+            End If
+        End If
+        Err.Clear
+    Next
+    On Error GoTo 0
+End Function
+
+'-----------------------------------------------------------------------------------
+' **FUNCTION NAME:** IsTextPresent
+' **DATE CREATED:** 2026-02-13
+' **AUTHOR:** GitHub Copilot
+' 
+' **FUNCTIONALITY:**
+' Check if specific text is visible anywhere on the current BlueZone screen.
+' Scans all screen lines looking for the target text (case-insensitive).
+' 
+' **PARAMETERS:**
+' searchText (String): The text to search for on screen
+' 
+' **RETURN VALUE:**
+' (Boolean) Returns True if text is found, False otherwise
+'-----------------------------------------------------------------------------------
+Function IsTextPresent(searchText)
+    Dim lineNum, screenContentBuffer, lineContent
+    Dim maxLines
+    
+    IsTextPresent = False
+    
+    If Len(searchText) = 0 Then Exit Function
+    
+    maxLines = 24 ' Standard terminal height
+    
+    On Error Resume Next
+    For lineNum = 1 To maxLines
+        screenContentBuffer = ""
+        bzhao.ReadScreen screenContentBuffer, 80, lineNum, 1
+        If Err.Number = 0 Then
+            lineContent = Trim(screenContentBuffer)
+            ' Case-insensitive search
+            If InStr(1, lineContent, searchText, vbTextCompare) > 0 Then
+                IsTextPresent = True
+                Exit For
+            End If
+        End If
+        Err.Clear
+    Next
+    On Error GoTo 0
+End Function
+
+'-----------------------------------------------------------------------------------
+' **FUNCTION NAME:** WaitMs
+' **DATE CREATED:** 2026-02-13
+' **AUTHOR:** GitHub Copilot
+' 
+' **FUNCTIONALITY:**
+' Simple utility to wait/sleep for a specified number of milliseconds.
+' Provides a standard way to pause script execution.
+' 
+' **PARAMETERS:**
+' milliseconds (Integer): Number of milliseconds to wait
+' 
+' **RETURN VALUE:**
+' None
+'-----------------------------------------------------------------------------------
+Sub WaitMs(milliseconds)
+    If milliseconds <= 0 Then Exit Sub
+    
+    Dim endTime
+    endTime = Timer + (milliseconds / 1000)
+    
+    Do While Timer < endTime
+        ' Yield control to system to prevent blocking
+        DoEvents
+    Loop
+End Sub
+
+'-----------------------------------------------------------------------------------
+' **FUNCTION NAME:** WaitForPrompt
+' **DATE CREATED:** 2026-02-13
+' **AUTHOR:** GitHub Copilot
+' 
+' **FUNCTIONALITY:**
+' Wait for a prompt to appear on screen, send input if provided, and optionally send Enter.
+' This is a legacy compatibility function for scripts that call it directly.
+' Wraps the lower-level BlueZone operations.
+' 
+' **PARAMETERS:**
+' promptText (String): The prompt text to wait for (e.g., "COMMAND:")
+' inputValue (String): The text to send as input (empty string = send nothing)
+' sendEnter (Boolean): Whether to send Enter after the input
+' timeoutMs (Integer): Maximum time to wait in milliseconds
+' description (String): Description for logging (currently unused but kept for compatibility)
+' 
+' **RETURN VALUE:**
+' (Boolean) Returns True if the prompt was found and actions completed, False if timeout
+'-----------------------------------------------------------------------------------
+Function WaitForPrompt(promptText, inputValue, sendEnter, timeoutMs, description)
+    Dim found, waitStart, waitElapsed
+    
+    If timeoutMs <= 0 Then timeoutMs = 5000 ' Default 5 second timeout
+    
+    found = False
+    waitStart = Timer
+    
+    Call LogEvent("comm", "high", "WaitForPrompt: Waiting for prompt", "WaitForPrompt", "Prompt: '" & promptText & "' | Input: '" & inputValue & "' | SendEnter: " & sendEnter, "")
+    
+    ' Wait for the prompt to appear
+    Do
+        If IsTextPresent(promptText) Then
+            found = True
+            Call LogEvent("comm", "high", "WaitForPrompt: Prompt found", "WaitForPrompt", "Found: '" & promptText & "'", "")
+            
+            ' Send input if provided
+            If Len(inputValue) > 0 Then
+                On Error Resume Next
+                bzhao.SendKey inputValue
+                If Err.Number <> 0 Then
+                    Call LogEvent("maj", "med", "WaitForPrompt: Failed to send input", "WaitForPrompt", "Error: " & Err.Description, "Input: '" & inputValue & "'")
+                    Err.Clear
+                Else
+                    Call LogEvent("comm", "high", "WaitForPrompt: Input sent", "WaitForPrompt", "Sent: '" & inputValue & "'", "")
+                End If
+                On Error GoTo 0
+                Call WaitMs(100) ' Brief pause after sending input
+            End If
+            
+            ' Send Enter if requested
+            If sendEnter Then
+                On Error Resume Next
+                bzhao.SendKey chr(13)  ' ASCII 13 = Enter
+                If Err.Number <> 0 Then
+                    Call LogEvent("maj", "med", "WaitForPrompt: Failed to send Enter", "WaitForPrompt", "Error: " & Err.Description, "")
+                    Err.Clear
+                Else
+                    Call LogEvent("comm", "high", "WaitForPrompt: Enter sent", "WaitForPrompt", "", "")
+                End If
+                On Error GoTo 0
+                Call WaitMs(100) ' Brief pause after sending Enter
+            End If
+            
+            Exit Do
+        End If
+        
+        Call WaitMs(50) ' Fast polling
+        waitElapsed = (Timer - waitStart) * 1000
+        
+        If waitElapsed > timeoutMs Then
+            Call LogEvent("min", "med", "WaitForPrompt: Timeout", "WaitForPrompt", "After " & timeoutMs & "ms looking for: '" & promptText & "'", "")
+            Exit Do
+        End If
+    Loop
+    
+    WaitForPrompt = found
+End Function
+
+' FastKey - Send a key press to the terminal
+' Supports special keys like <NumpadEnter>, <Enter>, or regular characters
+Sub FastKey(keyValue)
+    On Error Resume Next
+    If Len(keyValue) = 0 Then
+        Call LogEvent("warn", "low", "FastKey: Empty key value", "FastKey", "", "")
+        On Error GoTo 0
+        Exit Sub
+    End If
+    
+    Call LogEvent("comm", "med", "FastKey: Sending '" & keyValue & "'", "FastKey", "", "")
+    bzhao.SendKey keyValue
+    
+    If Err.Number <> 0 Then
+        Call LogEvent("maj", "med", "FastKey: Failed to send '" & keyValue & "'", "FastKey", "Error: " & Err.Description, "")
+        Err.Clear
+    Else
+        Call LogEvent("comm", "med", "FastKey: Sent '" & keyValue & "' successfully", "FastKey", "", "")
+    End If
+    On Error GoTo 0
+End Sub
+
+' FastText - Send text to the terminal (convenience wrapper for SendKey)
+Sub FastText(textValue)
+    On Error Resume Next
+    If Len(textValue) = 0 Then
+        Call LogEvent("warn", "low", "FastText: Empty text value", "FastText", "", "")
+        On Error GoTo 0
+        Exit Sub
+    End If
+    
+    Call LogEvent("comm", "med", "FastText: Sending '" & textValue & "'", "FastText", "", "")
+    bzhao.SendKey textValue
+    
+    If Err.Number <> 0 Then
+        Call LogEvent("maj", "med", "FastText: Failed to send '" & textValue & "'", "FastText", "Error: " & Err.Description, "")
+        Err.Clear
+    Else
+        Call LogEvent("comm", "med", "FastText: Sent '" & textValue & "' successfully", "FastText", "", "")
+    End If
+    On Error GoTo 0
+End Sub
 
 ' Helper to check if a prompt is in the prompts dictionary
 Function IsPromptInConfig(promptText, promptsDict)
@@ -849,12 +1174,12 @@ Function HasDefaultValueInPrompt(promptPattern, screenContent)
     Call LogEvent("comm", "max", "Final result: HasDefaultValueInPrompt = " & HasDefaultValueInPrompt, "HasDefaultValueInPrompt", "", "")
 End Function
 
-' Bootstrap defaults so logging works before config initialization
-g_BaseScriptPath = ""
-CSV_FILE_PATH = ResolvePath("CashoutRoList.csv", LEGACY_CSV_PATH, True)
-LOG_FILE_PATH = ResolvePath("PostFinalCharges.log", LEGACY_LOG_PATH, False)
-commonLibLoaded = False
-g_ShouldAbort = False
+    ' Bootstrap defaults so logging works before config initialization
+    g_BaseScriptPath = ""
+    CSV_FILE_PATH = ResolvePath("CashoutRoList.csv", LEGACY_CSV_PATH, True)
+    LOG_FILE_PATH = ResolvePath("PostFinalCharges.log", LEGACY_LOG_PATH, False)
+    commonLibLoaded = False
+    g_ShouldAbort = False
 
 ' LogResult adapter for the library
 Sub LogResult(logMsg)
@@ -1027,9 +1352,20 @@ Function IsAbsolutePath(pathValue)
 End Function
 
 Function GetBaseScriptPath()
-    ' Hardcoded path for the script's base directory, as per user request.
-    ' This bypasses dynamic path resolution which can fail in hosted environments.
-    g_BaseScriptPath = "C:\Temp\Code\Scripts\VBScript\CDK\PostFinalCharges"
+    ' Use repo root from CDK_BASE / GetRepoRoot() via PathHelper
+    ' This ensures paths resolve correctly regardless of deployment location
+    Dim repoRoot
+    On Error Resume Next
+    repoRoot = GetRepoRoot()
+    If Err.Number <> 0 Or Len(repoRoot) = 0 Then
+        Call LogEvent("maj", "low", "GetBaseScriptPath: GetRepoRoot failed, falling back to PostFinalCharges subfolder", "GetBaseScriptPath", Err.Description, "")
+        Err.Clear
+        repoRoot = g_fso.BuildPath(g_fso.GetParentFolderName(WScript.ScriptFullName), "..")
+    End If
+    On Error GoTo 0
+    
+    g_BaseScriptPath = g_fso.BuildPath(repoRoot, "PostFinalCharges")
+    Call LogEvent("comm", "high", "GetBaseScriptPath resolved to: " & g_BaseScriptPath, "GetBaseScriptPath", "", "")
     GetBaseScriptPath = g_BaseScriptPath
 End Function
 
@@ -1051,7 +1387,16 @@ Function GetIniSetting(section, key, defaultValue)
     Dim fso, file, line, inSection, result, configPath
     result = defaultValue ' Start with the default value
     inSection = False
-    configPath = ResolvePath("config.ini", "", False)
+    
+    ' config.ini is always at repo root, not in script subfolder
+    On Error Resume Next
+    configPath = g_fso.BuildPath(GetRepoRoot(), "config.ini")
+    If Err.Number <> 0 Then
+        configPath = ""
+        Err.Clear
+    End If
+    On Error GoTo 0
+    
     Call LogEvent("comm", "high", "Reading INI: " & configPath, "GetIniSetting", "", "")
 
     On Error Resume Next
@@ -1176,8 +1521,8 @@ End Sub
 ' hardcoded defaults if the file or settings are not present.
 '-----------------------------------------------------------------------------------
 Sub InitializeConfig()
-    ' Force g_BaseScriptPath to the known project root
-    g_BaseScriptPath = "C:\Temp\Code\Scripts\VBScript\CDK\PostFinalCharges"
+    ' Resolve g_BaseScriptPath dynamically using repo root
+    g_BaseScriptPath = GetBaseScriptPath()
     
     ' --- Initialize Logging Configuration from INI file ---
     Dim criticalityValue, verbosityValue
@@ -1222,14 +1567,14 @@ Sub InitializeConfig()
     End If
 
     ' --- Deprecated settings, kept for compatibility ---
-    CSV_FILE_PATH = ResolvePath("CashoutRoList.csv", LEGACY_CSV_PATH, True)
-    LOG_FILE_PATH = ResolvePath("PostFinalCharges.log", LEGACY_LOG_PATH, False)
+    CSV_FILE_PATH = GetConfigPath("PostFinalCharges_Main", "CSV")
+    LOG_FILE_PATH = GetConfigPath("PostFinalCharges_Main", "Log")
     g_LongWait = 2000
     g_SendRetryCount = 2
     g_DelayBetweenTextAndEnterMs = 2000
     POST_PROMPT_WAIT_MS = Int(1000 * g_DebugDelayFactor)  ' Base 1000ms scaled by debug delay factor
     g_EnableDiagnosticLogging = False
-    DIAGNOSTIC_LOG_PATH = ResolvePath("PostFinalCharges.screendump.log", LEGACY_DIAG_LOG_PATH, False)
+    DIAGNOSTIC_LOG_PATH = GetConfigPath("PostFinalCharges_Main", "DiagnosticLog")
 End Sub
 
 
@@ -2722,20 +3067,21 @@ Sub ProcessLinesSequentially()
 
     For i = 65 To 90 ' ASCII for A to Z
         lineLetterChar = Chr(i)
-        Call LogEvent("comm", "med", "Processing line " & lineLetterChar & " - Review then Close", "ProcessLinesSequentially", "", "")
+        Call LogEvent("comm", "med", "Processing line " & lineLetterChar & " - Finish then Review", "ProcessLinesSequentially", "", "")
         
-        ' Step 1: Review the line with R command
-        Call LogEvent("comm", "med", "Running R " & lineLetterChar & " command", "ProcessLinesSequentially", "", "")
-        Call WaitForPrompt("COMMAND:", "R " & lineLetterChar, True, g_PromptWait, "")
+        ' Step 1: Finish the line with FNL command FIRST (to ensure it's complete before reviewing)
+        Call LogEvent("comm", "med", "Running FNL " & lineLetterChar & " command", "ProcessLinesSequentially", "", "")
+        Call WaitForPrompt("COMMAND:", "FNL " & lineLetterChar, True, g_PromptWait, "")
         
-        ' Brief wait to let the response appear
-        Call WaitMs(500)
+        ' Wait for the FNL response
+        Call LogEvent("comm", "med", "Waiting for FNL " & lineLetterChar & " response", "ProcessLinesSequentially", "", "")
+        Call WaitForScreenStable(2000, 300)  ' Wait up to 2 sec for screen to stabilize
         
         ' Check if the line exists FIRST
         If IsTextPresent("LINE CODE " & lineLetterChar & " IS NOT ON FILE") Then
-            Dim rScreenResponse
-            rScreenResponse = GetScreenSnapshot(24)
-            Call LogEvent("comm", "high", "R " & lineLetterChar & " command response", "ProcessLinesSequentially", rScreenResponse, "")
+            Dim fnlScreenResponse
+            fnlScreenResponse = GetScreenSnapshot(24)
+            Call LogEvent("comm", "high", "FNL " & lineLetterChar & " command response", "ProcessLinesSequentially", fnlScreenResponse, "")
             If g_LastSuccessfulLine = "" Then
                 Call LogEvent("comm", "low", "No line items found to process", "ProcessLinesSequentially", "Line " & lineLetterChar & " does not exist", "")
             Else
@@ -2743,25 +3089,6 @@ Sub ProcessLinesSequentially()
             End If
             Exit For ' Exit the For loop
         End If
-        
-        ' Wait for the line item screen to appear
-        Dim expectedLineText, lineScreenLoaded
-        expectedLineText = "LINE " & lineLetterChar & " STORY :"
-        lineScreenLoaded = WaitForScreenTransition(expectedLineText, 3000, "line " & lineLetterChar & " screen")
-        
-        If Not lineScreenLoaded Then
-            Call LogEvent("crit", "low", "CRITICAL: Line " & lineLetterChar & " screen failed to load", "ProcessLinesSequentially", "Cannot continue", "")
-            Call FastKey("<Enter>")
-            Exit For
-        End If
-        
-        ' Process review prompts for this line
-        Call LogDebug("Processing R " & lineLetterChar & " prompts", "ProcessLinesSequentially")
-        Call ProcessPromptSequence(lineItemPrompts)
-        
-        ' Step 2: Close the line with FNL command  
-        Call LogEvent("comm", "med", "Running FNL " & lineLetterChar & " command", "ProcessLinesSequentially", "", "")
-        Call WaitForPrompt("COMMAND:", "FNL " & lineLetterChar, True, g_PromptWait, "")
         
         ' Check if the line is already finished
         If IsTextPresent("LINE " & lineLetterChar & " IS ALREADY FINISHED") Then
@@ -2772,12 +3099,24 @@ Sub ProcessLinesSequentially()
             Call ProcessPromptSequence(fnlPrompts)
         End If
         
+        ' Step 2: Review the line with R command (now that it's finished)
+        Call LogEvent("comm", "med", "Running R " & lineLetterChar & " command", "ProcessLinesSequentially", "", "")
+        Call WaitForPrompt("COMMAND:", "R " & lineLetterChar, True, g_PromptWait, "")
+        
+        ' Wait for the first prompt to appear (2 second timeout for response to be ready)
+        Call LogEvent("comm", "med", "Waiting for R " & lineLetterChar & " response prompts", "ProcessLinesSequentially", "", "")
+        Call WaitForScreenStable(2000, 300)  ' Wait up to 2 sec for screen to stabilize
+        
+        ' Process review prompts for this line (R command produces prompts immediately, not a screen)
+        Call LogDebug("Processing R " & lineLetterChar & " prompts", "ProcessLinesSequentially")
+        Call ProcessPromptSequence(lineItemPrompts)
+        
         ' Track successful line processing
         g_LastSuccessfulLine = lineLetterChar
         Call LogInfo("Completed sequential processing for line " & lineLetterChar, "ProcessLinesSequentially")
     Next
     
-    Call LogEvent("comm", "low", "All lines processed sequentially (R->FNL per line)", "ProcessLinesSequentially", "", "")
+    Call LogEvent("comm", "low", "All lines processed sequentially (FNL->R per line)", "ProcessLinesSequentially", "", "")
 End Sub
 
 '-----------------------------------------------------------------------------------
@@ -3572,16 +3911,19 @@ Sub WaitForContinuePrompt()
 End Sub
 
 Sub StartScript()
+    ' === Validate all dependencies before proceeding ===
+    MustHaveValidDependencies
+    
     Call LogInfo("PostFinalCharges script bootstrap starting", "Bootstrap")
-    ' === Include CommonLib.vbs ===
+    ' === Include CommonLib.vbs (optional - script has built-in functions) ===
     Dim commonLibPath
-    commonLibPath = ResolvePath("CommonLib.vbs", LEGACY_COMMONLIB_PATH, True)
-    If Not IncludeFile(commonLibPath) Then
-        Call LogError("Could not include CommonLib.vbs. Script will terminate.", "Init")
-        If IsObject(bzhao) Then bzhao.Disconnect
-        Exit Sub
-    Else
+    commonLibPath = GetConfigPath("PostFinalCharges_Main", "CommonLib")
+    If IncludeFile(commonLibPath) Then
         commonLibLoaded = True
+        Call LogInfo("CommonLib.vbs loaded successfully", "Bootstrap")
+    Else
+        Call LogInfo("CommonLib.vbs not found - using built-in functions", "Bootstrap")
+        commonLibLoaded = False
     End If
     ' === End Include CommonLib.vbs ===
     Call RunMainProcess
