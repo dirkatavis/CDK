@@ -29,13 +29,36 @@ CDK/
 ├── config.ini                  # Edit this to change file locations
 ├── common/
 │   └── PathHelper.vbs          # Shared path functions
-├── Close_ROs/                  # RO closing automation
-├── CreateNew_ROs/              # RO creation automation
-├── Maintenance_RO_Closer/      # Maintenance RO automation
-├── PostFinalCharges/           # Final charge posting
+├── Close_ROs/                  # RO closing automation (Pt1/Pt2 split workflow)
+├── CreateNew_ROs/              # RO creation from CSV (MVA/mileage entry)
+├── Maintenance_RO_Closer/      # Automated PM RO processing
+├── PostFinalCharges/           # Complete RO closeout (state machine)
 ├── tools/                      # Utility scripts
 └── docs/                       # Documentation
 ```
+
+### Script Purposes
+
+**Close_ROs/**
+- **Close_ROs_Pt1.vbs**: Pre-manual processing - Dynamic line discovery, initial closeout steps before manual intervention
+- **Close_ROs_Pt2.vbs**: Post-manual processing - Finalize closeout, add stories for discovered lines
+- Pattern: "Sandwich automation" with manual step in between
+
+**PostFinalCharges/**
+- **PostFinalCharges.vbs**: Complete automated RO closeout using state machine logic
+- Handles 30+ conditional prompts, multi-line processing, FNL→R workflow
+- Production ready - successfully tested with live BlueZone terminal
+- See [PostFinalCharges/README.md](PostFinalCharges/README.md) for detailed features
+
+**CreateNew_ROs/**
+- **Create_ROs.vbs**: Automated RO creation from CSV input
+- Reads vehicle data (MVA/mileage), creates new ROs via terminal automation
+- Supports .debug flag for slow-mode execution
+
+**Maintenance_RO_Closer/**
+- **Maintenance_RO_Closer.vbs**: Automated PM (preventive maintenance) RO processing
+- Matches criteria from PM_Match_Criteria.txt, processes matching ROs from list
+- Generates status reports in RO_Status_Report.csv
 
 ## For Developers
 

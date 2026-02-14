@@ -89,3 +89,29 @@ The underlying application for this project will be deprecated soon. To minimize
     - **Important Logic Errors**: Flag issues where the code does not perform the intended business logic.
     - **Breaking Changes**: Flag anything that breaks existing integrations or deployment pipelines.
 - **Review Tone**: Be direct and concise. If an issue isn't Critical or Important, stay silent.
+
+## See Also (Additional Reading)
+
+### Script-Specific Documentation
+- **PostFinalCharges/README.md** - Detailed feature overview, helper functions, workflow optimization, testing
+- **PostFinalCharges/tests/README.md** - Comprehensive test suite documentation, bug prevention patterns
+
+### Architecture & Setup
+- **docs/PATH_CONFIGURATION.md** - config.ini structure, section organization, PathHelper usage
+- **docs/VALIDATION_ARCHITECTURE.md** - Three-layer validation system design
+- **docs/BLUEZONE_COMPATIBILITY.md** - Dual-context execution (standalone vs BlueZone)
+- **docs/SETUP_VALIDATION.md** - User setup guide, dependency checks
+- **docs/DISTRIBUTION.md** - Packaging and distribution guidelines
+
+### Distribution & Packaging
+- **PACKAGING_GUIDE.md** - Complete packaging workflow for distribution to end users
+- **README.md** - Quick start, troubleshooting, script overview
+
+### Screen Layout Conventions
+**CDK Terminal Screen Coordinates:**
+- **Row 6**: Column headers (e.g., "LC" for line codes)
+- **Row 7+**: Data rows (line letters appear in column 1 under "LC")
+- **Row 23**: Main prompt line (`MainPromptLine = 23` in scripts)
+- **Column 1**: Line letter position (A-Z) for RO detail screens
+
+**Note:** If screen coordinates differ in your environment, update `startRow` constants in `DiscoverLineLetters()` functions.
