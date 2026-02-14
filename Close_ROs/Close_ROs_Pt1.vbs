@@ -7,9 +7,31 @@ Option Explicit
 '              All screen checks and error handling have been removed.
 '====================================================================
 
+' --- Load PathHelper for centralized path management ---
+Dim g_fso: Set g_fso = CreateObject("Scripting.FileSystemObject")
+Const BASE_ENV_VAR_LOCAL = "CDK_BASE"
+
+' Find repo root by searching for .cdkroot marker
+Function FindRepoRootForBootstrap()
+    Dim sh: Set sh = CreateObject("WScript.Shell")
+    Dim basePath: basePath = sh.Environment("USER")(BASE_ENV_VAR_LOCAL)
+
+    If basePath = "" Or Not g_fso.FolderExists(basePath) Then
+        Err.Raise 53, "Bootstrap", "Invalid or missing CDK_BASE. Value: " & basePath
+    End If
+
+    If Not g_fso.FileExists(g_fso.BuildPath(basePath, ".cdkroot")) Then
+        Err.Raise 53, "Bootstrap", "Cannot find .cdkroot in base path:" & vbCrLf & basePath
+    End If
+
+    FindRepoRootForBootstrap = basePath
+End Function
+
+Dim helperPath: helperPath = g_fso.BuildPath(FindRepoRootForBootstrap(), "common\PathHelper.vbs")
+ExecuteGlobal g_fso.OpenTextFile(helperPath).ReadAll
 
 ' --- Configuration ---
-Const CSV_FILE = "C:\Temp_alt\CDK\Close_ROs\Close_ROs_Pt1.csv" ' Update path if needed
+Dim CSV_FILE: CSV_FILE = GetConfigPath("Close_ROs_Pt1", "CSV")
 Const NUM_COLUMN = 0 ' This constant is now largely redundant but kept for clarity
 
 ' --- VBScript Objects ---
@@ -274,7 +296,7 @@ End Sub
 '-----------------------------------------------------------
 Sub LogResult(ro, result)
     Dim fsoLog, logFile, logPath
-    logPath = "C:\Temp_alt\CDK\Close_ROs\Close_ROs_Pt1.log"
+    logPath = GetConfigPath("Close_ROs_Pt1", "Log")
     Set fsoLog = CreateObject("Scripting.FileSystemObject")
     Set logFile = fsoLog.OpenTextFile(logPath, 8, True)
     logFile.WriteLine Now & "  " & ro & " - Result: " & result
