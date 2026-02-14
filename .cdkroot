@@ -1,0 +1,3 @@
+# CDK Repository Root Marker
+# This file marks the root directory of the CDK repository.
+# Scripts use this to auto-discover the base path regardless of where users copy the repo.
