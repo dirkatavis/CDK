@@ -74,13 +74,20 @@ The script includes a comprehensive test suite covering:
 - **Integration tests** (MockBzhao simulations)
 - **Bug prevention** (regression tests for known issues)
 
-**Run all tests:**
+**Run all PostFinalCharges tests:**
 ```cmd
-cd PostFinalCharges\tests
+cd tools
 cscript run_all_tests.vbs
 ```
 
-See [tests/README.md](tests/README.md) for detailed test documentation.
+**Or run specific test categories:**
+```cmd
+cscript run_default_value_tests.vbs     # Default value detection tests
+cscript test_integration.vbs             # Integration tests
+cscript test_bug_prevention.vbs          # Bug prevention tests
+```
+
+See [../docs/TESTING_STRATEGY.md](../docs/TESTING_STRATEGY.md) for testing documentation.
 
 ## Troubleshooting
 

@@ -85,17 +85,38 @@ Simulates missing dependencies and verifies validation catches them.
 
 ## What These Scripts Do
 
+### Operational Tools (User-Facing)
 | Script | Purpose |
-|--------|---------|
+|--------|----------|
 | `validate_dependencies.vbs` | Complete pre-flight check before running automation |
 | `setup_cdk_base.vbs` | Set CDK_BASE environment variable (one-time setup) |
 | `show_cdk_base.vbs` | Display current CDK_BASE setting |
 | `scan_hardcoded_paths.vbs` | Find hardcoded paths that should use config.ini |
 | `scan_hardcoded_paths.ps1` | PowerShell version of path scanner |
+| `Coordinate_Finder.vbs` | Generate screen coordinate ruler for debugging |
+
+### Infrastructure Tests (Developer-Facing)
+| Script | Purpose |
+|--------|----------|
 | `test_path_helper.vbs` | Test path resolution system |
 | `test_validation_positive.vbs` | Verify validation passes with all dependencies present |
 | `test_validation_negative.vbs` | Verify validation detects missing/broken dependencies |
 | `run_validation_tests.vbs` | Run all validation tests (positive + negative) |
+
+### PostFinalCharges Tests (Developer-Facing)
+| Script | Purpose |
+|--------|----------|
+| `test_default_value_detection.vbs` | Verify prompt default value parsing (15 test cases) |
+| `test_default_value_integration.vbs` | Integration tests with MockBzhao |
+| `test_bug_prevention.vbs` | Regression tests for known issues |
+| `test_integration.vbs` | Full integration test flow |
+| `test_mock_bzhao.vbs` | MockBzhao framework tests |
+| `test_prompt_detection.vbs` | Prompt detection timing tests |
+| `test_operation_code_*.vbs` | Operation code parsing tests |
+| `test_open_status.vbs` | Open status validation |
+| `run_all_tests.vbs` | Run all PostFinalCharges tests |
+| `run_default_value_tests.vbs` | Run default value tests only |
+| `run_tests.bat` | Batch file runner for tests |
 
 ## For New Users
 
