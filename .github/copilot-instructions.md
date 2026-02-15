@@ -93,8 +93,10 @@ The underlying application for this project will be deprecated soon. To minimize
 ## See Also (Additional Reading)
 
 ### Script-Specific Documentation
-- **PostFinalCharges/README.md** - Detailed feature overview, helper functions, workflow optimization, testing
-- **PostFinalCharges/tests/README.md** - Comprehensive test suite documentation, bug prevention patterns
+- **[Close_ROs](../Close_ROs/README.md)** - "Sandwich Pattern" (Phase I -> Manual -> Phase II)
+- **[Maintenance_RO_Closer](../Maintenance_RO_Closer/README.md)** - Footprint matching for PM services
+- **[CreateNew_ROs](../CreateNew_ROs/README.md)** - Bulk RO creation
+- **[PostFinalCharges](../PostFinalCharges/README.md)** - Detailed feature overview, helper functions, state machine logic
 
 ### Architecture & Setup
 - **docs/PATH_CONFIGURATION.md** - config.ini structure, section organization, PathHelper usage

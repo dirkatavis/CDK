@@ -29,11 +29,11 @@ CDK/
 ├── config.ini                  # Edit this to change file locations
 ├── common/
 │   └── PathHelper.vbs          # Shared path functions
-├── Close_ROs/                  # RO closing automation (Pt1/Pt2 split workflow)
-├── CreateNew_ROs/              # RO creation from CSV (MVA/mileage entry)
-├── Maintenance_RO_Closer/      # Automated PM RO processing
-├── PostFinalCharges/           # Complete RO closeout (state machine)
-├── tools/                      # Utility scripts
+├── [Close_ROs/](Close_ROs/README.md)                  # Sandwich Pattern automation (Pt1 -> Manual -> Pt2)
+├── [CreateNew_ROs/](CreateNew_ROs/README.md)          # Automated RO creation from CSV
+├── [Maintenance_RO_Closer/](Maintenance_RO_Closer/README.md)  # Automated PM RO processing (Footprint Match)
+├── [PostFinalCharges/](PostFinalCharges/README.md)       # Complete RO closeout (state machine)
+├── [tools/](tools/README.md)                      # Utility scripts for setup & validation
 └── docs/                       # Documentation
 ```
 
