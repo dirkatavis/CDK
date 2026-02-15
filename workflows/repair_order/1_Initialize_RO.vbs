@@ -5,13 +5,40 @@
 
 Option Explicit
 
-' Configuration Constants
-Const CSV_FILE_PATH = "C:\Temp\Code\Scripts\VBScript\CDK\CreateNew_ROs\create_RO.csv"
+' --- Load PathHelper for centralized path management ---
+Dim g_fso: Set g_fso = CreateObject("Scripting.FileSystemObject")
+Const BASE_ENV_VAR_LOCAL = "CDK_BASE"
+
+' Find repo root by searching for .cdkroot marker
+Function FindRepoRootForBootstrap()
+    Dim sh: Set sh = CreateObject("WScript.Shell")
+    Dim basePath: basePath = sh.Environment("USER")(BASE_ENV_VAR_LOCAL)
+
+    If basePath = "" Or Not g_fso.FolderExists(basePath) Then
+        Err.Raise 53, "Bootstrap", "Invalid or missing CDK_BASE. Value: " & basePath
+    End If
+
+    If Not g_fso.FileExists(g_fso.BuildPath(basePath, ".cdkroot")) Then
+        Err.Raise 53, "Bootstrap", "Cannot find .cdkroot in base path:" & vbCrLf & basePath
+    End If
+
+    FindRepoRootForBootstrap = basePath
+End Function
+
+Dim helperPath: helperPath = g_fso.BuildPath(FindRepoRootForBootstrap(), "common\PathHelper.vbs")
+ExecuteGlobal g_fso.OpenTextFile(helperPath).ReadAll
+
+' --- Configuration Constants ---
 Const POLL_INTERVAL = 1000   ' Check every 1000ms (1 time per second)
 Const POST_ENTRY_WAIT = 200  ' Minimal wait after entry
 Const PRE_KEY_WAIT = 150     ' Pause before sending special keys
 Const POST_KEY_WAIT = 350    ' Pause after sending special keys
 Const PROMPT_TIMEOUT_MS = 5000 ' Default prompt timeout
+
+Dim CSV_FILE_PATH: CSV_FILE_PATH = GetConfigPath("Initialize_RO", "CSV")
+Dim SCRIPT_FOLDER: SCRIPT_FOLDER = "scripts\archive"
+Dim SLOW_MARKER_PATH: SLOW_MARKER_PATH = GetConfigPath("Initialize_RO", "DebugMarker")
+Dim LOG_FILE_PATH: LOG_FILE_PATH = GetConfigPath("Initialize_RO", "Log")
 
 Dim fso, ts, strLine, arrValues, i, MVA, Mileage
 Dim Bzhao
@@ -22,12 +49,6 @@ If Err.Number <> 0 Then
     Err.Clear
 End If
 On Error GoTo 0
-
-Dim SCRIPT_FOLDER, SLOW_MARKER_PATH, LOG_FILE_PATH
-' Hardcode paths to eliminate variables
-SCRIPT_FOLDER = "C:\Temp\bluezone_backup\Scripts\archive"
-SLOW_MARKER_PATH = "C:\Temp\Code\Scripts\VBScript\CDK\CreateNew_ROs\Create_RO.debug"
-LOG_FILE_PATH = "C:\Temp\Code\Scripts\VBScript\CDK\CreateNew_ROs\VehicleData.log"
 
 ' Test logging immediately to verify log file creation
 LOG "Script started - Log file path: " & LOG_FILE_PATH
@@ -394,7 +415,7 @@ Sub LOG(msg)
     Else
         ' If main log fails, try creating a fallback log with error info
         Dim fallbackPath
-        fallbackPath = "C:\Temp\LOG_ERROR.txt"
+        fallbackPath = GetConfigPath("Initialize_RO", "FallbackLog")
         Set lfile = lfs.OpenTextFile(fallbackPath, 8, True)
         If Err.Number = 0 Then
             lfile.WriteLine Now & " - LOG ERROR: " & errorNum & " - " & errorDesc

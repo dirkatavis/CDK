@@ -1,0 +1,8 @@
+{
+    "chat.tools.terminal.autoApprove": {
+        "/^cscript\\.exe utilities\\\\tests\\\\test_hardcoded_paths_comprehensive\\.vbs$/": {
+            "approve": true,
+            "matchCommandLine": true
+        }
+    }
+}
