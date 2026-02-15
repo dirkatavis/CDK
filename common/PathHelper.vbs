@@ -71,7 +71,7 @@ End Function
 ' ------------------------------------------------------------------------------
 Function GetConfigPath(section, key)
     Dim root: root = GetRepoRoot()
-    Dim configFile: configFile = g_fso.BuildPath(root, "config.ini")
+    Dim configFile: configFile = g_fso.BuildPath(root, "config\config.ini")
     
     If Not g_fso.FileExists(configFile) Then
         Err.Raise 53, "GetConfigPath", "config.ini not found at: " & configFile

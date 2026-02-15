@@ -67,7 +67,7 @@ Function ValidateScriptDependencies()
     
     ' Check 4: Verify config.ini exists
     Dim configPath
-    configPath = fso.BuildPath(repoRoot, "config.ini")
+    configPath = fso.BuildPath(repoRoot, "config\config.ini")
     If Not fso.FileExists(configPath) Then
         Call SafeOutput("ERROR: config.ini not found at " & configPath)
         failures = failures + 1

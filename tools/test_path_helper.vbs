@@ -43,7 +43,7 @@ report = "CDK Path Helper Test Results" & vbCrLf
 report = report & String(50, "=") & vbCrLf & vbCrLf
 report = report & "Repo Root: " & repoRoot & vbCrLf
 report = report & "  .cdkroot exists: " & fso.FileExists(fso.BuildPath(repoRoot, ".cdkroot")) & vbCrLf
-report = report & "  config.ini exists: " & fso.FileExists(fso.BuildPath(repoRoot, "config.ini")) & vbCrLf
+report = report & "  config.ini exists: " & fso.FileExists(fso.BuildPath(repoRoot, "config\config.ini")) & vbCrLf
 report = report & vbCrLf
 report = report & "Sample Config Paths:" & vbCrLf
 report = report & "  Close_ROs_Pt1 CSV: " & csvPath & vbCrLf

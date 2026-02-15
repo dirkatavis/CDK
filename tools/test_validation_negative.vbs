@@ -190,10 +190,10 @@ Sub Test06_MissingConfigIni()
     repoRoot = g_shell.Environment("USER")("CDK_BASE")
     
     Dim configPath
-    configPath = g_fso.BuildPath(repoRoot, "config.ini")
+    configPath = g_fso.BuildPath(repoRoot, "config\config.ini")
     
     Dim configBackupPath
-    configBackupPath = g_fso.BuildPath(repoRoot, "config.ini.backup")
+    configBackupPath = g_fso.BuildPath(repoRoot, "config\config.ini.backup")
     
     If g_fso.FileExists(configPath) Then
         ' Temporarily move config.ini
@@ -226,7 +226,7 @@ Sub Test07_CorruptedConfigIni()
     repoRoot = g_shell.Environment("USER")("CDK_BASE")
     
     Dim configPath
-    configPath = g_fso.BuildPath(repoRoot, "config.ini")
+    configPath = g_fso.BuildPath(repoRoot, "config\config.ini")
     
     If g_fso.FileExists(configPath) Then
         ' Read current content
@@ -308,7 +308,7 @@ Function ValidateCurrentSetup()
     ' Check config.ini
     Dim configPath
     If failures = 0 Then
-        configPath = fso.BuildPath(repoRoot, "config.ini")
+        configPath = fso.BuildPath(repoRoot, "config\config.ini")
         If Not fso.FileExists(configPath) Then
             failures = failures + 1
         End If
