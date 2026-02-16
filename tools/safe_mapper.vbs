@@ -53,8 +53,19 @@ Else
         base_path = shell_safe.Environment("USER")("CDK_BASE")
     End If
     
+    ' Fail fast if CDK_BASE is missing or invalid (no fallbacks)
     If base_path = "" Or Not fso_safe.FolderExists(base_path) Then
-        base_path = "C:\Temp_alt\CDK" ' Static fallback
+        MsgBox "ERROR: CDK_BASE environment variable is missing or invalid." & vbCrLf & _
+               "Value: " & base_path & vbCrLf & vbCrLf & _
+               "Please run tools\setup_cdk_base.vbs first.", 16, "Path Configuration Error"
+        Exit Sub
+    End If
+
+    ' Validate .cdkroot marker existence
+    If Not fso_safe.FileExists(fso_safe.BuildPath(base_path, ".cdkroot")) Then
+        MsgBox "ERROR: Missing .cdkroot marker in base path:" & vbCrLf & base_path & vbCrLf & vbCrLf & _
+               "Ensure CDK_BASE points to the repository root.", 16, "Validation Error"
+        Exit Sub
     End If
 
     ' 2. Read Output Path from config.ini (Coordinate_Finder section)
