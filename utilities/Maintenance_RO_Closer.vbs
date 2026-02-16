@@ -38,6 +38,26 @@ Dim CRITERIA_FILE: CRITERIA_FILE = GetConfigPath("Maintenance_RO_Closer", "Crite
 Dim DEBUG_LEVEL: DEBUG_LEVEL = 2 ' 1=Error, 2=Info
 Dim RO_LIST_PATH: RO_LIST_PATH = GetConfigPath("Maintenance_RO_Closer", "ROList")
 
+' --- Configurable Pauses ---
+Function GetConfigSetting(section, key, defaultValue)
+    Dim root: root = FindRepoRootForBootstrap()
+    Dim configFile: configFile = g_fso.BuildPath(root, "config\config.ini")
+    Dim val: val = ReadIniValue(configFile, section, key)
+    If val = "" Then
+        GetConfigSetting = defaultValue
+    Else
+        If IsNumeric(val) Then
+            GetConfigSetting = CInt(val)
+        Else
+            GetConfigSetting = val
+        End If
+    End If
+End Function
+
+Dim STABILITY_PAUSE: STABILITY_PAUSE = GetConfigSetting("Maintenance_RO_Closer", "StabilityPause", 2000)
+Dim LOOP_PAUSE: LOOP_PAUSE = GetConfigSetting("Maintenance_RO_Closer", "LoopPause", 1000)
+Dim REVIEW_PAUSE: REVIEW_PAUSE = GetConfigSetting("Maintenance_RO_Closer", "ReviewPause", 500)
+
 ' --- Picky Match State ---
 Dim CriteriaA, CriteriaB, CriteriaC
 
@@ -161,7 +181,7 @@ End Sub
 
 Function IsRoProcessable(roNumber)
     Dim screenContent
-    bzhao.Pause 2000
+    bzhao.Pause STABILITY_PAUSE
     ' Read screen starting from Row 2 down to Row 6 to catch status (Row 5) and RO info
     ' We also read more to catch system errors (Pick/BASIC errors)
     bzhao.ReadScreen screenContent, 1920, 1, 1 
@@ -202,54 +222,125 @@ Function GetStatusSnip(screenContent)
     End If
 End Function
 
-Function CheckPickyMatch()
-    Dim row, col, expectedText, screenContent, i, anchorRow
+Function DiscoverLineLetters()
+    Dim i, capturedLetter, screenContentBuffer, readLength
+    Dim foundLetters, foundCount
+    Dim startReadRow, startReadColumn, emptyRowCount
+    Dim startRow, endRow
     
-    ' Phase 1: Hunt for the anchor (Line "A" in Column 1)
-    anchorRow = 0
-    For i = 8 To 15 ' Search expected range where LC A usually lives
-        bzhao.ReadScreen screenContent, 1, i, 1
-        If UCase(Trim(screenContent)) = "A" Then
-            anchorRow = i
+    ' Array to store discovered line letters
+    Dim tempLetters(25) ' Max 26 letters A-Z
+    foundCount = 0
+    emptyRowCount = 0
+    
+    ' The prompt area starts at row 23, so we must stop at row 22
+    startRow = 7 ' First data row in CDK
+    endRow = 22  ' Last possible data row before prompt area
+    
+    For startReadRow = startRow To endRow
+        startReadColumn = 1
+        readLength = 1 ' Read just 1 character (the line letter)
+        
+        On Error Resume Next
+        bzhao.ReadScreen screenContentBuffer, readLength, startReadRow, startReadColumn
+        If Err.Number <> 0 Then
+            Err.Clear
             Exit For
         End If
-    Next
+        On Error GoTo 0
+        
+        ' Trim and check if it's a valid letter (A-Z)
+        capturedLetter = Trim(screenContentBuffer)
+        If Len(capturedLetter) = 1 Then
+            If Asc(UCase(capturedLetter)) >= Asc("A") And Asc(UCase(capturedLetter)) <= Asc("Z") Then
+                tempLetters(foundCount) = UCase(capturedLetter)
+                foundCount = foundCount + 1
+                emptyRowCount = 0 ' Reset when a letter is found
+            Else
+                emptyRowCount = emptyRowCount + 1
+            End If
+        Else
+            emptyRowCount = emptyRowCount + 1
+        End If
 
-    If anchorRow = 0 Then
-        LogResult "INFO", "Footprint mismatch: Line 'A' not detected in Col 1 (checked rows 8-15)."
+        ' If we hit 3 consecutive rows without a letter, we've likely finished the list
+        If emptyRowCount >= 3 Then Exit For
+    Next
+    
+    If foundCount = 0 Then
+        DiscoverLineLetters = Array()
+        Exit Function
+    End If
+    
+    ' Create properly sized array with found letters
+    ReDim foundLetters(foundCount - 1)
+    For i = 0 To foundCount - 1
+        foundLetters(i) = tempLetters(i)
+    Next
+    
+    DiscoverLineLetters = foundLetters
+End Function
+
+Function CheckPickyMatch()
+    Dim row, col, expectedText, screenContent, i, anchorRow, letters, letterFound
+    
+    ' Phase 1: Discover all line letters on screen
+    letters = DiscoverLineLetters()
+    
+    If UBound(letters) = -1 Then
+        LogResult "INFO", "Footprint mismatch: No line letters detected in Col 1."
         CheckPickyMatch = False
         Exit Function
-    Else
-        LogResult "INFO", "Line 'A' detected at Row " & anchorRow
     End If
 
-    ' Phase 2: Verify descriptions relative to anchor using Variant Matching
-    ' Layout remains: Line A (anchor), B (anchor+2), C (anchor+4)
-    Dim checkItems: checkItems = Array(_
-        Array(anchorRow, CriteriaA, "A"), _
-        Array(anchorRow + 2, CriteriaB, "B"), _
-        Array(anchorRow + 4, CriteriaC, "C") _
-    )
+    ' Phase 2: Verify descriptions for Lines A, B, and C
+    ' We need to find the specific row for each letter
+    Dim criteria, targetLetter, matchCount
+    matchCount = 0
     
-    For i = 0 To UBound(checkItems)
-        row = checkItems(i)(0)
-        bzhao.ReadScreen screenContent, 50, row, 4 ' Read 50 chars for comparison
+    Dim checkTarget: checkTarget = Array("A", "B", "C")
+    Dim checkCriteria: checkCriteria = Array(CriteriaA, CriteriaB, CriteriaC)
+    
+    For i = 0 To UBound(checkTarget)
+        targetLetter = checkTarget(i)
+        criteria = checkCriteria(i)
+        letterFound = False
         
-        If Not MatchesAnyVariant(screenContent, checkItems(i)(1)) Then
-            LogResult "INFO", "Mismatch at Row " & row & " (Line " & checkItems(i)(2) & "). Found: '" & Trim(screenContent) & "'"
+        ' Find the row for this letter
+        For row = 7 To 22
+            bzhao.ReadScreen screenContent, 1, row, 1
+            If UCase(Trim(screenContent)) = targetLetter Then
+                ' Verify description at this row
+                bzhao.ReadScreen screenContent, 50, row, 4
+                If MatchesAnyVariant(screenContent, criteria) Then
+                    LogResult "INFO", "Line " & targetLetter & " verified at Row " & row
+                    letterFound = True
+                    matchCount = matchCount + 1
+                    Exit For
+                Else
+                    LogResult "INFO", "Mismatch at Row " & row & " (Line " & targetLetter & "). Found: '" & Trim(screenContent) & "'"
+                    CheckPickyMatch = False
+                    Exit Function
+                End If
+            End If
+        Next
+        
+        If Not letterFound Then
+            LogResult "INFO", "Footprint mismatch: Line '" & targetLetter & "' not found."
             CheckPickyMatch = False
             Exit Function
         End If
     Next
     
     ' Phase 3: Exclusion Check - Skip if Line D exists
-    ' We check Column 1 at anchor + 6 for a "D"
-    bzhao.ReadScreen screenContent, 1, anchorRow + 6, 1
-    If UCase(Trim(screenContent)) = "D" Then
-        LogResult "INFO", "Exclusion match failed: Line 'D' detected at Row " & (anchorRow + 6) & ". Too many service lines. Skipping."
-        CheckPickyMatch = False
-        Exit Function
-    End If
+    For row = 7 To 22
+        bzhao.ReadScreen screenContent, 1, row, 1
+        If UCase(Trim(screenContent)) = "D" Then
+            LogResult "INFO", "Exclusion match failed: Line 'D' detected at Row " & row & ". Too many service lines. Skipping."
+            CheckPickyMatch = False
+            Exit Function
+        End If
+    Next
     
     CheckPickyMatch = True
 End Function
@@ -346,36 +437,40 @@ Function ProcessRoReview()
 End Function
 
 Function HandleReviewPrompts(lineLetter)
-    Dim screenContent, startTime, elapsed
+    Dim screenContent, startTime, elapsed, regEx
+    Set regEx = CreateObject("VBScript.RegExp")
+    regEx.IgnoreCase = True
+    regEx.Global = False
+    
     startTime = Timer
     
     Do
-        bzhao.Pause 1000
+        bzhao.Pause REVIEW_PAUSE ' Use faster review pause
         ' Read the entire screen to handle prompts that might appear mid-screen
         bzhao.ReadScreen screenContent, 1920, 1, 1
-        screenContent = UCase(screenContent)
         
         ' Exit condition: Back to COMMAND prompt
-        If InStr(screenContent, "COMMAND:") > 0 Then
+        If InStr(1, screenContent, "COMMAND:", vbTextCompare) > 0 Then
             HandleReviewPrompts = True
             Exit Function
         End If
         
-        ' Match Prompts
-        If InStr(screenContent, "LABOR TYPE") > 0 Or InStr(screenContent, "LTYPE") > 0 Then
-            EnterTextWithStability ""
-        ElseIf InStr(screenContent, "OP CODE") > 0 Or InStr(screenContent, "OPERATION CODE") > 0 Then
-            EnterTextWithStability ""
-        ElseIf InStr(screenContent, "DESC:") > 0 Then
-            EnterTextWithStability ""
-        ElseIf InStr(screenContent, "TECHNICIAN") > 0 Then
-            EnterTextWithStability "99"
-        ElseIf InStr(screenContent, "ACTUAL HOURS") > 0 Then
-            EnterTextWithStability ""
-        ElseIf InStr(screenContent, "SOLD HOURS") > 0 Then
-            EnterTextWithStability ""
-        ElseIf InStr(screenContent, "ADD A LABOR OPERATION") > 0 Then
-            EnterTextWithStability "" ' Defaults to "N"
+        ' Match Prompts using robust patterns
+        ' For field-level prompts in review, we use EnterReviewPrompt for speed
+        If TestPrompt(regEx, screenContent, "LABOR TYPE|LTYPE") Then
+            EnterReviewPrompt ""
+        ElseIf TestPrompt(regEx, screenContent, "OP CODE|OPERATION CODE.*(\([A-Za-z0-9]*\))?\?") Then
+            EnterReviewPrompt ""
+        ElseIf TestPrompt(regEx, screenContent, "DESC:") Then
+            EnterReviewPrompt ""
+        ElseIf TestPrompt(regEx, screenContent, "TECHNICIAN.*(\([A-Za-z0-9]*\))?\?") Then
+            EnterReviewPrompt "99"
+        ElseIf TestPrompt(regEx, screenContent, "ACTUAL HOURS") Then
+            EnterReviewPrompt ""
+        ElseIf TestPrompt(regEx, screenContent, "SOLD HOURS") Then
+            EnterReviewPrompt ""
+        ElseIf TestPrompt(regEx, screenContent, "ADD A LABOR OPERATION") Then
+            EnterReviewPrompt "" ' Defaults to "N"
         End If
         
         elapsed = Timer - startTime
@@ -387,8 +482,21 @@ Function HandleReviewPrompts(lineLetter)
     Loop
 End Function
 
+Sub EnterReviewPrompt(text)
+    ' Fast entry for review fields that don't trigger large screen transitions
+    If text <> "" Then bzhao.SendKey CStr(text)
+    bzhao.Pause 50
+    bzhao.SendKey "<NumpadEnter>"
+    bzhao.Pause REVIEW_PAUSE ' Use faster review pause instead of stability pause
+End Sub
+
+Function TestPrompt(regEx, text, pattern)
+    regEx.Pattern = pattern
+    TestPrompt = regEx.Test(text)
+End Function
+
 Function CloseRoFinal()
-    Dim mileage, screenContent, startTime, elapsed
+    Dim mileage, screenContent, startTime, elapsed, pos
     Dim lastActionTime: lastActionTime = Timer
     
     ' Phase II: The Closing
@@ -400,17 +508,28 @@ Function CloseRoFinal()
     EnterTextWithStability "Y"
     
     ' MILEAGE / MILES OUT
-    ' Read from Row 2, Col 47 (Mileage Header)
-    bzhao.ReadScreen mileage, 10, 2, 47
-    mileage = Trim(mileage)
-    LogResult "INFO", "Using mileage from header: " & mileage
+    ' Search rows 1-6 for "MILEAGE:" to extract the value robustly
+    mileage = ""
+    bzhao.ReadScreen screenContent, 480, 1, 1 ' Read Rows 1-6
+    pos = InStr(1, screenContent, "MILEAGE:", vbTextCompare)
+    If pos > 0 Then
+        mileage = Trim(Mid(screenContent, pos + 8, 10))
+        ' Strip any non-numeric trailing text
+        If InStr(mileage, " ") > 0 Then mileage = Left(mileage, InStr(mileage, " ") - 1)
+        LogResult "INFO", "Extracted mileage from screen: " & mileage
+    End If
+    
+    If mileage = "" Then
+        LogResult "INFO", "WARNING: Could not extract mileage from screen. Using '0' as fallback."
+        mileage = "0"
+    End If
     
     ' Define sequence-based state tracking to avoid double-tapping
     Dim stage: stage = 1 ' 1=MilesOut, 2=MilesIn, 3=OkToClose, 4=Printer
     
     startTime = Timer
     Do
-        bzhao.Pause 1000
+        bzhao.Pause LOOP_PAUSE
         bzhao.ReadScreen screenContent, 1920, 1, 1
         screenContent = UCase(screenContent)
         
@@ -449,28 +568,44 @@ Function CloseRoFinal()
 End Function
 
 Sub ReturnToMainPrompt()
-    Dim screenContent, i, targets, j, isFound
+    Dim screenContent, i, targets, j, isFound, waitStep
     targets = Split(MAIN_PROMPT, "|")
     
-    For i = 1 To 5
-        bzhao.Pause 500
+    ' Phase 1: Patience. Wait for the terminal to land on the prompt naturally.
+    ' This prevents sending "E" during slow transitions (the "E" bug).
+    For waitStep = 1 To 10 ' Wait up to 5 seconds total (10 * 500ms)
+        bzhao.Pause LOOP_PAUSE
         bzhao.ReadScreen screenContent, 1920, 1, 1
         
-        isFound = False
         For j = 0 To UBound(targets)
             If InStr(1, screenContent, targets(j), vbTextCompare) > 0 Then
-                isFound = True
-                Exit For
+                LogResult "INFO", "Confirmed at main prompt: " & targets(j)
+                Exit Sub
             End If
         Next
-        
-        If isFound Then Exit Sub
-        
-        LogResult "INFO", "Returning to main prompt (Attempt " & i & ")..."
+    Next
+    
+    ' Phase 2: Recovery. If still lost, try to exit/clear using "E".
+    For i = 1 To 3
+        LogResult "INFO", "ReturnToMainPrompt: Still not at target. Attempting recovery 'E' (" & i & "/3)..."
         bzhao.SendKey "E"
         bzhao.SendKey "<NumpadEnter>"
-        bzhao.Pause 1000
+        
+        ' Wait for response after sending E
+        For waitStep = 1 To 4 ' Wait up to 2 seconds
+            bzhao.Pause LOOP_PAUSE
+            bzhao.ReadScreen screenContent, 1920, 1, 1
+            
+            For j = 0 To UBound(targets)
+                If InStr(1, screenContent, targets(j), vbTextCompare) > 0 Then
+                    LogResult "INFO", "Recovered to main prompt: " & targets(j)
+                    Exit Sub
+                End If
+            Next
+        Next
     Next
+    
+    LogResult "ERROR", "ReturnToMainPrompt failed to find target: " & MAIN_PROMPT
 End Sub
 
 Sub WaitForText(targetText)
@@ -480,8 +615,8 @@ Sub WaitForText(targetText)
     isMainPrompt = (InStr(1, targetText, MAIN_PROMPT, vbTextCompare) > 0)
     
     Do
-        bzhao.Pause 500
-        elapsed = elapsed + 500
+        bzhao.Pause LOOP_PAUSE
+        elapsed = elapsed + LOOP_PAUSE
         
         bzhao.ReadScreen screenContent, 1920, 1, 1
         
@@ -501,7 +636,7 @@ Sub WaitForText(targetText)
                 LogResult "INFO", "Seeking main prompt. Sending 'E' to clear screen."
                 bzhao.SendKey "E"
                 bzhao.SendKey "<NumpadEnter>"
-                bzhao.Pause 1000
+                bzhao.Pause LOOP_PAUSE
             End If
         End If
 
@@ -517,7 +652,7 @@ Sub EnterTextWithStability(text)
     bzhao.SendKey CStr(text)
     bzhao.Pause 150
     bzhao.SendKey "<NumpadEnter>"
-    bzhao.Pause 2000 ' PRD Stability requirement: 2-second pause after every command
+    bzhao.Pause STABILITY_PAUSE ' Configurable stability pause
 End Sub
 
 Sub LogResult(logType, message)
