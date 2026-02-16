@@ -16,6 +16,26 @@ Sub MapScreen()
     End If
     On Error GoTo 0
 
+    ' --- Load PathHelper for centralized path management ---
+    Dim shell, base_path, helper_path
+    Set shell = CreateObject("WScript.Shell")
+    base_path = shell.ExpandEnvironmentStrings("%CDK_BASE%")
+    If base_path = "%CDK_BASE%" Then base_path = shell.Environment("USER")("CDK_BASE")
+
+    If base_path = "" Or Not fso.FolderExists(base_path) Then
+        MsgBox "ERROR: CDK_BASE environment variable is missing or invalid." & vbCrLf & _
+               "Please run tools\setup_cdk_base.vbs first.", 16, "Path Configuration Error"
+        Exit Sub
+    End If
+
+    ' Load common library
+    helper_path = fso.BuildPath(base_path, "common\PathHelper.vbs")
+    If Not fso.FileExists(helper_path) Then
+        MsgBox "ERROR: Cannot find PathHelper.vbs at: " & helper_path, 16, "Validation Error"
+        Exit Sub
+    End If
+    ExecuteGlobal fso.OpenTextFile(helper_path).ReadAll
+
     Dim result, row, line
     Dim header1, header2, header3
 
@@ -42,31 +62,21 @@ Sub MapScreen()
 
     result = result & "      " & header3
 
-    ' --- System Standard Path Discovery ---
-    ' Resolve path using CDK_BASE to ensure output lands in the repo
-    Dim shell, base_path, full_path
-    Set shell = CreateObject("WScript.Shell")
-    base_path = shell.ExpandEnvironmentStrings("%CDK_BASE%")
-    If base_path = "%CDK_BASE%" Then base_path = shell.Environment("USER")("CDK_BASE")
+    ' Save to file using configured path
+    Dim filePath
+    On Error Resume Next
+    filePath = GetConfigPath("Coordinate_Finder", "Output")
+    ' Swap the default filename for the mapper filename
+    filePath = Replace(filePath, "coordinate_check.txt", "ro_screen_map.txt")
+    On Error GoTo 0
 
-    If base_path <> "" And fso.FolderExists(base_path) Then
-        ' Check for .cdkroot to be sure
-        If fso.FileExists(fso.BuildPath(base_path, ".cdkroot")) Then
-            ' Try to use the Coordinate_Finder path from config.ini but with our filename
-            ' For simplicity in this standalone tool, we anchor to the tools folder
-            full_path = fso.BuildPath(base_path, "tools\ro_screen_map.txt")
-        Else
-            full_path = "ro_screen_map.txt" ' Fallback to CWD
-        End If
-    Else
-        full_path = "ro_screen_map.txt" ' Fallback to CWD
-    End If
+    If filePath = "" Then filePath = fso.BuildPath(base_path, "tools\ro_screen_map.txt")
 
-    Set ts = fso.CreateTextFile(full_path, True)
+    Set ts = fso.CreateTextFile(filePath, True)
     ts.Write result
     ts.Close
 
-    MsgBox "RO Screen Map captured to: " & vbCrLf & full_path, vbInformation
+    MsgBox "RO Screen Map captured to: " & vbCrLf & filePath, vbInformation
 End Sub
 
 ' Run it
