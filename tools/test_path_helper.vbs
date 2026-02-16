@@ -33,8 +33,8 @@ Dim repoRoot: repoRoot = GetRepoRoot()
 ' Test config path reading
 Dim csvPath, logPath
 On Error Resume Next
-csvPath = GetConfigPath("Close_ROs_Pt1", "CSV")
-logPath = GetConfigPath("Close_ROs_Pt1", "Log")
+csvPath = GetConfigPath("Prepare_Close_Pt1", "CSV")
+logPath = GetConfigPath("Prepare_Close_Pt1", "Log")
 On Error GoTo 0
 
 ' Build report
@@ -46,8 +46,8 @@ report = report & "  .cdkroot exists: " & fso.FileExists(fso.BuildPath(repoRoot,
 report = report & "  config.ini exists: " & fso.FileExists(fso.BuildPath(repoRoot, "config\config.ini")) & vbCrLf
 report = report & vbCrLf
 report = report & "Sample Config Paths:" & vbCrLf
-report = report & "  Close_ROs_Pt1 CSV: " & csvPath & vbCrLf
-report = report & "  Close_ROs_Pt1 Log: " & logPath & vbCrLf
+report = report & "  Prepare_Close_Pt1 CSV: " & csvPath & vbCrLf
+report = report & "  Prepare_Close_Pt1 Log: " & logPath & vbCrLf
 report = report & vbCrLf
 
 If csvPath <> "" And logPath <> "" Then

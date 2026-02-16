@@ -31,7 +31,7 @@ Dim helperPath: helperPath = g_fso.BuildPath(FindRepoRootForBootstrap(), "common
 ExecuteGlobal g_fso.OpenTextFile(helperPath).ReadAll
 
 ' --- Configuration ---
-Dim CSV_FILE: CSV_FILE = GetConfigPath("Close_ROs_Pt1", "CSV")
+Dim CSV_FILE: CSV_FILE = GetConfigPath("Prepare_Close_Pt1", "CSV")
 Const NUM_COLUMN = 0 ' This constant is now largely redundant but kept for clarity
 
 ' --- VBScript Objects ---
@@ -296,7 +296,7 @@ End Sub
 '-----------------------------------------------------------
 Sub LogResult(ro, result)
     Dim fsoLog, logFile, logPath
-    logPath = GetConfigPath("Close_ROs_Pt1", "Log")
+    logPath = GetConfigPath("Prepare_Close_Pt1", "Log")
     Set fsoLog = CreateObject("Scripting.FileSystemObject")
     Set logFile = fsoLog.OpenTextFile(logPath, 8, True)
     logFile.WriteLine Now & "  " & ro & " - Result: " & result
