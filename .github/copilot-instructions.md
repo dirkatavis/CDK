@@ -93,8 +93,8 @@ The underlying application for this project will be deprecated soon. To minimize
 ## See Also (Additional Reading)
 
 ### Script-Specific Documentation
-- **PostFinalCharges/README.md** - Detailed feature overview, helper functions, workflow optimization, testing
-- **PostFinalCharges/tests/README.md** - Comprehensive test suite documentation, bug prevention patterns
+- **utilities/README.md** - Detailed feature overview, helper functions, workflow optimization, testing
+- **utilities/tests/README.md** - Comprehensive test suite documentation, bug prevention patterns
 
 ### Architecture & Setup
 - **docs/PATH_CONFIGURATION.md** - config.ini structure, section organization, PathHelper usage

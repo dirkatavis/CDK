@@ -43,7 +43,7 @@ Added 7 terminal interaction functions (~400 lines) for BlueZone automation:
 ## Configuration
 
 ### Input Files
-- **CSV**: `PostFinalCharges\CashoutRoList.csv` (configured in `config\config.ini`)
+- **CSV**: `utilities\CashoutRoList.csv` (configured in `config\config.ini`)
 - **Sequence Range**: Lines 30-50 (configured in `[Processing]` section)
 
 ### Dependencies

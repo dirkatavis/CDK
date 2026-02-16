@@ -26,39 +26,38 @@ Just copy the whole folder and run - it works immediately.
 ```
 CDK/
 ├── .cdkroot                    # Don't delete - scripts need this!
-├── config.ini                  # Edit this to change file locations
+├── config/
+│   └── config.ini              # Edit this to change file locations
 ├── common/
 │   └── PathHelper.vbs          # Shared path functions
-├── Close_ROs/                  # RO closing automation (Pt1/Pt2 split workflow)
-├── CreateNew_ROs/              # RO creation from CSV (MVA/mileage entry)
-├── Maintenance_RO_Closer/      # Automated PM RO processing
-├── PostFinalCharges/           # Complete RO closeout (state machine)
-├── tools/                      # Utility scripts
+├── workflows/
+│   └── repair_order/           # RO workflow automation scripts
+│       ├── 1_Initialize_RO.vbs      # Create new ROs from CSV
+│       ├── 2_Prepare_Close_Pt1.vbs  # Pre-closeout (before manual step)
+│       └── 3_Finalize_Close_Pt2.vbs # Post-closeout (after manual step)
+├── utilities/                  # Standalone utility scripts
+│   ├── PostFinalCharges.vbs    # Complete RO closeout (state machine)
+│   └── Maintenance_RO_Closer.vbs # Automated PM RO processing
+├── tools/                      # Setup, testing, validation scripts
 └── docs/                       # Documentation
 ```
 
 ### Script Purposes
 
-**Close_ROs/**
-- **Close_ROs_Pt1.vbs**: Pre-manual processing - Dynamic line discovery, initial closeout steps before manual intervention
-- **Close_ROs_Pt2.vbs**: Post-manual processing - Finalize closeout, add stories for discovered lines
-- Pattern: "Sandwich automation" with manual step in between
+**workflows/repair_order/** - Sequential RO processing workflow
+- **1_Initialize_RO.vbs**: Create new repair orders from CSV input (MVA/mileage entry)
+- **2_Prepare_Close_Pt1.vbs**: Pre-manual processing - Dynamic line discovery, initial closeout steps
+- **3_Finalize_Close_Pt2.vbs**: Post-manual processing - Finalize closeout, add stories
+- Pattern: "Sandwich automation" with manual intervention between Pt1 and Pt2
 
-**PostFinalCharges/**
+**utilities/** - Standalone automation tools
 - **PostFinalCharges.vbs**: Complete automated RO closeout using state machine logic
-- Handles 30+ conditional prompts, multi-line processing, FNL→R workflow
-- Production ready - successfully tested with live BlueZone terminal
-- See [PostFinalCharges/README.md](PostFinalCharges/README.md) for detailed features
-
-**CreateNew_ROs/**
-- **Create_ROs.vbs**: Automated RO creation from CSV input
-- Reads vehicle data (MVA/mileage), creates new ROs via terminal automation
-- Supports .debug flag for slow-mode execution
-
-**Maintenance_RO_Closer/**
+  - Handles 30+ conditional prompts, multi-line processing, FNL→R workflow
+  - Production ready - successfully tested with live BlueZone terminal
+  - See [utilities/README.md](utilities/README.md) for detailed features
 - **Maintenance_RO_Closer.vbs**: Automated PM (preventive maintenance) RO processing
-- Matches criteria from PM_Match_Criteria.txt, processes matching ROs from list
-- Generates status reports in RO_Status_Report.csv
+  - Matches criteria from PM_Match_Criteria.txt, processes ROs from list
+  - Generates status reports in RO_Status_Report.csv
 
 ## For Developers
 
@@ -84,7 +83,7 @@ When sharing these scripts:
 - Check `config.ini` has correct relative paths
 
 **Want to reorganize files?**
-- Edit `config.ini` (don't move files manually)
+- Edit `config/config.ini` (don't move files manually)
 - All scripts will automatically use new locations
 
 ## Legacy Notice
