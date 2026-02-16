@@ -24,9 +24,14 @@ If base_bs = "" Then
     MsgBox "CDK_BASE environment variable not set. Please run setup_cdk_base.vbs.", 16, "Error"
 Else
     helper_path_bs = fso.BuildPath(base_bs, "common\PathHelper.vbs")
-    ExecuteGlobal fso.OpenTextFile(helper_path_bs).ReadAll
+    If Not fso.FileExists(helper_path_bs) Then
+        MsgBox "ERROR: Cannot find PathHelper.vbs at: " & helper_path_bs, 16, "Validation Error"
+        Exit Sub
+    End If
 
+    ' Turn off error resume to catch loading issues
     On Error GoTo 0
+    ExecuteGlobal fso.OpenTextFile(helper_path_bs).ReadAll
 
     Dim line, header1, header2, header3, result, i
     bzhao.ReadScreen line, 80, rowToRead, 1
