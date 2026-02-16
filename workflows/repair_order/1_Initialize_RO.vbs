@@ -5,14 +5,41 @@
 
 Option Explicit
 
-' Configuration Constants
-Const CSV_FILE_PATH = "C:\Temp\bluezone_backup\Scripts\Create_RO.csv"
-Const POLL_INTERVAL = 100   ' Check every 100ms (10 times per second)
+' --- Load PathHelper for centralized path management ---
+Dim g_fso: Set g_fso = CreateObject("Scripting.FileSystemObject")
+Const BASE_ENV_VAR_LOCAL = "CDK_BASE"
+
+' Find repo root by searching for .cdkroot marker
+Function FindRepoRootForBootstrap()
+    Dim sh: Set sh = CreateObject("WScript.Shell")
+    Dim basePath: basePath = sh.Environment("USER")(BASE_ENV_VAR_LOCAL)
+
+    If basePath = "" Or Not g_fso.FolderExists(basePath) Then
+        Err.Raise 53, "Bootstrap", "Invalid or missing CDK_BASE. Value: " & basePath
+    End If
+
+    If Not g_fso.FileExists(g_fso.BuildPath(basePath, ".cdkroot")) Then
+        Err.Raise 53, "Bootstrap", "Cannot find .cdkroot in base path:" & vbCrLf & basePath
+    End If
+
+    FindRepoRootForBootstrap = basePath
+End Function
+
+Dim helperPath: helperPath = g_fso.BuildPath(FindRepoRootForBootstrap(), "common\PathHelper.vbs")
+ExecuteGlobal g_fso.OpenTextFile(helperPath).ReadAll
+
+' --- Configuration Constants ---
+Const POLL_INTERVAL = 1000   ' Check every 1000ms (1 time per second)
 Const POST_ENTRY_WAIT = 200  ' Minimal wait after entry
 Const PRE_KEY_WAIT = 150     ' Pause before sending special keys
 Const POST_KEY_WAIT = 350    ' Pause after sending special keys
 Const PROMPT_TIMEOUT_MS = 5000 ' Default prompt timeout
-Const DelayTimeAfterPromptDetection = 500 ' Delay after prompt detection before sending input
+
+Dim CSV_FILE_PATH: CSV_FILE_PATH = GetConfigPath("Initialize_RO", "CSV")
+Dim SCRIPT_FOLDER: SCRIPT_FOLDER = "scripts\archive"
+Dim SLOW_MARKER_PATH: SLOW_MARKER_PATH = GetConfigPath("Initialize_RO", "DebugMarker")
+Dim LOG_FILE_PATH: LOG_FILE_PATH = GetConfigPath("Initialize_RO", "Log")
+
 Dim fso, ts, strLine, arrValues, i, MVA, Mileage
 Dim Bzhao
 On Error Resume Next
@@ -22,11 +49,6 @@ If Err.Number <> 0 Then
     Err.Clear
 End If
 On Error GoTo 0
-
-Dim SCRIPT_FOLDER, LOG_FILE_PATH
-' Hardcode paths to eliminate variables
-SCRIPT_FOLDER = "C:\Temp\bluezone_backup\Scripts"
-LOG_FILE_PATH = "C:\Temp\bluezone_backup\Scripts\VehicleData.log"
 
 ' Test logging immediately to verify log file creation
 LOG "Script started - Log file path: " & LOG_FILE_PATH
@@ -67,16 +89,23 @@ Sub Main(mva, mileage)
     ' NEED TO IDENTIFY: What prompt appears when CDK is ready for Vehicle ID?
     ' CURRENT: Using "Vehid....." - NEEDS VERIFICATION
     Call WaitForPrompt("Vehid.....", mva, true, PROMPT_TIMEOUT_MS)
+    ' bzhao.Pause 1000
+
 
     ' Skip if no matching vehicle - check but don't enter anything
     If IsTextPresent("No matching") Then Exit Sub
 
-    Call WaitForPrompt("ENTER SEQUENCE NUMBER", "1", true, PROMPT_TIMEOUT_MS)
-    
+
+
+    Call WaitForPrompt("ENTER SEQUENCE NUMBER", "1", true, 1000)
+
+
     '==== INPUT POINT 2: BEFORE ENTERING COMMAND SELECTION ====
     ' NEED TO IDENTIFY: What menu/prompt shows before selecting command?
     ' CURRENT: Looking for "Command?" - NEEDS VERIFICATION
     Call WaitForPrompt("Command?", "<NumpadEnter>", False, PROMPT_TIMEOUT_MS)
+    
+
 
     '==== INPUT POINT 3: BEFORE CONFIRMING DISPLAY ====
     ' NEED TO IDENTIFY: What text appears before "Display them now" response?
@@ -87,74 +116,86 @@ Sub Main(mva, mileage)
     ' NEED TO IDENTIFY: What prompt shows when mileage field is ready?
     ' CURRENT: Using "Miles In...:" - NEEDS VERIFICATION
     Call WaitForPrompt("Miles In", mileage, true, PROMPT_TIMEOUT_MS)
+    
 
     '==== INPUT POINT 5: BEFORE ENTERING MILEAGE VALIDATION ====
     ' NEED TO IDENTIFY: What prompt asks for Y/N on mileage validation?
     ' CURRENT: Using "greater than" - NEEDS VERIFICATION
-    Call WaitForPrompt("greater than", "Y", true, 2000)
+    Call WaitForPrompt("greater than", "Y", true, 1000)
 
     '==== INPUT POINT 6: BEFORE ENTERING TAG ====
     ' NEED TO IDENTIFY: What field label appears for tag entry?
     ' CURRENT: Using "Tag......" - NEEDS VERIFICATION
     Call WaitForPrompt("Tag......", mva, true, PROMPT_TIMEOUT_MS)
+    ' bzhao.Pause 1000
 
     '==== INPUT POINT 7: BEFORE ENTERING VENDOR ====
     ' NEED TO IDENTIFY: What prompt shows for vendor field?
     ' CURRENT: Using "PMVEND" - NEEDS VERIFICATION
     Call WaitForPrompt("Quick Codes", "PMVEND", True, PROMPT_TIMEOUT_MS)
+    ' bzhao.Pause 1000
 
     '==== INPUT POINT 8: BEFORE F3 KEY ====
     ' NEED TO IDENTIFY: What screen/text indicates ready for F3?
     ' CURRENT: No verification - NEEDS PROMPT DETECTION
     Call WaitForPrompt("Quick Code Description", "<F3>", False, PROMPT_TIMEOUT_MS)
+    ' bzhao.Pause 1000
 
     '==== INPUT POINT 9: BEFORE F8 KEY ====
     ' NEED to IDENTIFY: What screen/text indicates ready for F8?
     ' CURRENT: No verification - NEEDS PROMPT DETECTION
     Call WaitForPrompt("Quick Codes", "<F8>", False, PROMPT_TIMEOUT_MS)
-
+    ' bzhao.Pause 1000
+    
     '==== INPUT POINT 10: BEFORE ENTERING "99" ====
     ' NEED TO IDENTIFY: What prompt shows for "99" entry?
     ' CURRENT: No verification - NEEDS PROMPT DETECTION
     Call WaitForPrompt("Tech", "99", False, PROMPT_TIMEOUT_MS)
-
+    ' bzhao.Pause 1000
+    
     '==== INPUT POINT 11: BEFORE SECOND F3 ====
     ' NEED TO IDENTIFY: What indicates ready for second F3?
     ' CURRENT: No verification - NEEDS PROMPT DETECTION
     Call WaitForPrompt("Tech", "<F3>", False, PROMPT_TIMEOUT_MS)
-
+    ' bzhao.Pause 1000
+    
     '==== INPUT POINT 12: BEFORE THIRD F3 ====
     ' NEED TO IDENTIFY: What indicates ready for third F3?
     ' CURRENT: No verification - NEEDS PROMPT DETECTION
     Call WaitForPrompt("Quick Codes", "<F3>", False, PROMPT_TIMEOUT_MS)
-
+    ' bzhao.Pause 1000    
+    
     '==== INPUT POINT 13: BEFORE FIRST ENTER KEY ====
     ' NEED TO IDENTIFY: What text shows system is ready for Enter?
     ' CURRENT: No verification - NEEDS PROMPT DETECTION
     Call WaitForPrompt("Choose an option", "<NumpadEnter>", False, PROMPT_TIMEOUT_MS)
+    ' bzhao.Pause 1000
     
-    bzhao.Pause 5000 ' Small pause to ensure screen is stable before proceeding
     '==== INPUT POINT 14: BEFORE SECOND ENTER KEY ====
     ' NEED TO IDENTIFY: What prompt appears before second Enter?
     ' CURRENT: No verification - NEEDS PROMPT DETECTION
-    Call WaitForPrompt("MILEAGE OUT", "<NumpadEnter>", False, PROMPT_TIMEOUT_MS)
-
+    Call WaitForPrompt("MILEAGE OUT", "<NumpadEnter>", False, 10000)
+    ' bzhao.Pause 1000
+    
     '==== INPUT POINT 15: BEFORE THIRD ENTER KEY ====
     ' NEED TO IDENTIFY: What prompt appears before third Enter?
     ' CURRENT: No verification - NEEDS PROMPT DETECTION
 
-    Call WaitForPrompt("MILEAGE IN", "<NumpadEnter>", False, PROMPT_TIMEOUT_MS)
-
+    Call WaitForPrompt("MILEAGE IN", "<NumpadEnter>", False, 10000)
+    ' bzhao.Pause 1000
+    
     '==== INPUT POINT 16: BEFORE ENTERING FINAL "N" ====
     ' NEED TO IDENTIFY: What question/prompt is asking for N response?
     ' CURRENT: No verification - NEEDS PROMPT DETECTION
     Call WaitForPrompt("O.K. TO CLOSE RO", "N", true, PROMPT_TIMEOUT_MS)
-    
+    ' bzhao.Pause 1000
 
     ' Scrape and log
     Dim roNumber
     roNumber = GetRepairOrderEnhanced()
     Call LogEntryWithRO(mva, roNumber)
+    
+
 
     '==== INPUT POINT 17: BEFORE FINAL F3 ====
     ' NEED TO IDENTIFY: What indicates ready for final F3?
@@ -196,13 +237,16 @@ Sub WaitForPrompt(promptText, valueToEnter, sendEnter, timeoutMs)
             LOG "Timeout waiting for prompt: " & promptText
             Exit Do
         End If
+        LOG elapsedMs & "ms elapsed waiting for prompt: "
     Loop
     
     ' Only send input if prompt was actually found
     If promptFound Then
+        ' Apply slow mode delay if enabled
+        If IsSlowModeEnabled() Then Call WaitMs(1000)
         
         ' Check if the value is a special key command
-        bzhao.Pause DelayTimeAfterPromptDetection
+        bzhao.Pause 1000
         If InStr(1, valueToEnter, "<") > 0 And InStr(1, valueToEnter, ">") > 0 Then
             LOG "Sending key command: " & valueToEnter
             Call FastKey(valueToEnter)
@@ -227,7 +271,11 @@ End Sub
 Sub FastText(text)
     LOG "Sending text: " & text
     bzhao.SendKey text
-    Call WaitMs(100)
+    If IsSlowModeEnabled() Then
+        Call WaitMs(1000)
+    Else
+        Call WaitMs(100)
+    End If
 End Sub
 
 '--------------------------------------------------------------------
@@ -236,10 +284,32 @@ End Sub
 Sub FastKey(key)
     LOG "Sending key command: " & key
     ' Pause briefly before sending a special key to avoid injecting escape sequences into active fields
-    Call WaitMs(PRE_KEY_WAIT)
+    If IsSlowModeEnabled() Then
+        Call WaitMs(1000)
+    Else
+        Call WaitMs(PRE_KEY_WAIT)
+    End If
     bzhao.SendKey key
-
+    ' Allow the host some time to process the special key and transition screens
+    If IsSlowModeEnabled() Then
+        Call WaitMs(1000)
+    Else
+        Call WaitMs(POST_KEY_WAIT)
+    End If
 End Sub
+
+'--------------------------------------------------------------------
+' Function: IsSlowModeEnabled
+' Returns True if the debug marker file (Create_RO.debug) is present next to the script
+'--------------------------------------------------------------------
+Function IsSlowModeEnabled()
+    On Error Resume Next
+    Dim f
+    Set f = CreateObject("Scripting.FileSystemObject")
+    IsSlowModeEnabled = f.FileExists(SLOW_MARKER_PATH)
+    If Err.Number <> 0 Then Err.Clear
+    On Error GoTo 0
+End Function
 
 '--------------------------------------------------------------------
 ' Function: GetRepairOrderEnhanced - Quick repair order extraction
@@ -345,7 +415,7 @@ Sub LOG(msg)
     Else
         ' If main log fails, try creating a fallback log with error info
         Dim fallbackPath
-        fallbackPath = "C:\Temp\LOG_ERROR.txt"
+        fallbackPath = GetConfigPath("Initialize_RO", "FallbackLog")
         Set lfile = lfs.OpenTextFile(fallbackPath, 8, True)
         If Err.Number = 0 Then
             lfile.WriteLine Now & " - LOG ERROR: " & errorNum & " - " & errorDesc

@@ -26,6 +26,19 @@ CSV=Close_ROs\Close_ROs_Pt1.csv
 Log=Close_ROs\Close_ROs_Pt1.log
 ```
 
+#### Configuration Section Organization
+The config.ini sections serve different purposes:
+- **Script/Function Sections** (e.g., `[Initialize_RO]`, `[PostFinalCharges]`) - File paths specific to that script (CSV input, Log output)
+- **Shared Processing Sections** (e.g., `[Processing]`) - Processing parameters used across multiple scripts (sequence ranges, valid statuses, etc.)
+- **Fallback Sections** (e.g., `[Fallback]`) - Default paths for error logging when primary path resolution fails
+
+#### Section Mapping Best Practices
+Always verify that:
+1. Scripts call `GetIniSetting(section, key)` with the correct section name
+2. `config.ini` has values in that section
+3. Values are named exactly as the script expects them
+4. If a section is missing, the script fails fast with a clear error message (not silently using defaults)
+
 ### 4. `common\PathHelper.vbs` Helper Module
 Reusable functions that scripts include to:
 - Read the repo root from `CDK_BASE` and validate `.cdkroot`

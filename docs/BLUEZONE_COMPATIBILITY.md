@@ -278,3 +278,71 @@ End If
 - **Error Resilience**: All operations wrapped in `On Error Resume Next` to handle missing LogInfo gracefully
 - **Simple API**: Just one function to call: `MustHaveValidDependencies`
 - **Context Detection**: Automatic - no need to specify which context you're in
+
+## Terminal Automation Patterns
+
+### Optional CommonLib Dependency
+
+Scripts may reference an optional `CommonLib.vbs` file that provides helper functions:
+
+```vbscript
+' If CommonLib.vbs exists, include it for advanced functions
+If fso.FileExists(commonLibPath) Then
+    ExecuteGlobal fso.OpenTextFile(commonLibPath).ReadAll
+Else
+    ' Log that we're using built-in fallbacks instead
+    Call LogInfo("CommonLib.vbs not found - using built-in functions")
+End If
+```
+
+**Why optional?** Distribution flexibility - users can run scripts without additional libraries by including essential helper functions directly in the main script.
+
+### Critical Terminal Automation Functions
+
+When implementing BlueZone terminal automation, these functions are often essential:
+
+1. **IsTextPresent(searchText)** - Scans all screen lines for target text
+   - Returns True if found, False otherwise
+   - Used to detect prompts and status messages
+
+2. **WaitMs(milliseconds)** - Pauses script execution gracefully
+   - Uses Timer for precision, DoEvents to yield control
+   - Prevents blocking while waiting for terminal state changes
+
+3. **WaitForPrompt(promptText, inputValue, sendEnter, timeoutMs, description)** - Unified prompt handling
+   - Waits for a specific prompt to appear
+   - Sends response input if provided
+   - Sends Enter key if requested
+   - Returns True on success, False on timeout
+
+### Error Handling in Terminal Operations
+
+Terminal operations can fail unpredictably. Always wrap in error handling:
+
+```vbscript
+' Terminal operations are risky
+On Error Resume Next
+bzhao.SendKey inputText
+If Err.Number <> 0 Then
+    Call LogEvent("maj", "med", "Terminal send failed", "FunctionName", Err.Description, "")
+    Err.Clear
+End If
+On Error GoTo 0
+```
+
+### BlueZone Object Integration
+
+Direct interaction with BlueZone terminal:
+```vbscript
+bzhao.ReadScreen screenContent, length, lineNum, colNum  ' Read screen content from specific line
+bzhao.SendKey text                                         ' Send text to terminal
+bzhao.Disconnect                                           ' Cleanly disconnect
+```
+
+Always ensure:
+- Screen is read before making assumptions about terminal state
+- Timing delays between sends and receives (use WaitMs)
+- Error handling for all BlueZone object calls
+- Logging for debugging failed terminal interactions
+
+````
