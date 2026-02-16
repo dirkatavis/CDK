@@ -81,8 +81,9 @@ Sub RunScrapper()
             bzhao.Pause SCREEN_WAIT_DELAY
 
             ' Wait for state change - either RO screen or error
-            Dim screenText, startTime
+            Dim screenText, startTime, screenFound
             startTime = Timer
+            screenFound = False
             Do
                 bzhao.ReadScreen screenText, 1920, 1, 1
                 If InStr(1, screenText, "DOES NOT EXIST", vbTextCompare) > 0 Then
@@ -95,6 +96,7 @@ Sub RunScrapper()
                 
                 ' Look for RO header or status line as confirmation we are in an RO
                 If InStr(1, screenText, "RO:", vbTextCompare) > 0 Or InStr(1, screenText, "RO STATUS:", vbTextCompare) > 0 Then
+                    screenFound = True
                     Exit Do ' Proceed to scrape
                 End If
                 
@@ -105,18 +107,22 @@ Sub RunScrapper()
                 bzhao.Pause 500
             Loop
 
-            ' Scrape Data
-            Dim roData
-            roData = ScrapeCurrentRO()
-            
-            If roData <> "" Then
-                csvFile.WriteLine roData
-                totalScraped = totalScraped + 1
-            End If
+            If screenFound Then
+                ' Scrape Data
+                Dim roData
+                roData = ScrapeCurrentRO()
+                
+                If roData <> "" Then
+                    csvFile.WriteLine roData
+                    totalScraped = totalScraped + 1
+                End If
 
-            ' Return to command prompt
-            bzhao.SendKey "E<NumpadEnter>"
-            bzhao.Pause SCREEN_WAIT_DELAY
+                ' Return to command prompt
+                bzhao.SendKey "E<NumpadEnter>"
+                bzhao.Pause SCREEN_WAIT_DELAY
+            Else
+                LogResult "ERROR", "Sequence " & i & " skipped due to screen transition timeout."
+            End If
             
             i = i + 1
         End If
