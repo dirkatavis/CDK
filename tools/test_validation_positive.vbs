@@ -142,7 +142,7 @@ Sub Test05_ConfigIniExists()
     cdkBase = g_shell.Environment("USER")("CDK_BASE")
     
     Dim configPath
-    configPath = g_fso.BuildPath(cdkBase, "config.ini")
+    configPath = g_fso.BuildPath(cdkBase, "config\config.ini")
     
     If g_fso.FileExists(configPath) Then
         WScript.Echo "  ✓ PASS: config.ini found at " & configPath
@@ -162,7 +162,7 @@ Sub Test06_ConfigIniFormat()
     cdkBase = g_shell.Environment("USER")("CDK_BASE")
     
     Dim configPath
-    configPath = g_fso.BuildPath(cdkBase, "config.ini")
+    configPath = g_fso.BuildPath(cdkBase, "config\config.ini")
     
     If Not g_fso.FileExists(configPath) Then
         WScript.Echo "  ✗ FAIL: config.ini not found"

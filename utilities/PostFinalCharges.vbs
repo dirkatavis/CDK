@@ -1388,9 +1388,9 @@ Function GetIniSetting(section, key, defaultValue)
     result = defaultValue ' Start with the default value
     inSection = False
     
-    ' config.ini is always at repo root, not in script subfolder
+    ' config.ini is now in config/ subfolder relative to repo root
     On Error Resume Next
-    configPath = g_fso.BuildPath(GetRepoRoot(), "config.ini")
+    configPath = g_fso.BuildPath(GetRepoRoot(), "config\config.ini")
     If Err.Number <> 0 Then
         configPath = ""
         Err.Clear

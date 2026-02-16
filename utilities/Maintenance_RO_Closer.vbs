@@ -8,12 +8,35 @@
 
 Option Explicit
 
+' --- Load PathHelper for centralized path management ---
+Dim g_fso: Set g_fso = CreateObject("Scripting.FileSystemObject")
+Const BASE_ENV_VAR_LOCAL = "CDK_BASE"
+
+' Find repo root by searching for .cdkroot marker
+Function FindRepoRootForBootstrap()
+    Dim sh: Set sh = CreateObject("WScript.Shell")
+    Dim basePath: basePath = sh.Environment("USER")(BASE_ENV_VAR_LOCAL)
+
+    If basePath = "" Or Not g_fso.FolderExists(basePath) Then
+        Err.Raise 53, "Bootstrap", "Invalid or missing CDK_BASE. Value: " & basePath
+    End If
+
+    If Not g_fso.FileExists(g_fso.BuildPath(basePath, ".cdkroot")) Then
+        Err.Raise 53, "Bootstrap", "Cannot find .cdkroot in base path:" & vbCrLf & basePath
+    End If
+
+    FindRepoRootForBootstrap = basePath
+End Function
+
+Dim helperPath: helperPath = g_fso.BuildPath(FindRepoRootForBootstrap(), "common\PathHelper.vbs")
+ExecuteGlobal g_fso.OpenTextFile(helperPath).ReadAll
+
 ' --- Execution Parameters ---
 Dim MAIN_PROMPT: MAIN_PROMPT = "R.O. NUMBER"
-Dim LOG_FILE_PATH: LOG_FILE_PATH = "C:\Temp_alt\CDK\Maintenance_RO_Closer\Maintenance_RO_Closer.log"
-Dim CRITERIA_FILE: CRITERIA_FILE = "C:\Temp_alt\CDK\Maintenance_RO_Closer\PM_Match_Criteria.txt"
+Dim LOG_FILE_PATH: LOG_FILE_PATH = GetConfigPath("Maintenance_RO_Closer", "Log")
+Dim CRITERIA_FILE: CRITERIA_FILE = GetConfigPath("Maintenance_RO_Closer", "Criteria")
 Dim DEBUG_LEVEL: DEBUG_LEVEL = 2 ' 1=Error, 2=Info
-Dim RO_LIST_PATH: RO_LIST_PATH = "C:\Temp_alt\CDK\Maintenance_RO_Closer\RO_List.csv"
+Dim RO_LIST_PATH: RO_LIST_PATH = GetConfigPath("Maintenance_RO_Closer", "ROList")
 
 ' --- Picky Match State ---
 Dim CriteriaA, CriteriaB, CriteriaC

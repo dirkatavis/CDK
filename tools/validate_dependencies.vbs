@@ -153,10 +153,10 @@ Sub CheckConfigIni()
     End If
     
     Dim configPath
-    configPath = g_fso.BuildPath(g_repoRoot, "config.ini")
+    configPath = g_fso.BuildPath(g_repoRoot, "config\config.ini")
     
     If g_fso.FileExists(configPath) Then
-        WScript.Echo "  ✓ PASS: config.ini found at repo root"
+        WScript.Echo "  ✓ PASS: config.ini found at config/ subfolder"
         WScript.Echo "  Path: " & configPath
         
         ' Validate it's parseable
@@ -182,7 +182,7 @@ Sub CheckConfigPaths()
     WScript.Echo "[CHECK 5/5] Config File Path References"
     
     Dim configPath
-    configPath = g_fso.BuildPath(g_repoRoot, "config.ini")
+    configPath = g_fso.BuildPath(g_repoRoot, "config\config.ini")
     
     If Not g_fso.FileExists(configPath) Then
         WScript.Echo "  ⊘ SKIP: config.ini not found, cannot validate paths"

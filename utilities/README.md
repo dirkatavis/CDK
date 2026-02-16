@@ -43,21 +43,21 @@ Added 7 terminal interaction functions (~400 lines) for BlueZone automation:
 ## Configuration
 
 ### Input Files
-- **CSV**: `PostFinalCharges\CashoutRoList.csv` (configured in `config.ini`)
+- **CSV**: `PostFinalCharges\CashoutRoList.csv` (configured in `config\config.ini`)
 - **Sequence Range**: Lines 30-50 (configured in `[Processing]` section)
 
 ### Dependencies
 - BlueZone terminal emulator with active CDK DMS session
 - `common\PathHelper.vbs` for path resolution
 - `common\ValidateSetup.vbs` for dependency validation
-- `config.ini` with `[PostFinalCharges_Main]` and `[Processing]` sections
+- `config\config.ini` with `[PostFinalCharges_Main]` and `[Processing]` sections
 
 ## Running the Script
 
 ### From BlueZone (Recommended)
 ```vbscript
-' Double-click PostFinalCharges.vbs or run:
-cscript.exe PostFinalCharges.vbs
+' Double-click utilities\PostFinalCharges.vbs or run:
+cscript.exe utilities\PostFinalCharges.vbs
 ```
 
 ### Prerequisites
@@ -76,7 +76,7 @@ The script includes a comprehensive test suite covering:
 
 **Run all tests:**
 ```cmd
-cd PostFinalCharges\tests
+cd utilities\tests
 cscript run_all_tests.vbs
 ```
 
@@ -85,13 +85,13 @@ See [tests/README.md](tests/README.md) for detailed test documentation.
 ## Troubleshooting
 
 **Script can't find config values:**
-- Verify `[Processing]` section exists in `config.ini`
+- Verify `[Processing]` section exists in `config\config.ini`
 - Check `StartSequenceNumber` and `EndSequenceNumber` are defined
-- See [CONFIG_FIX_SUMMARY.md](../CONFIG_FIX_SUMMARY.md)
+- See [docs/PATH_CONFIGURATION.md](../docs/PATH_CONFIGURATION.md)
 
 **WaitForPrompt errors:**
 - All required functions are now built-in (no external dependencies)
-- See [WAITFORPROMPT_FIX_SUMMARY.md](../WAITFORPROMPT_FIX_SUMMARY.md)
+- See [docs/BLUEZONE_COMPATIBILITY.md](../docs/BLUEZONE_COMPATIBILITY.md)
 
 **Line processing errors:**
 - Script uses FNL→R workflow automatically

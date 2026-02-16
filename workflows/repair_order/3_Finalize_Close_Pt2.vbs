@@ -1,18 +1,36 @@
 
+' --- Load PathHelper for centralized path management ---
+Dim g_fso: Set g_fso = CreateObject("Scripting.FileSystemObject")
+Const BASE_ENV_VAR_LOCAL = "CDK_BASE"
+
+' Find repo root by searching for .cdkroot marker
+Function FindRepoRootForBootstrap()
+    Dim sh: Set sh = CreateObject("WScript.Shell")
+    Dim basePath: basePath = sh.Environment("USER")(BASE_ENV_VAR_LOCAL)
+
+    If basePath = "" Or Not g_fso.FolderExists(basePath) Then
+        Err.Raise 53, "Bootstrap", "Invalid or missing CDK_BASE. Value: " & basePath
+    End If
+
+    If Not g_fso.FileExists(g_fso.BuildPath(basePath, ".cdkroot")) Then
+        Err.Raise 53, "Bootstrap", "Cannot find .cdkroot in base path:" & vbCrLf & basePath
+    End If
+
+    FindRepoRootForBootstrap = basePath
+End Function
+
+Dim helperPath: helperPath = g_fso.BuildPath(FindRepoRootForBootstrap(), "common\PathHelper.vbs")
+ExecuteGlobal g_fso.OpenTextFile(helperPath).ReadAll
+
+Option Explicit
+
 Dim POLL_INTERVAL: POLL_INTERVAL = 1 ' 1 second polling interval for development
-Dim CSV_FILE_PATH
-Dim LOG_FILE_PATH
+Dim CSV_FILE_PATH: CSV_FILE_PATH = GetConfigPath("Finalize_Close", "CSV")
+Dim LOG_FILE_PATH: LOG_FILE_PATH = GetConfigPath("Finalize_Close", "Log")
 Dim DebugLevel ' 0=None, 1=Error, 2=Info, 3=Debug
 DebugLevel = 2 ' Set default debug level (change as needed)
 Dim fso, ts, strLine, number
 Dim bzhao: Set bzhao = CreateObject("BZWhll.WhllObj")
-
-'-----------------------------------------------------------
-' Define file paths and connect to BlueZone
-'-----------------------------------------------------------
-CSV_FILE_PATH = "C:\Temp_alt\CDK\Close_ROs\Close_ROs_Pt1.csv"
-LOG_FILE_PATH = "C:\Temp_alt\CDK\Close_ROs\Close_ROs_Pt2.log"
-
 
 '-----------------------------------------------------------
 ' Main script execution loop
