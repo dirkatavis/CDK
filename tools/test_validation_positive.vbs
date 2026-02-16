@@ -214,9 +214,9 @@ Sub Test07_CriticalPathsExist()
     Set criticalPaths = CreateObject("Scripting.Dictionary")
     
     ' PostFinalCharges dependencies
-    criticalPaths.Add "PostFinalCharges CSV", g_fso.BuildPath(cdkBase, "PostFinalCharges\CashoutRoList.csv")
-    criticalPaths.Add "Close_ROs CSV", g_fso.BuildPath(cdkBase, "Close_ROs\Close_ROs_Pt1.csv")
-    criticalPaths.Add "Criteria file", g_fso.BuildPath(cdkBase, "Maintenance_RO_Closer\PM_Match_Criteria.txt")
+    criticalPaths.Add "PostFinalCharges CSV", g_fso.BuildPath(cdkBase, "utilities\CashoutRoList.csv")
+    criticalPaths.Add "Close_ROs CSV", g_fso.BuildPath(cdkBase, "workflows\repair_order\Prepare_Close_Pt1.csv")
+    criticalPaths.Add "Criteria file", g_fso.BuildPath(cdkBase, "utilities\PM_Match_Criteria.txt")
     
     Dim key
     Dim pathValue
