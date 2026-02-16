@@ -1,7 +1,7 @@
 '=====================================================================================
 ' Safe Screen Mapper
 ' Purpose: Captures rows 1-23 of the current screen with a column ruler.
-'          No WScript objects used - safe for BlueZone host.
+' Note: Uses WScript.Shell for environment path discovery.
 '=====================================================================================
 
 Dim bzhao_safe, fso_safe, ts_safe
