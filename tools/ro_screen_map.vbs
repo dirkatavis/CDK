@@ -42,15 +42,31 @@ Sub MapScreen()
 
     result = result & "      " & header3
 
-    ' Save to file (hardcoded relative path for host compatibility)
-    Dim filePath
-    filePath = "ro_screen_map.txt"
+    ' --- System Standard Path Discovery ---
+    ' Resolve path using CDK_BASE to ensure output lands in the repo
+    Dim shell, base_path, full_path
+    Set shell = CreateObject("WScript.Shell")
+    base_path = shell.ExpandEnvironmentStrings("%CDK_BASE%")
+    If base_path = "%CDK_BASE%" Then base_path = shell.Environment("USER")("CDK_BASE")
 
-    Set ts = fso.CreateTextFile(filePath, True)
+    If base_path <> "" And fso.FolderExists(base_path) Then
+        ' Check for .cdkroot to be sure
+        If fso.FileExists(fso.BuildPath(base_path, ".cdkroot")) Then
+            ' Try to use the Coordinate_Finder path from config.ini but with our filename
+            ' For simplicity in this standalone tool, we anchor to the tools folder
+            full_path = fso.BuildPath(base_path, "tools\ro_screen_map.txt")
+        Else
+            full_path = "ro_screen_map.txt" ' Fallback to CWD
+        End If
+    Else
+        full_path = "ro_screen_map.txt" ' Fallback to CWD
+    End If
+
+    Set ts = fso.CreateTextFile(full_path, True)
     ts.Write result
     ts.Close
 
-    MsgBox "RO Screen Map captured to: " & vbCrLf & filePath, vbInformation
+    MsgBox "RO Screen Map captured to: " & vbCrLf & full_path, vbInformation
 End Sub
 
 ' Run it
