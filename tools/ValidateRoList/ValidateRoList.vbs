@@ -256,7 +256,16 @@ If mockMode And mockMapsEnv <> "" Then
     mockOutTS.Close
     mockLogTS.WriteLine "Mock map run finished: " & Now & " | out=" & mockOut
     mockLogTS.Close
-    MsgBox "Mock map run complete. Results: " & mockOut, vbInformation, "ValidateRoList"
+    Dim conclMsg: conclMsg = "Mock map run complete. Results: " & mockOut
+    On Error Resume Next
+    WScript.Echo conclMsg
+    If Err.Number <> 0 Then
+        Err.Clear
+        Dim echoTS: Set echoTS = fso.OpenTextFile(mockLog, 8, True)
+        echoTS.WriteLine Now & " | " & conclMsg
+        echoTS.Close
+    End If
+    On Error GoTo 0
     On Error Resume Next
     WScript.Quit 0
     If Err.Number <> 0 Then Err.Raise 9999, "ValidateRoList", "Completed (non-WSH host)"
@@ -300,6 +309,7 @@ Function WaitForOneOf(targetsCSV, timeoutMs)
     Dim screenBuffer, i
     Dim numReadLines: numReadLines = 6
     Dim j
+    Dim pollCount: pollCount = 0
 
     Do
         If mockMode Then
@@ -312,17 +322,13 @@ Function WaitForOneOf(targetsCSV, timeoutMs)
                 Loop
                 simTS.Close
                 simBuf = UCase(simBuf)
-                On Error Resume Next
-                logTS.WriteLine Now & " | MOCK-SIM snapshot read from " & screenMapPath
-                On Error GoTo 0
+                LogResult "DEBUG", "MOCK-SIM snapshot read from " & screenMapPath
                 ' Check for any target in the simulated buffer
                 For i = 0 To UBound(targets)
                     Dim tm: tm = Trim(targets(i))
                     If InStr(simBuf, UCase(tm)) > 0 Then
                         WaitForOneOf = tm
-                        On Error Resume Next
-                        logTS.WriteLine Now & " | MOCK-SIM MATCH -> " & tm
-                        On Error GoTo 0
+                        LogResult "INFO", "MOCK-SIM MATCH -> " & tm
                         Exit Function
                     End If
                 Next
@@ -338,9 +344,11 @@ Function WaitForOneOf(targetsCSV, timeoutMs)
             End If
         End If
 
+        pollCount = pollCount + 1
         bzhao.Pause 500
         elapsed = elapsed + 500
         screenBuffer = ""
+        Dim pollLines: pollLines = ""
         ' Read starting one line above ReadStartLine when possible to capture
         ' messages that appear above the prompt (e.g. status lines).
         Dim readBase
@@ -351,33 +359,35 @@ Function WaitForOneOf(targetsCSV, timeoutMs)
         ElseIf ReadStartLine > 1 Then
             readBase = 1
         End If
-        On Error Resume Next
-        logTS.WriteLine Now & " | READBASE=" & readBase & " | numReadLines=" & numReadLines
-        On Error GoTo 0
+        LogResult "DEBUG", "READBASE=" & readBase & " | numReadLines=" & numReadLines
         For j = 0 To numReadLines - 1
             Dim tmpBuf
             bzhao.ReadScreen tmpBuf, screenLength, readBase + j, col
             screenBuffer = screenBuffer & " " & tmpBuf
-            ' Log the raw line we just read so we can see exact screen content
-            On Error Resume Next
-            logTS.WriteLine Now & " | LINE " & (readBase + j) & " | " & tmpBuf
-            On Error GoTo 0
+            pollLines = pollLines & Now & " | LINE " & (readBase + j) & " | " & tmpBuf & vbCrLf
+            If DEBUG_LEVEL >= 3 Then
+                LogResult "DEBUG", "LINE " & (readBase + j) & " | " & tmpBuf
+            End If
         Next
         screenBuffer = UCase(screenBuffer)
 
-        ' Log a trimmed snapshot for debugging
-        On Error Resume Next
-        Dim snap
-        snap = Left(Replace(screenBuffer, vbCrLf, " "), 2000)
-        logTS.WriteLine Now & " | Elapsed=" & elapsed & "ms | Snapshot=" & snap
-        On Error GoTo 0
+        ' Log a trimmed snapshot periodically (every 10 polls) or when debug level requests it
+        If DEBUG_LEVEL >= 3 Or (pollCount Mod 10) = 0 Then
+            Dim snap
+            snap = Left(Replace(screenBuffer, vbCrLf, " "), 2000)
+            LogResult "INFO", "Elapsed=" & elapsed & "ms | Snapshot=" & snap
+        End If
 
         For i = 0 To UBound(targets)
             Dim t: t = Trim(targets(i))
             If InStr(screenBuffer, UCase(t)) > 0 Then
                 WaitForOneOf = t
+                ' Always record the exact lines scraped for this poll (minimal logging requirement)
                 On Error Resume Next
                 logTS.WriteLine Now & " | MATCH -> " & t & " | Elapsed=" & elapsed & "ms"
+                logTS.WriteLine "SCRAPED_LINES_START"
+                logTS.WriteLine pollLines
+                logTS.WriteLine "SCRAPED_LINES_END"
                 On Error GoTo 0
                 Exit Function
             End If
@@ -427,6 +437,29 @@ Dim outTS: Set outTS = fso.CreateTextFile(outputFile, True)
 Dim logFile: logFile = fso.BuildPath(inputFolder, baseRoot & "_log.txt")
 Dim logTS: Set logTS = fso.CreateTextFile(logFile, True)
 logTS.WriteLine "ValidateRoList log started: " & Now & " | ReadStartLine=" & ReadStartLine & " MainPromptLine=" & MainPromptLine
+
+' Logging level: 1=ERROR,2=INFO,3=DEBUG. Can override with env VALIDATERO_DEBUG
+' Default to minimal logging (ERROR) per repo preference
+Dim DEBUG_LEVEL: DEBUG_LEVEL = 1
+Dim envDbg: envDbg = sh.Environment("PROCESS")("VALIDATERO_DEBUG")
+If envDbg = "" Then envDbg = sh.Environment("USER")("VALIDATERO_DEBUG")
+If IsNumeric(envDbg) Then DEBUG_LEVEL = CInt(envDbg)
+
+Sub LogResult(logType, message)
+    Dim typeLevel
+    Select Case UCase(logType)
+        Case "ERROR": typeLevel = 1
+        Case "INFO": typeLevel = 2
+        Case "DEBUG": typeLevel = 3
+        Case Else: typeLevel = 2
+    End Select
+
+    If typeLevel <= DEBUG_LEVEL Then
+        On Error Resume Next
+        logTS.WriteLine Now & " [" & logType & "] " & message
+        On Error GoTo 0
+    End If
+End Sub
 
 Dim ln, roVal, roStatus, foundResult
 Dim timeoutMs: timeoutMs = 10000 ' 10 seconds per your choice
@@ -479,7 +512,16 @@ On Error Resume Next
 logTS.WriteLine "ValidateRoList finished: " & Now & " | Results=" & outputFile
 logTS.Close
 
-MsgBox "ValidateRoList complete. Results: " & outputFile, vbInformation, "ValidateRoList"
+Dim finalMsg: finalMsg = "ValidateRoList complete. Results: " & outputFile
+On Error Resume Next
+WScript.Echo finalMsg
+If Err.Number <> 0 Then
+    Err.Clear
+    Dim finalLogTS: Set finalLogTS = fso.OpenTextFile(fso.BuildPath(toolsOutDir, "ValidateRoList_final_log.txt"), 8, True)
+    finalLogTS.WriteLine Now & " | " & finalMsg
+    finalLogTS.Close
+End If
+On Error GoTo 0
 On Error Resume Next
 WScript.Quit 0
 If Err.Number <> 0 Then Err.Raise 9999, "ValidateRoList", "Completed (non-WSH host)"
