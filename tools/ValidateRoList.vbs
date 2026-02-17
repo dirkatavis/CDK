@@ -15,7 +15,16 @@ Dim scriptPath: scriptPath = WScript.ScriptFullName
 Dim scriptDir: scriptDir = fso.GetParentFolderName(scriptPath)
 Dim repoRoot: repoRoot = fso.GetParentFolderName(scriptDir) ' tools/ -> repo root
 
-Dim inputFile: inputFile = fso.BuildPath(repoRoot, "utilities\ValidateRoList_IN.csv")
+ ' Prefer an input file co-located with this script; fall back to utilities folder
+Dim localInputPath: localInputPath = fso.BuildPath(scriptDir, "ValidateRoList_IN.csv")
+Dim defaultInputPath: defaultInputPath = fso.BuildPath(repoRoot, "utilities\ValidateRoList_IN.csv")
+Dim inputFile
+If fso.FileExists(localInputPath) Then
+    inputFile = localInputPath
+Else
+    inputFile = defaultInputPath
+End If
+
 Dim inputFolder: inputFolder = fso.GetParentFolderName(inputFile)
 Dim inputBase: inputBase = fso.GetBaseName(inputFile)
 ' If input filename ends with _IN, strip that before appending _out
