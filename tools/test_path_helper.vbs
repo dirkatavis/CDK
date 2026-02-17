@@ -8,21 +8,22 @@ Option Explicit
 ' ==============================================================================
 
 Dim fso: Set fso = CreateObject("Scripting.FileSystemObject")
-Const BASE_ENV_VAR = "CDK_BASE"
+' Use string literal to avoid conflict with PathHelper's BASE_ENV_VAR constant
+Dim envVarName: envVarName = "CDK_BASE"
 
 ' Load PathHelper module using CDK_BASE
 Dim sh: Set sh = CreateObject("WScript.Shell")
-Dim basePath: basePath = sh.Environment("USER")(BASE_ENV_VAR)
+Dim basePath: basePath = sh.Environment("USER")(envVarName)
 
 If basePath = "" Or Not fso.FolderExists(basePath) Then
     MsgBox "ERROR: Invalid or missing CDK_BASE" & vbCrLf & "Value: " & basePath, vbCritical, "Test Failed"
-    End
+    WScript.Quit
 End If
 
 Dim helperPath: helperPath = fso.BuildPath(basePath, "common\PathHelper.vbs")
 If Not fso.FileExists(helperPath) Then
     MsgBox "ERROR: Cannot find PathHelper.vbs" & vbCrLf & "Looked at: " & helperPath, vbCritical, "Test Failed"
-    End
+    WScript.Quit
 End If
 
 ExecuteGlobal fso.OpenTextFile(helperPath).ReadAll
