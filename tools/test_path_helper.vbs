@@ -8,21 +8,22 @@ Option Explicit
 ' ==============================================================================
 
 Dim fso: Set fso = CreateObject("Scripting.FileSystemObject")
-Const BASE_ENV_VAR = "CDK_BASE"
+' Use string literal to avoid conflict with PathHelper's BASE_ENV_VAR constant
+Dim envVarName: envVarName = "CDK_BASE"
 
 ' Load PathHelper module using CDK_BASE
 Dim sh: Set sh = CreateObject("WScript.Shell")
-Dim basePath: basePath = sh.Environment("USER")(BASE_ENV_VAR)
+Dim basePath: basePath = sh.Environment("USER")(envVarName)
 
 If basePath = "" Or Not fso.FolderExists(basePath) Then
     MsgBox "ERROR: Invalid or missing CDK_BASE" & vbCrLf & "Value: " & basePath, vbCritical, "Test Failed"
-    End
+    WScript.Quit
 End If
 
 Dim helperPath: helperPath = fso.BuildPath(basePath, "common\PathHelper.vbs")
 If Not fso.FileExists(helperPath) Then
     MsgBox "ERROR: Cannot find PathHelper.vbs" & vbCrLf & "Looked at: " & helperPath, vbCritical, "Test Failed"
-    End
+    WScript.Quit
 End If
 
 ExecuteGlobal fso.OpenTextFile(helperPath).ReadAll
@@ -52,15 +53,12 @@ report = report & vbCrLf
 
 If csvPath <> "" And logPath <> "" Then
     report = report & "Status: SUCCESS - Path Helper is working!" & vbCrLf
+    ' Show result
+    MsgBox report & vbCrLf & "Full report written to:" & vbCrLf & outputPath, vbInformation, "Path Helper Test"
+    WScript.Quit 0
 Else
     report = report & "Status: FAILED - Could not read config paths" & vbCrLf
+    ' Show result
+    MsgBox report & vbCrLf & "Full report written to:" & vbCrLf & outputPath, vbCritical, "Path Helper Test"
+    WScript.Quit 1
 End If
-
-' Write to temp folder
-Dim outputPath: outputPath = fso.BuildPath(fso.GetSpecialFolder(2), "cdk_path_test_result.txt")
-Dim outFile: Set outFile = fso.OpenTextFile(outputPath, 2, True)
-outFile.Write report
-outFile.Close
-
-' Show result
-MsgBox report & vbCrLf & "Full report written to:" & vbCrLf & outputPath, vbInformation, "Path Helper Test"
