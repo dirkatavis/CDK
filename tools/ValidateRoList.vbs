@@ -18,7 +18,14 @@ Dim repoRoot: repoRoot = fso.GetParentFolderName(scriptDir) ' tools/ -> repo roo
 Dim inputFile: inputFile = fso.BuildPath(repoRoot, "utilities\ValidateRoList_IN.csv")
 Dim inputFolder: inputFolder = fso.GetParentFolderName(inputFile)
 Dim inputBase: inputBase = fso.GetBaseName(inputFile)
-Dim outputFile: outputFile = fso.BuildPath(inputFolder, inputBase & "_out.txt")
+' If input filename ends with _IN, strip that before appending _out
+Dim baseRoot: baseRoot = inputBase
+If Len(baseRoot) > 3 Then
+    If LCase(Right(baseRoot, 3)) = "_in" Then
+        baseRoot = Left(baseRoot, Len(baseRoot) - 3)
+    End If
+End If
+Dim outputFile: outputFile = fso.BuildPath(inputFolder, baseRoot & "_out.txt")
 
 If Not fso.FileExists(inputFile) Then
     MsgBox "ERROR: Input file not found: " & inputFile, vbCritical, "ValidateRoList"
@@ -26,22 +33,31 @@ If Not fso.FileExists(inputFile) Then
 End If
 
 ' --- Prepare BlueZone object ---
-Dim bzhao: Set bzhao = CreateObject("BZWhll.WhllObj")
-On Error Resume Next
-bzhao.Connect ""
-If Err.Number <> 0 Then
-    MsgBox "ERROR: Failed to connect to BlueZone terminal session. " & Err.Description, vbCritical, "ValidateRoList"
-    WScript.Quit 1
+Dim mockMode: mockMode = False
+Dim envVal: envVal = sh.Environment("PROCESS")("MOCK_VALIDATE_RO")
+If envVal = "" Then envVal = sh.Environment("USER")("MOCK_VALIDATE_RO")
+If LCase(envVal) = "1" Or LCase(envVal) = "true" Then mockMode = True
+
+If Not mockMode Then
+    Dim bzhao: Set bzhao = CreateObject("BZWhll.WhllObj")
+    On Error Resume Next
+    bzhao.Connect ""
+    If Err.Number <> 0 Then
+        MsgBox "ERROR: Failed to connect to BlueZone terminal session. " & Err.Description, vbCritical, "ValidateRoList"
+        WScript.Quit 1
+    End If
+    On Error GoTo 0
 End If
-On Error GoTo 0
 
 ' --- Helper subs (copied pattern used across repo) ---
 Sub PressKey(key)
+    If mockMode Then Exit Sub
     bzhao.SendKey key
     bzhao.Pause 100
 End Sub
 
 Sub EnterTextAndWait(text)
+    If mockMode Then Exit Sub
     bzhao.SendKey text
     bzhao.Pause 100
     Call PressKey("<NumpadEnter>")
@@ -57,6 +73,11 @@ Function WaitForOneOf(targetsCSV, timeoutMs)
     Dim buffer23, buffer24, screenBuffer, i
 
     Do
+        If mockMode Then
+            ' In mock mode we don't poll the terminal
+            WaitForOneOf = "__MOCK__"
+            Exit Function
+        End If
         bzhao.Pause 500
         elapsed = elapsed + 500
         bzhao.ReadScreen buffer23, screenLength, 23, col
