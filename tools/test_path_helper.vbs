@@ -53,15 +53,12 @@ report = report & vbCrLf
 
 If csvPath <> "" And logPath <> "" Then
     report = report & "Status: SUCCESS - Path Helper is working!" & vbCrLf
+    ' Show result
+    MsgBox report & vbCrLf & "Full report written to:" & vbCrLf & outputPath, vbInformation, "Path Helper Test"
+    WScript.Quit 0
 Else
     report = report & "Status: FAILED - Could not read config paths" & vbCrLf
+    ' Show result
+    MsgBox report & vbCrLf & "Full report written to:" & vbCrLf & outputPath, vbCritical, "Path Helper Test"
+    WScript.Quit 1
 End If
-
-' Write to temp folder
-Dim outputPath: outputPath = fso.BuildPath(fso.GetSpecialFolder(2), "cdk_path_test_result.txt")
-Dim outFile: Set outFile = fso.OpenTextFile(outputPath, 2, True)
-outFile.Write report
-outFile.Close
-
-' Show result
-MsgBox report & vbCrLf & "Full report written to:" & vbCrLf & outputPath, vbInformation, "Path Helper Test"

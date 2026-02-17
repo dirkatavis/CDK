@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CDK Automation Setup Guide</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f4f7f9;
+        }
+        .container {
+            background-color: #ffffff;
+            padding: 40px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #0056b3;
+            border-bottom: 2px solid #0056b3;
+            padding-bottom: 10px;
+        }
+        h2 {
+            color: #2c3e50;
+            margin-top: 30px;
+        }
+        h3 {
+            color: #34495e;
+        }
+        .step {
+            background-color: #e8f4fd;
+            padding: 15px;
+            border-left: 5px solid #0056b3;
+            margin-bottom: 20px;
+        }
+        .expected {
+            font-weight: bold;
+            color: #27ae60;
+            margin-top: 10px;
+            display: block;
+        }
+        .troubleshooting {
+            background-color: #fdf2f2;
+            padding: 15px;
+            border-left: 5px solid #e74c3c;
+            margin-top: 30px;
+        }
+        code {
+            background-color: #eee;
+            padding: 2px 5px;
+            border-radius: 3px;
+            font-family: Consolas, Monaco, 'Andale Mono', 'Ubuntu Mono', monospace;
+        }
+        hr {
+            border: 0;
+            height: 1px;
+            background: #ddd;
+            margin: 40px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>CDK Automation Setup Guide</h1>
+        <p>This guide will help you set up and verify your CDK automation environment. Please follow the steps below in sequence.</p>
+
+        <h2>Phase 1: Preparation (Dev Machine Only)</h2>
+        <p>If you are preparing this package for others:</p>
+        <ol>
+            <li><strong>Zip the Folder</strong>: Compress the entire <code>CDK</code> folder into a ZIP file.</li>
+            <li><strong>Distribute</strong>: Send the ZIP file to the target machine.</li>
+        </ol>
+
+        <hr>
+
+        <h2>Phase 2: Installation (Target Machine)</h2>
+
+        <div class="step">
+            <h3>Step 1: Extract the Files</h3>
+            <p>Extract the ZIP package to a permanent location on your computer (for example: <code>C:\CDK</code>).</p>
+            <span class="expected">✔ EXPECTED RESULT: You should see the CDK folder and its contents in your file explorer.</span>
+        </div>
+
+        <div class="step">
+            <h3>Step 2: Run the Setup Utility</h3>
+            <ol>
+                <li>Navigate into the <code>tools</code> folder.</li>
+                <li>Double-click <code>verify_deployment.vbs</code>.</li>
+            </ol>
+            <span class="expected">✔ EXPECTED RESULT 1: A popup will appear confirming your environment path is set. Click <strong>OK</strong>.</span>
+            <span class="expected">✔ EXPECTED RESULT 2: A black terminal window will show a series of checks (Initialization, Validation, and Path Test).</span>
+            <span class="expected">✔ EXPECTED RESULT 3: A final popup will appear stating: <strong>"All deployment steps passed successfully!"</strong></span>
+        </div>
+
+        <div class="step">
+            <h3>Step 3: Finalize</h3>
+            <p>Once you see the success message, <strong>close and reopen</strong> your terminal or BlueZone session.</p>
+            <span class="expected">✔ EXPECTED RESULT: The automation environment is now active and ready for use.</span>
+        </div>
+
+        <div class="troubleshooting">
+            <h2>Troubleshooting</h2>
+            <p>If any step displays a <strong>CRITICAL ERROR</strong> or a <strong>FAILURE</strong> message:</p>
+            <ul>
+                <li>Ensure the folder was fully extracted before running the script.</li>
+                <li>Ensure you have permissions to set environment variables on your machine.</li>
+                <li>Contact the system administrator with a screenshot of the error message.</li>
+            </ul>
+        </div>
+    </div>
+</body>
+</html>
