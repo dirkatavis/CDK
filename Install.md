@@ -16,8 +16,8 @@ Extract the ZIP package to a permanent location on your computer (for example: `
 - **EXPECTED RESULT**: You should see the `CDK` folder and its contents in your file explorer.
 
 ### Step 2: Run the Setup Utility
-1.  Navigate into the `tools` folder.
-2.  Double-click `verify_deployment.vbs` (or run `cscript.exe tools\verify_deployment.vbs` from a terminal).
+1.  Locate the `Install.vbs` file in the main folder.
+2.  Double-click `Install.vbs` (or run `cscript.exe Install.vbs` from a terminal).
 - **EXPECTED RESULT 1**: A popup will appear confirming your environment path is set. Click **OK**.
 - **EXPECTED RESULT 2**: A black terminal window will show a series of checks (Initialization, Validation, and Path Test).
 - **EXPECTED RESULT 3**: A final popup will appear stating: **"All deployment steps passed successfully!"**

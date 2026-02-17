@@ -1,7 +1,7 @@
 Option Explicit
 
 ' ==============================================================================
-' verify_deployment.vbs - Automated Deployment Verification Wrapper
+' Install.vbs - Automated Deployment Verification Wrapper
 ' ==============================================================================
 ' This script runs the three core verification steps in sequence:
 ' 1. setup_cdk_base.vbs
@@ -16,7 +16,7 @@ Dim scriptDir: scriptDir = fso.GetParentFolderName(WScript.ScriptFullName)
 Sub RunStep(scriptName, description)
     WScript.Echo ">>> RUNNING STEP: " & description & " (" & scriptName & ")..."
     
-    Dim command: command = "cscript.exe //NoLogo """ & fso.BuildPath(scriptDir, scriptName) & """"
+    Dim command: command = "cscript.exe //NoLogo """ & fso.BuildPath(fso.BuildPath(scriptDir, "tools"), scriptName) & """"
     Dim exitCode: exitCode = sh.Run(command, 1, True)
     
     If exitCode <> 0 Then
