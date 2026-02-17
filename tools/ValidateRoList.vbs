@@ -16,7 +16,9 @@ Dim scriptDir: scriptDir = fso.GetParentFolderName(scriptPath)
 Dim repoRoot: repoRoot = fso.GetParentFolderName(scriptDir) ' tools/ -> repo root
 
 Dim inputFile: inputFile = fso.BuildPath(repoRoot, "utilities\ValidateRoList_IN.csv")
-Dim outputFile: outputFile = fso.BuildPath(repoRoot, "utilities\ValidateRoList_Results.txt")
+Dim inputFolder: inputFolder = fso.GetParentFolderName(inputFile)
+Dim inputBase: inputBase = fso.GetBaseName(inputFile)
+Dim outputFile: outputFile = fso.BuildPath(inputFolder, inputBase & "_out.txt")
 
 If Not fso.FileExists(inputFile) Then
     MsgBox "ERROR: Input file not found: " & inputFile, vbCritical, "ValidateRoList"
