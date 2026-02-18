@@ -226,8 +226,8 @@ If mockMode And mockMapsEnv <> "" Then
         Dim mapPath: mapPath = Trim(mapsArr(mi))
         If mapPath <> "" Then
             If Not fso.FileExists(mapPath) Then
-                Dim alt: alt = fso.BuildPath(repoRoot, mapPath)
-                If fso.FileExists(alt) Then mapPath = alt
+                ' Do NOT fallback to hardcoded repo paths here; require maps to be
+                ' provided via config or absolute paths. Record missing and continue.
             End If
 
             If Not fso.FileExists(mapPath) Then
