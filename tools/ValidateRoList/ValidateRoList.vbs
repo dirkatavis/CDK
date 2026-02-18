@@ -65,7 +65,12 @@ If Not fso.FolderExists(toolsOutDir) Then
     Err.Raise 53, "ValidateRoList", "OutDir path does not exist: " & toolsOutDir
 End If
 
-Dim outputFile: outputFile = fso.BuildPath(toolsOutDir, fso.GetBaseName(inputFile) & "_out.txt")
+Dim outputBaseName: outputBaseName = "ValidateRoList"
+If inputFile <> "" Then
+    outputBaseName = fso.GetBaseName(inputFile)
+End If
+
+Dim outputFile: outputFile = fso.BuildPath(toolsOutDir, outputBaseName & "_out.txt")
 
 ' --- Logging initialization (must be available before WaitForOneOf uses it) ---
 ' Logging level: 1=ERROR,2=INFO,3=DEBUG. Can override with env VALIDATERO_DEBUG
@@ -75,7 +80,7 @@ If envDbg = "" Then envDbg = sh.Environment("USER")("VALIDATERO_DEBUG")
 If IsNumeric(envDbg) Then DEBUG_LEVEL = CInt(envDbg)
 
 ' Log file placed in the configured OutDir next to results
-Dim logFile: logFile = fso.BuildPath(toolsOutDir, fso.GetBaseName(inputFile) & "_log.txt")
+Dim logFile: logFile = fso.BuildPath(toolsOutDir, outputBaseName & "_log.txt")
 Dim logTS: Set logTS = Nothing
 On Error Resume Next
 Set logTS = fso.OpenTextFile(logFile, 8, True)
