@@ -51,6 +51,41 @@ End If
 
 Dim outputFile: outputFile = fso.BuildPath(toolsOutDir, fso.GetBaseName(inputFile) & "_out.txt")
 
+' --- Logging initialization (must be available before WaitForOneOf uses it) ---
+' Logging level: 1=ERROR,2=INFO,3=DEBUG. Can override with env VALIDATERO_DEBUG
+Dim DEBUG_LEVEL: DEBUG_LEVEL = 1
+Dim envDbg: envDbg = sh.Environment("PROCESS")("VALIDATERO_DEBUG")
+If envDbg = "" Then envDbg = sh.Environment("USER")("VALIDATERO_DEBUG")
+If IsNumeric(envDbg) Then DEBUG_LEVEL = CInt(envDbg)
+
+' Log file placed in the configured OutDir next to results
+Dim logFile: logFile = fso.BuildPath(toolsOutDir, fso.GetBaseName(inputFile) & "_log.txt")
+Dim logTS: Set logTS = Nothing
+On Error Resume Next
+Set logTS = fso.OpenTextFile(logFile, 8, True)
+If Err.Number <> 0 Then
+    Err.Clear
+    Set logTS = fso.CreateTextFile(logFile, True)
+End If
+On Error GoTo 0
+logTS.WriteLine "ValidateRoList log started: " & Now & " | Init"
+
+Sub LogResult(logType, message)
+    Dim typeLevel
+    Select Case UCase(logType)
+        Case "ERROR": typeLevel = 1
+        Case "INFO": typeLevel = 2
+        Case "DEBUG": typeLevel = 3
+        Case Else: typeLevel = 2
+    End Select
+
+    If typeLevel <= DEBUG_LEVEL Then
+        On Error Resume Next
+        logTS.WriteLine Now & " [" & logType & "] " & message
+        On Error GoTo 0
+    End If
+End Sub
+
 ' Helper to extract leading row number from lines like "02 | ..."
 Function ExtractRowNumber(line)
     Dim p, prefix, k, ch, numStr
@@ -83,8 +118,18 @@ Dim MainPromptLine
 Dim screenMapPath
 screenMapPath = GetConfigPath("ValidateRoList", "ScreenMap")
 ' Allow overriding the screen map via env var for mock runs
+' Check both singular and plural env names; prefer explicit MOCK_SCREEN_MAP if set,
+' otherwise accept the first entry of MOCK_SCREEN_MAPS
 Dim mockScreenMap: mockScreenMap = sh.Environment("PROCESS")("MOCK_SCREEN_MAP")
 If mockScreenMap = "" Then mockScreenMap = sh.Environment("USER")("MOCK_SCREEN_MAP")
+If mockScreenMap = "" Then
+    Dim tmpMaps: tmpMaps = sh.Environment("PROCESS")("MOCK_SCREEN_MAPS")
+    If tmpMaps = "" Then tmpMaps = sh.Environment("USER")("MOCK_SCREEN_MAPS")
+    If tmpMaps <> "" Then
+        Dim firstMap: firstMap = Split(tmpMaps, ";")(0)
+        mockScreenMap = Trim(firstMap)
+    End If
+End If
 If mockScreenMap <> "" Then screenMapPath = mockScreenMap
 
 If screenMapPath = "" Or Not fso.FileExists(screenMapPath) Then
@@ -388,34 +433,6 @@ End Function
 ' --- Process input file ---
 Dim inTS: Set inTS = fso.OpenTextFile(inputFile, 1, False)
 Dim outTS: Set outTS = fso.CreateTextFile(outputFile, True)
-
-' Debug log for scraping activity
-Dim logFile: logFile = fso.BuildPath(inputFolder, baseRoot & "_log.txt")
-Dim logTS: Set logTS = fso.CreateTextFile(logFile, True)
-logTS.WriteLine "ValidateRoList log started: " & Now & " | ReadStartLine=" & ReadStartLine & " MainPromptLine=" & MainPromptLine
-
-' Logging level: 1=ERROR,2=INFO,3=DEBUG. Can override with env VALIDATERO_DEBUG
-' Default to minimal logging (ERROR) per repo preference
-Dim DEBUG_LEVEL: DEBUG_LEVEL = 1
-Dim envDbg: envDbg = sh.Environment("PROCESS")("VALIDATERO_DEBUG")
-If envDbg = "" Then envDbg = sh.Environment("USER")("VALIDATERO_DEBUG")
-If IsNumeric(envDbg) Then DEBUG_LEVEL = CInt(envDbg)
-
-Sub LogResult(logType, message)
-    Dim typeLevel
-    Select Case UCase(logType)
-        Case "ERROR": typeLevel = 1
-        Case "INFO": typeLevel = 2
-        Case "DEBUG": typeLevel = 3
-        Case Else: typeLevel = 2
-    End Select
-
-    If typeLevel <= DEBUG_LEVEL Then
-        On Error Resume Next
-        logTS.WriteLine Now & " [" & logType & "] " & message
-        On Error GoTo 0
-    End If
-End Sub
 
 Dim ln, roVal, roStatus, foundResult
 Dim timeoutMs: timeoutMs = 10000 ' 10 seconds per your choice
