@@ -28,9 +28,23 @@ End Function
 ' Load PathHelper and HostCompat using strict bootstrap
 Dim repoRoot: repoRoot = FindRepoRootForBootstrap()
 Dim helperPath: helperPath = fso.BuildPath(repoRoot, "common\PathHelper.vbs")
-ExecuteGlobal fso.OpenTextFile(helperPath).ReadAll
 Dim hostCompatPath: hostCompatPath = fso.BuildPath(repoRoot, "common\HostCompat.vbs")
-ExecuteGlobal fso.OpenTextFile(hostCompatPath).ReadAll
+
+' Helper to load a file and return its contents
+Function ReadFile(p)
+    Dim ts, s
+    Set ts = fso.OpenTextFile(p, 1)
+    s = ts.ReadAll
+    ts.Close
+    ReadFile = s
+End Function
+
+' Execute helper scripts in global scope
+Dim incCode
+incCode = ReadFile(helperPath)
+ExecuteGlobal incCode
+incCode = ReadFile(hostCompatPath)
+ExecuteGlobal incCode
 
 ' --- Use GetConfigPath for required files (fail-fast) ---
 Dim inputFile: inputFile = GetConfigPath("ValidateRoList", "InputFile")
