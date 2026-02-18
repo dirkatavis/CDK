@@ -48,7 +48,14 @@ ExecuteGlobal incCode
 
 ' --- Use GetConfigPath for required files (fail-fast) ---
 Dim inputFile: inputFile = GetConfigPath("ValidateRoList", "InputFile")
-If Not mockMode Then
+
+' In mock mode, only bypass input-file validation when explicit mock maps are provided.
+Dim mockMapsForInputValidation: mockMapsForInputValidation = sh.Environment("PROCESS")("MOCK_SCREEN_MAPS")
+If mockMapsForInputValidation = "" Then mockMapsForInputValidation = sh.Environment("USER")("MOCK_SCREEN_MAPS")
+Dim mustValidateInput: mustValidateInput = True
+If mockMode And mockMapsForInputValidation <> "" Then mustValidateInput = False
+
+If mustValidateInput Then
     If inputFile = "" Then
         Err.Raise 53, "ValidateRoList", "Missing config.ini entry: [ValidateRoList] InputFile"
     End If
