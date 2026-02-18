@@ -28,3 +28,12 @@ Close_ROs/msgboxtext.txt
 
 # Windows thumbnail cache
 Thumbs.db
+
+# Ignore ValidateRoList runtime artifacts and test outputs
+tools/ValidateRoList/*.log
+tools/ValidateRoList/*_out.txt
+tools/ValidateRoList/*_mock_*.txt
+tools/ValidateRoList/ValidateRoList_IN.csv
+
+# Ignore other local runtime artifacts
+Temp/
