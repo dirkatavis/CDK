@@ -31,6 +31,10 @@ End Function
 Dim helperPath: helperPath = g_fso.BuildPath(FindRepoRootForBootstrap(), "common\PathHelper.vbs")
 ExecuteGlobal g_fso.OpenTextFile(helperPath).ReadAll
 
+' Load host compatibility helpers (guarded wrappers for WScript)
+Dim hostCompatPath: hostCompatPath = g_fso.BuildPath(FindRepoRootForBootstrap(), "common\HostCompat.vbs")
+ExecuteGlobal g_fso.OpenTextFile(hostCompatPath).ReadAll
+
 ' --- Execution Parameters ---
 Dim MAIN_PROMPT: MAIN_PROMPT = "R.O. NUMBER"
 Dim LOG_FILE_PATH: LOG_FILE_PATH = GetConfigPath("Maintenance_RO_Closer", "Log")
@@ -685,7 +689,7 @@ Sub TerminateScript(reason)
         bzhao.StopScript
     End If
     On Error GoTo 0
-    Wscript.Quit
+    Host_Quit
 End Sub
 
 ' Execute
