@@ -10,42 +10,46 @@ Option Explicit
 Dim fso: Set fso = CreateObject("Scripting.FileSystemObject")
 Dim sh: Set sh = CreateObject("WScript.Shell")
 
-' --- Determine repo root and paths ---
-Dim repoRoot
-' Prefer CDK_BASE environment variable when available and valid
-Dim envBase: envBase = sh.ExpandEnvironmentStrings("%CDK_BASE%")
-If envBase = "%CDK_BASE%" Then envBase = sh.Environment("USER")("CDK_BASE")
-If envBase <> "" And fso.FolderExists(envBase) And fso.FileExists(fso.BuildPath(envBase, ".cdkroot")) Then
-    repoRoot = envBase
-Else
-    ' Fall back to walking up from current working directory
-    repoRoot = FindRepoRoot(fso.GetAbsolutePathName("."))
-End If
+' --- Bootstrap using PathHelper (mandatory pattern) ---
+Const BASE_ENV_VAR_LOCAL = "CDK_BASE"
 
-If repoRoot = "" Then
-    MsgBox "ERROR: Could not determine repository root. Ensure CDK is extracted with .cdkroot present or set CDK_BASE.", vbCritical, "ValidateRoList"
-    On Error Resume Next
-    WScript.Quit 1
-    If Err.Number <> 0 Then Err.Raise 9999, "ValidateRoList", "Terminating: repo root not found"
-End If
-
- ' HostCompat not loaded here; use guarded WScript.Quit fallbacks instead
-
-Function FindRepoRoot(startDir)
-    Dim current: current = startDir
-    Dim i: i = 0
-    Do While i < 20
-        If fso.FileExists(fso.BuildPath(current, ".cdkroot")) Then
-            FindRepoRoot = current
-            Exit Function
-        End If
-        Dim parent: parent = fso.GetParentFolderName(current)
-        If parent = "" Or parent = current Then Exit Do
-        current = parent
-        i = i + 1
-    Loop
-    FindRepoRoot = ""
+' FindRepoRootForBootstrap is intentionally strict: it validates CDK_BASE and .cdkroot
+Function FindRepoRootForBootstrap()
+    Dim basePath: basePath = sh.Environment("USER")(BASE_ENV_VAR_LOCAL)
+    If basePath = "" Or Not fso.FolderExists(basePath) Then
+        Err.Raise 53, "Bootstrap", "Invalid or missing CDK_BASE. Value: " & basePath
+    End If
+    If Not fso.FileExists(fso.BuildPath(basePath, ".cdkroot")) Then
+        Err.Raise 53, "Bootstrap", "Cannot find .cdkroot in base path:" & vbCrLf & basePath
+    End If
+    FindRepoRootForBootstrap = basePath
 End Function
+
+' Load PathHelper and HostCompat using strict bootstrap
+Dim repoRoot: repoRoot = FindRepoRootForBootstrap()
+Dim helperPath: helperPath = fso.BuildPath(repoRoot, "common\PathHelper.vbs")
+ExecuteGlobal fso.OpenTextFile(helperPath).ReadAll
+Dim hostCompatPath: hostCompatPath = fso.BuildPath(repoRoot, "common\HostCompat.vbs")
+ExecuteGlobal fso.OpenTextFile(hostCompatPath).ReadAll
+
+' --- Use GetConfigPath for required files (fail-fast) ---
+Dim inputFile: inputFile = GetConfigPath("ValidateRoList", "InputFile")
+If inputFile = "" Then
+    Err.Raise 53, "ValidateRoList", "Missing config.ini entry: [ValidateRoList] InputFile"
+End If
+If Not fso.FileExists(inputFile) Then
+    Err.Raise 53, "ValidateRoList", "Input file not found: " & inputFile
+End If
+
+Dim toolsOutDir: toolsOutDir = GetConfigPath("ValidateRoList", "OutDir")
+If toolsOutDir = "" Then
+    Err.Raise 53, "ValidateRoList", "Missing config.ini entry: [ValidateRoList] OutDir"
+End If
+If Not fso.FolderExists(toolsOutDir) Then
+    Err.Raise 53, "ValidateRoList", "OutDir path does not exist: " & toolsOutDir
+End If
+
+Dim outputFile: outputFile = fso.BuildPath(toolsOutDir, fso.GetBaseName(inputFile) & "_out.txt")
 
 ' Helper to extract leading row number from lines like "02 | ..."
 Function ExtractRowNumber(line)
@@ -71,67 +75,23 @@ Function ExtractRowNumber(line)
     End If
 End Function
 
- ' Prefer an input file in sensible locations; check several fallbacks
-Dim cwd: cwd = fso.GetAbsolutePathName(".")
-Dim candidateA: candidateA = fso.BuildPath(cwd, "ValidateRoList_IN.csv")
-Dim candidateB: candidateB = fso.BuildPath(cwd, "tools\ValidateRoList\ValidateRoList_IN.csv")
-Dim candidateC: candidateC = fso.BuildPath(repoRoot, "tools\ValidateRoList\ValidateRoList_IN.csv")
-Dim defaultInputPath: defaultInputPath = fso.BuildPath(repoRoot, "utilities\ValidateRoList_IN.csv")
-Dim inputFile
-If fso.FileExists(candidateA) Then
-    inputFile = candidateA
-ElseIf fso.FileExists(candidateB) Then
-    inputFile = candidateB
-ElseIf fso.FileExists(candidateC) Then
-    inputFile = candidateC
-Else
-    inputFile = defaultInputPath
-End If
+ ' NOTE: Input and Out paths are provided by config via GetConfigPath() above.
 
-Dim inputFolder: inputFolder = fso.GetParentFolderName(inputFile)
-Dim inputBase: inputBase = fso.GetBaseName(inputFile)
-' If input filename ends with _IN, strip that before appending _out
-Dim baseRoot: baseRoot = inputBase
-If Len(baseRoot) > 3 Then
-    If LCase(Right(baseRoot, 3)) = "_in" Then
-        baseRoot = Left(baseRoot, Len(baseRoot) - 3)
-    End If
-End If
-Dim outputFile
-' Ensure the results _out file is placed under tools\ValidateRoList next to the script
-Dim toolsOutDir: toolsOutDir = fso.BuildPath(repoRoot, "tools\ValidateRoList")
-If Not fso.FolderExists(toolsOutDir) Then toolsOutDir = inputFolder
-outputFile = fso.BuildPath(toolsOutDir, baseRoot & "_out.txt")
-
-If Not fso.FileExists(inputFile) Then
-    MsgBox "ERROR: Input file not found: " & inputFile, vbCritical, "ValidateRoList"
-    On Error Resume Next
-    WScript.Quit 1
-    If Err.Number <> 0 Then Err.Raise 9999, "ValidateRoList", "Missing input file"
-End If
 
 ' --- Screen map discovery (optional) ---
 Dim MainPromptLine
 Dim screenMapPath
-screenMapPath = ""
-Dim cand1: cand1 = fso.BuildPath(repoRoot, "utilities\ro_screen_map.txt")
-Dim cand2: cand2 = fso.BuildPath(cwd, "ro_screen_map.txt")
-Dim cand3: cand3 = fso.BuildPath(repoRoot, "tools\ValidateRoList\ro_screen_map.txt")
- ' Allow overriding the screen map via env var for mock runs
+screenMapPath = GetConfigPath("ValidateRoList", "ScreenMap")
+' Allow overriding the screen map via env var for mock runs
 Dim mockScreenMap: mockScreenMap = sh.Environment("PROCESS")("MOCK_SCREEN_MAP")
 If mockScreenMap = "" Then mockScreenMap = sh.Environment("USER")("MOCK_SCREEN_MAP")
-If mockScreenMap <> "" And fso.FileExists(mockScreenMap) Then
-    screenMapPath = mockScreenMap
-End If
-If fso.FileExists(cand1) Then
-    screenMapPath = cand1
-ElseIf fso.FileExists(cand2) Then
-    screenMapPath = cand2
-ElseIf fso.FileExists(cand3) Then
-    screenMapPath = cand3
-End If
+If mockScreenMap <> "" Then screenMapPath = mockScreenMap
 
-If screenMapPath <> "" Then
+If screenMapPath = "" Or Not fso.FileExists(screenMapPath) Then
+    ' No usable screen map provided via config or env -> default to no map
+    MainPromptLine = 23
+    ReadStartLine = 23
+Else
     On Error Resume Next
     Dim mapTS: Set mapTS = fso.OpenTextFile(screenMapPath, 1, False)
     If Err.Number = 0 Then
@@ -195,9 +155,6 @@ If screenMapPath <> "" Then
         ReadStartLine = 23
     End If
     On Error GoTo 0
-Else
-    MainPromptLine = 23
-    ReadStartLine = 23
 End If
 
 ' --- Prepare BlueZone object ---
@@ -212,8 +169,7 @@ If LCase(envVal) = "1" Or LCase(envVal) = "true" Then mockMode = True
 Dim mockMapsEnv: mockMapsEnv = sh.Environment("PROCESS")("MOCK_SCREEN_MAPS")
 If mockMapsEnv = "" Then mockMapsEnv = sh.Environment("USER")("MOCK_SCREEN_MAPS")
 If mockMode And mockMapsEnv <> "" Then
-    toolsOutDir = fso.BuildPath(repoRoot, "tools\ValidateRoList")
-    If Not fso.FolderExists(toolsOutDir) Then toolsOutDir = fso.GetAbsolutePathName(".")
+    ' use configured OutDir (validated during bootstrap)
     Dim mockOut: mockOut = fso.BuildPath(toolsOutDir, "ValidateRoList_mock_out.txt")
     Dim mockLog: mockLog = fso.BuildPath(toolsOutDir, "ValidateRoList_mock_log.txt")
     Dim mockOutTS: Set mockOutTS = fso.CreateTextFile(mockOut, True)
