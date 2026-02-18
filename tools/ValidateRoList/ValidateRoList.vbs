@@ -9,7 +9,10 @@ Option Explicit
 
 Dim fso: Set fso = CreateObject("Scripting.FileSystemObject")
 Dim sh: Set sh = CreateObject("WScript.Shell")
-
+Dim mockMode: mockMode = False
+Dim envVal: envVal = sh.Environment("PROCESS")("MOCK_VALIDATE_RO")
+If envVal = "" Then envVal = sh.Environment("USER")("MOCK_VALIDATE_RO")
+If LCase(envVal) = "1" Or LCase(envVal) = "true" Then mockMode = True
 ' --- Bootstrap using PathHelper (mandatory pattern) ---
 Const BASE_ENV_VAR_LOCAL = "CDK_BASE"
 
@@ -28,7 +31,6 @@ End Function
 ' Load PathHelper and HostCompat using strict bootstrap
 Dim repoRoot: repoRoot = FindRepoRootForBootstrap()
 Dim helperPath: helperPath = fso.BuildPath(repoRoot, "common\PathHelper.vbs")
-Dim hostCompatPath: hostCompatPath = fso.BuildPath(repoRoot, "common\HostCompat.vbs")
 
 ' Helper to load a file and return its contents
 Function ReadFile(p)
@@ -43,16 +45,16 @@ End Function
 Dim incCode
 incCode = ReadFile(helperPath)
 ExecuteGlobal incCode
-incCode = ReadFile(hostCompatPath)
-ExecuteGlobal incCode
 
 ' --- Use GetConfigPath for required files (fail-fast) ---
 Dim inputFile: inputFile = GetConfigPath("ValidateRoList", "InputFile")
-If inputFile = "" Then
-    Err.Raise 53, "ValidateRoList", "Missing config.ini entry: [ValidateRoList] InputFile"
-End If
-If Not fso.FileExists(inputFile) Then
-    Err.Raise 53, "ValidateRoList", "Input file not found: " & inputFile
+If Not mockMode Then
+    If inputFile = "" Then
+        Err.Raise 53, "ValidateRoList", "Missing config.ini entry: [ValidateRoList] InputFile"
+    End If
+    If Not fso.FileExists(inputFile) Then
+        Err.Raise 53, "ValidateRoList", "Input file not found: " & inputFile
+    End If
 End If
 
 Dim toolsOutDir: toolsOutDir = GetConfigPath("ValidateRoList", "OutDir")
@@ -217,11 +219,6 @@ Else
 End If
 
 ' --- Prepare BlueZone object ---
-Dim mockMode: mockMode = False
-Dim envVal: envVal = sh.Environment("PROCESS")("MOCK_VALIDATE_RO")
-If envVal = "" Then envVal = sh.Environment("USER")("MOCK_VALIDATE_RO")
-If LCase(envVal) = "1" Or LCase(envVal) = "true" Then mockMode = True
-
 ' Support a quick mock mode that takes one-or-more screen-map files and
 ' produces a single _out file with one line per map. Use env var
 ' MOCK_SCREEN_MAPS with semicolon-separated paths (absolute or repo-relative).
