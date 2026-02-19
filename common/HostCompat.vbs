@@ -1,7 +1,7 @@
 Option Explicit
 
 ' Host compatibility helpers to run under WSH (cscript/wscript) and non-WSH hosts (BlueZone)
-' Provides: Host_SafeScriptFolder() and Host_Quit(exitCode)
+' Provides: Host_SafeScriptFolder() and Host_Quit()
 
 Dim g_hc_fso: Set g_hc_fso = CreateObject("Scripting.FileSystemObject")
 
@@ -25,11 +25,7 @@ Function Host_SafeScriptFolder()
     If Right(Host_SafeScriptFolder, 1) <> Chr(92) Then Host_SafeScriptFolder = Host_SafeScriptFolder & Chr(92)
 End Function
 
-Sub Host_Quit(Optional exitCode)
+Sub Host_Quit()
     ' Use a raised error to terminate execution; avoids referencing WScript in non-WSH hosts
-    If IsNumeric(exitCode) Then
-        Err.Raise 9999, "Host_Quit", "Terminating script. ExitCode=" & CStr(exitCode)
-    Else
-        Err.Raise 9999, "Host_Quit", "Terminating script."
-    End If
+    Err.Raise 9999, "Host_Quit", "Terminating script."
 End Sub
