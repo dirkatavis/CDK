@@ -84,8 +84,7 @@ Sub RunAutomation()
 
     LogResult "INFO", "Starting Maintenance RO Auto-Closer using list: " & RO_LIST_PATH
     
-    ' Load Matching Criteria and verify local configuration integrity
-    LoadMatchCriteria()
+    ' Footprint matching is disabled; criteria load is intentionally skipped
     
     ' Connect to terminal only after configuration and file existence are verified
     On Error Resume Next
@@ -147,21 +146,16 @@ Sub ProcessRoList(fso, ByRef successfulCount)
                 
                 ' Check for errors or closed status
                 If IsRoProcessable(currentRo) Then
-                    ' Check "Picky" Match Logic
-                    If CheckPickyMatch() Then
-                        LogResult "INFO", "Match found for RO: " & currentRo & ". Proceeding to review."
-                        If ProcessRoReview() Then
-                            If CloseRoFinal() Then
-                                LogResult "INFO", "SUCCESS: RO " & currentRo & " finalized and closed."
-                                successfulCount = successfulCount + 1
-                            Else
-                                LogResult "ERROR", "Failed to close RO: " & currentRo & " during Phase II."
-                            End If
+                    LogResult "INFO", "RO " & currentRo & " is processable. Proceeding without footprint check."
+                    If ProcessRoReview() Then
+                        If CloseRoFinal() Then
+                            LogResult "INFO", "SUCCESS: RO " & currentRo & " finalized and closed."
+                            successfulCount = successfulCount + 1
                         Else
-                            LogResult "ERROR", "Failed to complete review for RO: " & currentRo & " during Phase I."
+                            LogResult "ERROR", "Failed to close RO: " & currentRo & " during Phase II."
                         End If
                     Else
-                        LogResult "INFO", "RO: " & currentRo & " does not match footprint. Skipping."
+                        LogResult "ERROR", "Failed to complete review for RO: " & currentRo & " during Phase I."
                     End If
                 End If
 
@@ -423,11 +417,29 @@ Function MatchesAnyVariant(screenStr, variantsArray)
 End Function
 
 Function ProcessRoReview()
-    Dim lineLetters, i
-    lineLetters = Array("A", "B", "C")
-    
+    Dim lineLetters, i, startIndex
+    lineLetters = DiscoverLineLetters()
+
+    If UBound(lineLetters) = -1 Then
+        LogResult "INFO", "No service lines detected for review. Skipping RO."
+        ProcessRoReview = False
+        Exit Function
+    End If
+
+    startIndex = 0
     For i = 0 To UBound(lineLetters)
-        LogResult "INFO", "Reviewing Line " & lineLetters(i)
+        If lineLetters(i) = "A" Then
+            startIndex = i
+            Exit For
+        End If
+    Next
+
+    If startIndex > 0 Then
+        LogResult "INFO", "Skipping non-line leading letters before Line A."
+    End If
+    
+    For i = startIndex To UBound(lineLetters)
+        LogResult "INFO", "Reviewing discovered Line " & lineLetters(i)
         WaitForText "COMMAND:"
         EnterTextWithStability "R " & lineLetters(i)
         
