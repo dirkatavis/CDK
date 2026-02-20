@@ -150,7 +150,7 @@ End Function
 ' key - Keystroke to send after response text
 ' isSuccess - True if this prompt indicates completion of the sequence
 '-----------------------------------------------------------------------------------
-Sub AddPromptToDict(dict, trigger, response, key, isSuccess, Optional isRegex)
+Sub AddPromptToDict(dict, trigger, response, key, isSuccess)
     Dim p
     Set p = New Prompt
     p.TriggerText = trigger
@@ -158,11 +158,7 @@ Sub AddPromptToDict(dict, trigger, response, key, isSuccess, Optional isRegex)
     p.KeyPress = key
     p.IsSuccess = isSuccess
     p.AcceptDefault = False  ' Always send response text, ignore screen defaults
-    If IsMissing(isRegex) Then
-        p.IsRegex = InferRegexPattern(trigger)
-    Else
-        p.IsRegex = CBool(isRegex)
-    End If
+    p.IsRegex = InferRegexPattern(trigger)
     dict.Add trigger, p
 End Sub
 
@@ -189,7 +185,7 @@ End Sub
 ' ' Accept screen defaults when present, send "99" when no default shown:
 ' Call AddPromptToDictEx(dict, "TECHNICIAN \([A-Za-z0-9]+\)\?", "99", "<NumpadEnter>", False, True)
 '-----------------------------------------------------------------------------------
-Sub AddPromptToDictEx(dict, trigger, response, key, isSuccess, acceptDefault, Optional isRegex)
+Sub AddPromptToDictEx(dict, trigger, response, key, isSuccess, acceptDefault)
     Dim p
     Set p = New Prompt
     p.TriggerText = trigger
@@ -197,11 +193,7 @@ Sub AddPromptToDictEx(dict, trigger, response, key, isSuccess, acceptDefault, Op
     p.KeyPress = key
     p.IsSuccess = isSuccess
     p.AcceptDefault = acceptDefault
-    If IsMissing(isRegex) Then
-        p.IsRegex = InferRegexPattern(trigger)
-    Else
-        p.IsRegex = CBool(isRegex)
-    End If
+    p.IsRegex = InferRegexPattern(trigger)
     dict.Add trigger, p
 End Sub
 
