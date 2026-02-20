@@ -3,24 +3,16 @@ Option Explicit
 
 ' --- Load PathHelper for centralized path management ---
 Dim g_fso: Set g_fso = CreateObject("Scripting.FileSystemObject")
-Const BASE_ENV_VAR_LOCAL = "CDK_BASE"
+Dim bootstrapShell: Set bootstrapShell = CreateObject("WScript.Shell")
+Dim bootstrapRoot: bootstrapRoot = bootstrapShell.Environment("USER")("CDK_BASE")
+If bootstrapRoot = "" Or Not g_fso.FolderExists(bootstrapRoot) Then
+    Err.Raise 53, "Bootstrap", "Invalid or missing CDK_BASE. Value: " & bootstrapRoot
+End If
+If Not g_fso.FileExists(g_fso.BuildPath(bootstrapRoot, ".cdkroot")) Then
+    Err.Raise 53, "Bootstrap", "Cannot find .cdkroot in base path:" & vbCrLf & bootstrapRoot
+End If
 
-Function FindRepoRootForBootstrap()
-    Dim sh: Set sh = CreateObject("WScript.Shell")
-    Dim basePath: basePath = sh.Environment("USER")(BASE_ENV_VAR_LOCAL)
-
-    If basePath = "" Or Not g_fso.FolderExists(basePath) Then
-        Err.Raise 53, "Bootstrap", "Invalid or missing CDK_BASE. Value: " & basePath
-    End If
-
-    If Not g_fso.FileExists(g_fso.BuildPath(basePath, ".cdkroot")) Then
-        Err.Raise 53, "Bootstrap", "Cannot find .cdkroot in base path:" & vbCrLf & basePath
-    End If
-
-    FindRepoRootForBootstrap = basePath
-End Function
-
-Dim helperPath: helperPath = g_fso.BuildPath(FindRepoRootForBootstrap(), "common\PathHelper.vbs")
+Dim helperPath: helperPath = g_fso.BuildPath(bootstrapRoot, "common\PathHelper.vbs")
 ExecuteGlobal g_fso.OpenTextFile(helperPath).ReadAll
 
 ' --- Load ValidateSetup for dependency checking ---
@@ -134,7 +126,15 @@ Class Prompt
     Public KeyPress       ' Key to press after response text (e.g. "<NumpadEnter>")
     Public IsSuccess      ' True if this prompt indicates successful completion
     Public AcceptDefault  ' True to accept default values shown in parentheses
+    Public IsRegex        ' True when TriggerText should be evaluated as regex
 End Class
+
+Function InferRegexPattern(pattern)
+    InferRegexPattern = False
+    If Left(pattern, 1) = "^" Or InStr(pattern, "(") > 0 Or InStr(pattern, "[") > 0 Or InStr(pattern, ".*") > 0 Or InStr(pattern, "\d") > 0 Then
+        InferRegexPattern = True
+    End If
+End Function
 
 '-----------------------------------------------------------------------------------
 ' **FUNCTION NAME:** AddPromptToDict
@@ -158,6 +158,7 @@ Sub AddPromptToDict(dict, trigger, response, key, isSuccess)
     p.KeyPress = key
     p.IsSuccess = isSuccess
     p.AcceptDefault = False  ' Always send response text, ignore screen defaults
+    p.IsRegex = InferRegexPattern(trigger)
     dict.Add trigger, p
 End Sub
 
@@ -192,6 +193,7 @@ Sub AddPromptToDictEx(dict, trigger, response, key, isSuccess, acceptDefault)
     p.KeyPress = key
     p.IsSuccess = isSuccess
     p.AcceptDefault = acceptDefault
+    p.IsRegex = InferRegexPattern(trigger)
     dict.Add trigger, p
 End Sub
 
@@ -498,12 +500,9 @@ Sub ProcessPromptSequence(prompts)
                 ' Check each prompt key against this line
                 For Each promptKey In prompts.Keys
                     Dim isRegex, re, regexError
-                    isRegex = False
+                    Set promptDetails = prompts.Item(promptKey)
+                    isRegex = promptDetails.IsRegex
                     regexError = False
-                    ' Heuristic: treat as regex if starts with ^ or contains ( or [ or .*
-                    If Left(promptKey, 1) = "^" Or InStr(promptKey, "(") > 0 Or InStr(promptKey, "[") > 0 Or InStr(promptKey, ".*") > 0 Or InStr(promptKey, "\\d") > 0 Then
-                        isRegex = True
-                    End If
                     If isRegex Then
                         On Error Resume Next
                         Set re = CreateObject("VBScript.RegExp")
@@ -571,8 +570,7 @@ Sub ProcessPromptSequence(prompts)
                     Dim lineMatches, lineMatchFound
                     lineMatchFound = False
                     
-                    ' Determine if bestMatchKey is a regex pattern
-                    If Left(bestMatchKey, 1) = "^" Or InStr(bestMatchKey, "(") > 0 Or InStr(bestMatchKey, "[") > 0 Or InStr(bestMatchKey, ".*") > 0 Or InStr(bestMatchKey, "\\d") > 0 Then
+                    If promptDetails.IsRegex Then
                         ' Regex pattern - use proper regex matching
                         On Error Resume Next
                         Dim lineRe
@@ -880,48 +878,6 @@ Function IsTextPresent(searchText)
 End Function
 
 '-----------------------------------------------------------------------------------
-' **FUNCTION NAME:** IsTextPresent
-' **DATE CREATED:** 2026-02-13
-' **AUTHOR:** GitHub Copilot
-' 
-' **FUNCTIONALITY:**
-' Check if specific text is visible anywhere on the current BlueZone screen.
-' Scans all screen lines looking for the target text (case-insensitive).
-' 
-' **PARAMETERS:**
-' searchText (String): The text to search for on screen
-' 
-' **RETURN VALUE:**
-' (Boolean) Returns True if text is found, False otherwise
-'-----------------------------------------------------------------------------------
-Function IsTextPresent(searchText)
-    Dim lineNum, screenContentBuffer, lineContent
-    Dim maxLines
-    
-    IsTextPresent = False
-    
-    If Len(searchText) = 0 Then Exit Function
-    
-    maxLines = 24 ' Standard terminal height
-    
-    On Error Resume Next
-    For lineNum = 1 To maxLines
-        screenContentBuffer = ""
-        bzhao.ReadScreen screenContentBuffer, 80, lineNum, 1
-        If Err.Number = 0 Then
-            lineContent = Trim(screenContentBuffer)
-            ' Case-insensitive search
-            If InStr(1, lineContent, searchText, vbTextCompare) > 0 Then
-                IsTextPresent = True
-                Exit For
-            End If
-        End If
-        Err.Clear
-    Next
-    On Error GoTo 0
-End Function
-
-'-----------------------------------------------------------------------------------
 ' **FUNCTION NAME:** WaitMs
 ' **DATE CREATED:** 2026-02-13
 ' **AUTHOR:** GitHub Copilot
@@ -1088,11 +1044,20 @@ Function IsPromptInConfig(promptText, promptsDict)
     End If
     
     For Each key In promptsDict.Keys
-        Dim isRegex, re
+        Dim isRegex, re, promptDetails
         isRegex = False
-        If Left(key, 1) = "^" Or InStr(key, "(") > 0 Or InStr(key, "[") > 0 Or InStr(key, ".*") > 0 Or InStr(key, "\\d") > 0 Then
-            isRegex = True
+        On Error Resume Next
+        Set promptDetails = promptsDict.Item(key)
+        If Err.Number = 0 Then
+            isRegex = CBool(promptDetails.IsRegex)
         End If
+        Err.Clear
+        On Error GoTo 0
+
+        If Not isRegex Then
+            isRegex = InferRegexPattern(key)
+        End If
+
         If isRegex Then
             On Error Resume Next
             Set re = CreateObject("VBScript.RegExp")
@@ -2944,25 +2909,8 @@ Sub Closeout_ReadyToPost()
     Call LogInfo("Sending file command after READY TO POST processing", "Closeout_ReadyToPost")
     WaitForPrompt "COMMAND:", "FC", True, g_PromptWait, ""
     If HandleCloseoutErrors() Then Exit Sub
-    
-    ' Handle the "ALL LABOR POSTED (Y/N)?" prompt after F command
-    Call LogInfo("Waiting for 'ALL LABOR POSTED (Y/N)?' prompt", "Closeout_ReadyToPost")
-    WaitForPrompt "ALL LABOR POSTED (Y/N)?", "Y", True, g_PromptWait, ""
 
-    Call LogInfo("Waiting for 'MILEAGE OUT' prompt", "Closeout_ReadyToPost")
-    WaitForPrompt "MILEAGE OUT", "", True, g_PromptWait, ""
-
-    Call LogInfo("Waiting for 'MILEAGE IN' prompt", "Closeout_ReadyToPost")
-    WaitForPrompt "MILEAGE IN", "", True, g_PromptWait, ""
-
-    Call LogInfo("Waiting for 'O.K. TO CLOSE RO (Y/N)?' prompt", "Closeout_ReadyToPost")
-    WaitForPrompt "O.K. TO CLOSE RO", "Y", True, g_PromptWait, ""
-
-    Call LogInfo("Waiting for 'INVOICE PRINTER' prompt", "Closeout_ReadyToPost")
-    WaitForPrompt "INVOICE PRINTER", "2", True, g_PromptWait, ""
-    
-    lastRoResult = "Successfully filed"
-    Call LogInfo("RO filed successfully - ready for downstream review", "Closeout_ReadyToPost")
+    Call PerformFinalCloseout("Closeout_ReadyToPost")
 End Sub
 
 '-----------------------------------------------------------------------------------
@@ -2984,25 +2932,8 @@ Sub Closeout_Preassigned()
     Call LogInfo("Sending file command after PREASSIGNED processing", "Closeout_Preassigned")
     WaitForPrompt "COMMAND:", "FC", True, g_PromptWait, ""
     If HandleCloseoutErrors() Then Exit Sub
-    
-    ' Handle the "ALL LABOR POSTED (Y/N)?" prompt after F command
-    Call LogInfo("Waiting for 'ALL LABOR POSTED (Y/N)?' prompt", "Closeout_Preassigned")
-    WaitForPrompt "ALL LABOR POSTED (Y/N)?", "Y", True, g_PromptWait, ""
 
-    Call LogInfo("Waiting for 'MILEAGE OUT' prompt", "Closeout_Preassigned")
-    WaitForPrompt "MILEAGE OUT", "", True, g_PromptWait, ""
-
-    Call LogInfo("Waiting for 'MILEAGE IN' prompt", "Closeout_Preassigned")
-    WaitForPrompt "MILEAGE IN", "", True, g_PromptWait, ""
-
-    Call LogInfo("Waiting for 'O.K. TO CLOSE RO (Y/N)?' prompt", "Closeout_Preassigned")
-    WaitForPrompt "O.K. TO CLOSE RO", "Y", True, g_PromptWait, ""
-
-    Call LogInfo("Waiting for 'INVOICE PRINTER' prompt", "Closeout_Preassigned")
-    WaitForPrompt "INVOICE PRINTER", "2", True, g_PromptWait, ""
-    
-    lastRoResult = "Successfully filed"
-    Call LogInfo("RO filed successfully - ready for downstream review", "Closeout_Preassigned")
+    Call PerformFinalCloseout("Closeout_Preassigned")
 End Sub
 
 '-----------------------------------------------------------------------------------
@@ -3025,25 +2956,8 @@ Sub Closeout_Open()
     Call LogInfo("Sending file command after OPEN status processing", "Closeout_Open")
     WaitForPrompt "COMMAND:", "FC", True, g_PromptWait, ""
     If HandleCloseoutErrors() Then Exit Sub
-    
-    ' Handle the "ALL LABOR POSTED (Y/N)?" prompt after F command
-    Call LogInfo("Waiting for 'ALL LABOR POSTED (Y/N)?' prompt", "Closeout_Open")
-    WaitForPrompt "ALL LABOR POSTED (Y/N)?", "Y", True, g_PromptWait, ""
 
-    Call LogInfo("Waiting for 'MILEAGE OUT' prompt", "Closeout_Open")
-    WaitForPrompt "MILEAGE OUT", "", True, g_PromptWait, ""
-
-    Call LogInfo("Waiting for 'MILEAGE IN' prompt", "Closeout_Open")
-    WaitForPrompt "MILEAGE IN", "", True, g_PromptWait, ""
-
-    Call LogInfo("Waiting for 'O.K. TO CLOSE RO (Y/N)?' prompt", "Closeout_Open")
-    WaitForPrompt "O.K. TO CLOSE RO", "Y", True, g_PromptWait, ""
-
-    Call LogInfo("Waiting for 'INVOICE PRINTER' prompt", "Closeout_Open")
-    WaitForPrompt "INVOICE PRINTER", "2", True, g_PromptWait, ""
-    
-    lastRoResult = "Successfully filed"
-    Call LogInfo("RO filed successfully - ready for downstream review", "Closeout_Open")
+    Call PerformFinalCloseout("Closeout_Open")
 End Sub
 
 '-----------------------------------------------------------------------------------
@@ -3258,104 +3172,6 @@ Sub ProcessOpenStatusLines()
 End Sub
 
 '-----------------------------------------------------------------------------------
-' **PROCEDURE NAME:** ProcessFinalCloseoutPrompts
-' **DATE CREATED:** 2025-12-30
-' **AUTHOR:** GitHub Copilot
-' **STATUS:** DEPRECATED - No longer used (prompt handling moved to ProcessPromptSequence)
-' 
-' **FUNCTIONALITY:**
-' Originally handled final prompts after F (File) command.
-' Functionality replaced by ProcessPromptSequence for better reliability.
-' Kept for reference/potential future use - can be removed in cleanup.
-'-----------------------------------------------------------------------------------
-Sub ProcessFinalCloseoutPrompts()
-    Call LogInfo("Processing final closeout prompts", "ProcessFinalCloseoutPrompts")
-    
-    ' ALL LABOR POSTED
-    Dim send_enter_key_all_labor_posted
-    send_enter_key_all_labor_posted = True
-
-    ' Add a 3 second delay before ALL LABOR POSTED prompt
-    Call WaitMs(3000)
-
-    If Not WaitForPrompt("ALL LABOR POSTED", "Y", send_enter_key_all_labor_posted, g_TimeoutMs, "") Then
-        Call LogEvent("maj", "low", "Failed to get ALL LABOR POSTED prompt", "ProcessFinalCloseoutPrompts", "Aborting closeout", "")
-        lastRoResult = "Failed - Could not confirm all labor posted"
-        Exit Sub
-    End If
-    If HandleCloseoutErrors() Then Exit Sub
-    
-    ' MILEAGE OUT
-    Dim mileageOutTimeout
-    mileageOutTimeout = 6000
-    WaitForPrompt "MILEAGE OUT", "", True, mileageOutTimeout, ""
-    If HandleCloseoutErrors() Then Exit Sub
-
-    ' NEW CORNER CASE: Current Mileage less than Previous Mileage
-    ' If this prompt appears, send "Y" to confirm.
-    If WaitForPrompt("Current Mileage less than Previous Mileage", "", False, 5000, "") Then
-        Call LogInfo("Detected 'Current Mileage less than Previous Mileage' prompt. Sending 'Y'.", "ProcessFinalCloseoutPrompts")
-        Dim send_enter_key_mileage_less
-        send_enter_key_mileage_less = True
-        Call WaitForPrompt("Current Mileage less than Previous Mileage", "Y", send_enter_key_mileage_less, g_DefaultWait, "")
-        If HandleCloseoutErrors() Then Exit Sub
-    End If
-
-    ' MILEAGE IN
-    Dim mileageInTimeout
-    mileageInTimeout = 6000
-    Dim send_enter_key_mileage_in
-    send_enter_key_mileage_in = True
-    WaitForPrompt "MILEAGE IN", "", send_enter_key_mileage_in, mileageInTimeout, ""
-    If HandleCloseoutErrors() Then Exit Sub
-
-    ' O.K. TO CLOSE RO
-    Dim okToCloseTimeout
-    okToCloseTimeout = 15000
-    Dim send_enter_key_ok_to_close_ro
-    send_enter_key_ok_to_close_ro = True
-    If Not WaitForPrompt("O.K. TO CLOSE RO", "Y", send_enter_key_ok_to_close_ro, okToCloseTimeout, "") Then
-        Call LogEvent("maj", "low", "Failed to get O.K. TO CLOSE RO prompt", "ProcessFinalCloseoutPrompts", "Aborting closeout", "")
-        lastRoResult = "Failed - Could not confirm closeout"
-        Exit Sub
-    End If
-    If HandleCloseoutErrors() Then Exit Sub
-
-    ' Send to printer 2
-    Dim send_enter_key_invoice_printer
-    send_enter_key_invoice_printer = True
-    Dim invoicePromptTimeout
-    invoicePromptTimeout = 5000
-    If Not WaitForPrompt("INVOICE PRINTER", "2", send_enter_key_invoice_printer, invoicePromptTimeout, "") Then
-        Call LogError("Failed to get INVOICE PRINTER prompt - closeout may be incomplete", "ProcessFinalCloseoutPrompts")
-        lastRoResult = "Failed - Could not send to printer"
-        Exit Sub
-    End If
-    
-    ' Use the state machine for the rest of the closeout prompts
-    Dim closeoutPrompts
-    Set closeoutPrompts = CreateCloseoutPromptDictionary()
-    
-    ' Wait for the continue prompt
-    Dim continuePromptTimeout
-    continuePromptTimeout = 10000
-    Dim continuePromptDetected
-    continuePromptDetected = WaitForTextSilent("COMMAND:(SEQ#/E/N/B/?)", continuePromptTimeout)
-    If continuePromptDetected Then
-        Call LogInfo("Detected continue prompt: COMMAND:(SEQ#/E/N/B/?)", "ProcessFinalCloseoutPrompts")
-    Else
-        Call LogWarn("Timeout waiting for continue prompt: COMMAND:(SEQ#/E/N/B/?)", "ProcessFinalCloseoutPrompts")
-    End If
-    Call ProcessPromptSequence(closeoutPrompts)
-
-    ' Final error handling
-    If HandleCloseoutErrors() Then Exit Sub
-
-    lastRoResult = "Successfully closed"
-    Call LogInfo("Final closeout prompts completed successfully", "ProcessFinalCloseoutPrompts")
-End Sub
-
-'-----------------------------------------------------------------------------------
 ' **PROCEDURE NAME:** Closeout_Default
 ' **DATE CREATED:** 2025-12-29
 ' **AUTHOR:** GitHub Copilot
@@ -3372,24 +3188,27 @@ Sub Closeout_Default()
     WaitForPrompt "COMMAND:", "FC", True, g_PromptWait, ""
     If HandleCloseoutErrors() Then Exit Sub
 
-    ' Handle the "ALL LABOR POSTED (Y/N)?" prompt after F command
-    Call LogInfo("Waiting for 'ALL LABOR POSTED (Y/N)?' prompt", "Closeout_Default")
+    Call PerformFinalCloseout("Closeout_Default")
+End Sub
+
+Sub PerformFinalCloseout(callerName)
+    Call LogInfo("Waiting for 'ALL LABOR POSTED (Y/N)?' prompt", callerName)
     WaitForPrompt "ALL LABOR POSTED (Y/N)?", "Y", True, g_PromptWait, ""
 
-    Call LogInfo("Waiting for 'MILEAGE OUT' prompt", "Closeout_Default")
+    Call LogInfo("Waiting for 'MILEAGE OUT' prompt", callerName)
     WaitForPrompt "MILEAGE OUT", "", True, g_PromptWait, ""
 
-    Call LogInfo("Waiting for 'MILEAGE IN' prompt", "Closeout_Default")
+    Call LogInfo("Waiting for 'MILEAGE IN' prompt", callerName)
     WaitForPrompt "MILEAGE IN", "", True, g_PromptWait, ""
 
-    Call LogInfo("Waiting for 'O.K. TO CLOSE RO (Y/N)?' prompt", "Closeout_Default")
+    Call LogInfo("Waiting for 'O.K. TO CLOSE RO (Y/N)?' prompt", callerName)
     WaitForPrompt "O.K. TO CLOSE RO", "Y", True, g_PromptWait, ""
 
-    Call LogInfo("Waiting for 'INVOICE PRINTER' prompt", "Closeout_Default")
+    Call LogInfo("Waiting for 'INVOICE PRINTER' prompt", callerName)
     WaitForPrompt "INVOICE PRINTER", "2", True, g_PromptWait, ""
 
     lastRoResult = "Successfully filed"
-    Call LogInfo("RO filed successfully - ready for downstream review", "Closeout_Default")
+    Call LogInfo("RO filed successfully - ready for downstream review", callerName)
 End Sub
 
 ' Handles the optional comeback prompt that occasionally appears during closeout.

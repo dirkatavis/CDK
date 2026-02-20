@@ -40,6 +40,15 @@ Function GetRepoRoot()
 End Function
 
 ' ------------------------------------------------------------------------------
+' FindRepoRootForBootstrap - Bootstrap-friendly repo root helper
+' ------------------------------------------------------------------------------
+' Alias kept for scripts that still call the legacy bootstrap function name.
+' ------------------------------------------------------------------------------
+Function FindRepoRootForBootstrap()
+    FindRepoRootForBootstrap = GetRepoRoot()
+End Function
+
+' ------------------------------------------------------------------------------
 ' ReadBasePath - Reads repo root from environment variable
 ' ------------------------------------------------------------------------------
 Function ReadBasePath()
