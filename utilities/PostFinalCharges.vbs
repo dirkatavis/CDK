@@ -131,7 +131,7 @@ End Class
 
 Function InferRegexPattern(pattern)
     InferRegexPattern = False
-    If Left(pattern, 1) = "^" Or InStr(pattern, "(") > 0 Or InStr(pattern, "[") > 0 Or InStr(pattern, ".*") > 0 Or InStr(pattern, "\\d") > 0 Then
+    If Left(pattern, 1) = "^" Or InStr(pattern, "(") > 0 Or InStr(pattern, "[") > 0 Or InStr(pattern, ".*") > 0 Or InStr(pattern, "\d") > 0 Then
         InferRegexPattern = True
     End If
 End Function
@@ -1044,11 +1044,20 @@ Function IsPromptInConfig(promptText, promptsDict)
     End If
     
     For Each key In promptsDict.Keys
-        Dim isRegex, re
+        Dim isRegex, re, promptDetails
         isRegex = False
-        If Left(key, 1) = "^" Or InStr(key, "(") > 0 Or InStr(key, "[") > 0 Or InStr(key, ".*") > 0 Or InStr(key, "\\d") > 0 Then
-            isRegex = True
+        On Error Resume Next
+        Set promptDetails = promptsDict.Item(key)
+        If Err.Number = 0 Then
+            isRegex = CBool(promptDetails.IsRegex)
         End If
+        Err.Clear
+        On Error GoTo 0
+
+        If Not isRegex Then
+            isRegex = InferRegexPattern(key)
+        End If
+
         If isRegex Then
             On Error Resume Next
             Set re = CreateObject("VBScript.RegExp")
