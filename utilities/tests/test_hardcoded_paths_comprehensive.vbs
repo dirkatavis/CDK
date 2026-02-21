@@ -199,7 +199,7 @@ Sub TestPathHelperResolution_BuildsAbsolutePath()
     ' Mock: GetConfigPath("Initialize_RO", "CSV") returns absolute path
     
     Dim mockRepoRoot: mockRepoRoot = "C:\dev\github.com\Avis\CDK"
-    Dim mockRelativePath: mockRelativePath = "workflows\repair_order\Initialize_RO.csv"
+    Dim mockRelativePath: mockRelativePath = "workflows\repair_order\initialize_ro\Initialize_RO.csv"
     Dim expectedAbsolute: expectedAbsolute = mockRepoRoot & "\" & mockRelativePath
     
     Dim mockResolution: mockResolution = (Len(expectedAbsolute) > 0 And InStr(expectedAbsolute, "Initialize_RO.csv") > 0)
@@ -210,8 +210,8 @@ End Sub
 Sub TestPathHelperResolution_InitializeROSections()
     ' Mock test: Verify all Initialize_RO config keys resolve correctly
     Dim keys: Set keys = CreateObject("Scripting.Dictionary")
-    keys.Add "CSV", "workflows\repair_order\Initialize_RO.csv"
-    keys.Add "Log", "workflows\repair_order\Initialize_RO.log"
+    keys.Add "CSV", "workflows\repair_order\initialize_ro\Initialize_RO.csv"
+    keys.Add "Log", "runtime\logs\initialize_ro\Initialize_RO.log"
     
     Dim allResolved: allResolved = TestMockPathResolution("Initialize_RO", keys)
     RecordTest "PathHelper resolves Initialize_RO paths", "PathHelper Resolution", allResolved, _
@@ -221,8 +221,8 @@ End Sub
 Sub TestPathHelperResolution_FinalizeCloseSections()
     ' Mock test: Verify all Finalize_Close config keys resolve correctly
     Dim keys: Set keys = CreateObject("Scripting.Dictionary")
-    keys.Add "CSV", "workflows\repair_order\Finalize_Close.csv"
-    keys.Add "Log", "workflows\repair_order\Finalize_Close.log"
+    keys.Add "CSV", "workflows\repair_order\finalize_close_pt2\Finalize_Close.csv"
+    keys.Add "Log", "runtime\logs\finalize_close_pt2\Finalize_Close.log"
     
     Dim allResolved: allResolved = TestMockPathResolution("Finalize_Close", keys)
     RecordTest "PathHelper resolves Finalize_Close paths", "PathHelper Resolution", allResolved, _
@@ -232,9 +232,9 @@ End Sub
 Sub TestPathHelperResolution_MaintenanceCloserSections()
     ' Mock test: Verify all Maintenance_RO_Closer config keys resolve correctly
     Dim keys: Set keys = CreateObject("Scripting.Dictionary")
-    keys.Add "Log", "utilities\Maintenance_RO_Closer.log"
-    keys.Add "Criteria", "utilities\PM_Match_Criteria.txt"
-    keys.Add "ROList", "utilities\RO_List.csv"
+    keys.Add "Log", "runtime\logs\maintenance_ro_closer\Maintenance_RO_Closer.log"
+    keys.Add "Criteria", "utilities\maintenance_ro_closer\PM_Match_Criteria.txt"
+    keys.Add "ROList", "utilities\maintenance_ro_closer\RO_List.csv"
     
     Dim allResolved: allResolved = TestMockPathResolution("Maintenance_RO_Closer", keys)
     RecordTest "PathHelper resolves Maintenance_RO_Closer paths", "PathHelper Resolution", allResolved, _
@@ -243,7 +243,7 @@ End Sub
 
 Sub TestPathHelperResolution_NoDoubleBackslashes()
     ' Mock test: Verify resolved paths don't have double backslashes
-    Dim mockPath: mockPath = "C:\dev\github.com\Avis\CDK\workflows\repair_order\Initialize_RO.csv"
+    Dim mockPath: mockPath = "C:\dev\github.com\Avis\CDK\workflows\repair_order\initialize_ro\Initialize_RO.csv"
     Dim hasDoubleSlashes: hasDoubleSlashes = (InStr(mockPath, "\\") > 0)
     Dim passed: passed = Not hasDoubleSlashes
     
@@ -420,7 +420,7 @@ Function CheckScriptHasBootstrap(scriptPath)
     
     Dim hasBootstrap: hasBootstrap = (InStr(content, "FindRepoRootForBootstrap") > 0) And _
                                     (InStr(content, "ExecuteGlobal") > 0) And _
-                                    (InStr(content, "common\PathHelper.vbs") > 0)
+                                    (InStr(content, "framework\PathHelper.vbs") > 0)
     
     CheckScriptHasBootstrap = hasBootstrap
 End Function

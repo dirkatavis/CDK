@@ -32,11 +32,19 @@ If repoRoot = "" Then
     WScript.Quit 1
 End If
 
+' Preflight reset: normalize mutable state from prior runs
+RunTest "Preflight Reset (normalize test state)", "test_reset_state.vbs"
+
 ' Run positive tests
 RunTest "Positive Tests (all dependencies present)", "test_validation_positive.vbs"
 
 ' Run negative tests
 RunTest "Negative Tests (missing dependencies)", "test_validation_negative.vbs"
+
+' Run reorg baseline contract tests
+RunTest "Reorg Contract: Entrypoints", "test_reorg_contract_entrypoints.vbs"
+RunTest "Reorg Contract: Config Paths", "test_reorg_contract_config_paths.vbs"
+RunTest "Reorg Contract: Wrapper Compatibility", "test_reorg_contract_wrappers.vbs"
 
 ' Print overall summary
 PrintOverallSummary()

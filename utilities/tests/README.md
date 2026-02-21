@@ -69,21 +69,21 @@ Each test case MUST document its purpose and real-world source:
 
 ### Option 1: Run All Tests
 ```cmd
-cd PostFinalCharges
-cscript run_all_tests.vbs
+cd utilities\tests
+cscript.exe run_all_tests.vbs
 ```
 
 ### Option 2: Run Only Default Value Tests
 ```cmd
-cd PostFinalCharges\tests
-cscript run_default_value_tests.vbs
+cd utilities\tests
+cscript.exe run_default_value_tests.vbs
 ```
 
 ### Option 3: Run Individual Tests
 ```cmd
-cd PostFinalCharges\tests
-cscript test_default_value_detection.vbs
-cscript test_default_value_integration.vbs
+cd utilities\tests
+cscript.exe test_default_value_detection.vbs
+cscript.exe test_default_value_integration.vbs
 ```
 
 ## What the Bugfix Tests Verify

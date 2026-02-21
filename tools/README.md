@@ -83,6 +83,16 @@ cscript.exe test_validation_negative.vbs
 ```
 Simulates missing dependencies and verifies validation catches them.
 
+### Run migration final-state target tests (milestone TDD)
+```cmd
+cscript.exe run_migration_target_tests.vbs
+```
+This suite is intentionally **red** until migration reaches 100% target state.
+It reports:
+- current pass percentage (progress to final architecture)
+- phase threshold from `reorg_path_map.ini`
+- final-state gate (passes only at 100%)
+
 ## What These Scripts Do
 
 | Script | Purpose |
@@ -96,6 +106,7 @@ Simulates missing dependencies and verifies validation catches them.
 | `test_validation_positive.vbs` | Verify validation passes with all dependencies present |
 | `test_validation_negative.vbs` | Verify validation detects missing/broken dependencies |
 | `run_validation_tests.vbs` | Run all validation tests (positive + negative) |
+| `run_migration_target_tests.vbs` | Track final-state migration progress (% complete, phase gates) |
 
 ## For New Users
 
