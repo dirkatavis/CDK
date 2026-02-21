@@ -60,7 +60,7 @@ Set fso = CreateObject("Scripting.FileSystemObject")
 If Not fso.FileExists(OUTPUT_CSV_PATH) Then
     Dim csvOut
     Set csvOut = fso.CreateTextFile(OUTPUT_CSV_PATH, True)
-    csvOut.WriteLine "MVA,Mileage,RO_Number,Timestamp"
+    csvOut.WriteLine "RO_Number"
     csvOut.Close
     Set csvOut = Nothing
     LOG "Created output CSV with headers: " & OUTPUT_CSV_PATH
@@ -388,9 +388,7 @@ Sub LogEntryWithRO(mva, roNumber)
     ' Write to CSV output (only if RO number was successfully scraped)
     If roNumber <> "" Then
         Set csvOut = logFSO.OpenTextFile(OUTPUT_CSV_PATH, 8, True)
-        ' Get mileage from the current row being processed
-        Dim currentMileage: currentMileage = Mileage
-        csvOut.WriteLine mva & "," & currentMileage & "," & roNumber & "," & Now
+        csvOut.WriteLine roNumber
         csvOut.Close
         Set csvOut = Nothing
     End If
