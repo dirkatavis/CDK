@@ -233,7 +233,6 @@ Sub Closeout_Ro()
     bzhao.Pause 2000
     WaitForTextAtBottom "INVOICE PRINTER"
     EnterTextAndWait "2", 1000
-    lastRoResult = "Successfully closed"
 End Sub
 
 '-----------------------------------------------------------
