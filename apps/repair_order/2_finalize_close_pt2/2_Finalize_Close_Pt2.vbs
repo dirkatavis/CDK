@@ -1,3 +1,4 @@
+Option Explicit
 
 ' --- Load PathHelper for centralized path management ---
 Dim g_fso: Set g_fso = CreateObject("Scripting.FileSystemObject")
@@ -21,8 +22,6 @@ End Function
 
 Dim helperPath: helperPath = g_fso.BuildPath(FindRepoRootForBootstrap(), "framework\PathHelper.vbs")
 ExecuteGlobal g_fso.OpenTextFile(helperPath).ReadAll
-
-Option Explicit
 
 Dim POLL_INTERVAL: POLL_INTERVAL = 1 ' 1 second polling interval for development
 Dim CSV_FILE_PATH: CSV_FILE_PATH = GetConfigPath("Finalize_Close", "CSV")
