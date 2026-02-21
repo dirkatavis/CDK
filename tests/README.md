@@ -81,6 +81,22 @@ cscript.exe tests\test_path_helper.vbs
 - **During reorganization:** `run_migration_target_tests.vbs` tracks progress
 - **CI/CD pipelines:** Automated validation on every push
 
+## Test Output Handling
+Test output files should **never** be written to the repository root. Use proper locations:
+
+- **Test logs:** `runtime/logs/tests/` - For detailed test execution logs
+- **Shell redirection:** When capturing output via `>`, redirect to `runtime/logs/tests/test_name_output.txt`
+- **Root directory:** Avoided - files here create clutter and are gitignored
+
+Example proper usage:
+```cmd
+REM ❌ Wrong - writes to root
+cscript test_validation.vbs > test_output.txt
+
+REM ✅ Correct - writes to runtime/logs/tests/
+cscript test_validation.vbs > runtime\logs\tests\validation_output.txt
+```
+
 ## Adding New Global Tests
 1. Test must validate a cross-cutting concern (affects multiple apps or core infrastructure)
 2. Add test script to `tests/` folder
