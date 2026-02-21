@@ -17,6 +17,8 @@ If Len(repoRoot) = 0 Then
     WScript.Quit 1
 End If
 
+' NOTE: This test is specifically validating the new framework-based PathHelper location.
+' It is expected to fail if migration to framework\PathHelper.vbs has not been completed.
 helperPath = fso.BuildPath(repoRoot, "framework\PathHelper.vbs")
 If Not fso.FileExists(helperPath) Then
     WScript.Echo "FAIL: PathHelper.vbs not found: " & helperPath
