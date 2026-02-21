@@ -12,7 +12,6 @@
 | `apps/` | Production workflows | Self-contained apps with tests/README |
 | `framework/` | Shared reusable components | PathHelper.vbs, ValidateSetup.vbs, HostCompat.vbs |
 | `tooling/` | Setup/diagnostics/testing | setup_cdk_base.vbs, validate_dependencies.vbs, test scripts |
-| `launch/` | Backward compatibility wrappers | Temporary wrappers for legacy paths (removable at sunset) |
 | `tests/` | Repo-level global tests | Cross-cutting infrastructure tests |
 | `runtime/` | Generated artifacts | logs/, data/out/ (created at runtime) |
 
@@ -104,34 +103,31 @@ tools/run_migration_target_tests.vbs → tests/run_migration_target_tests.vbs
 - **All `.vbs` files**: `tools\` → `tooling\`
 - **Documentation**: Update all path examples
 - **config.ini**: Update all app paths to `apps/*`
-- **reorg_path_map.ini**: Update target contracts to `apps/*` and `launch/*`
-
-### Legacy Contracts (Backward Compatibility):
-- **`launch/` wrappers**: Point old paths → new `apps/` locations
-- Keep old paths working during 3-6 month sunset period
+- **reorg_path_map.ini**: Update all entrypoints to `apps/*` (direct paths, no fallbacks)
 
 ---
 
 ## ✅ Validation Checklist
 
 After migration:
-- [ ] All `apps/` scripts load from `framework/`
-- [ ] All `tooling/` scripts load from `framework/`
+- [x] All `apps/` scripts load from `framework/`
+- [x] All `tooling/` scripts load from `framework/`
 - [x] `config.ini` paths resolve to `apps/`, `runtime/`
-- [x] `launch/` wrappers forward correctly
 - [x] Tests pass: `cscript tests\run_validation_tests.vbs`
 - [x] Migration complete: `cscript tests\run_migration_target_tests.vbs` (100%)
 - [x] Old folders deleted: `common/`, `tools/`, `utilities/`, `workflows/`, `Close_ROs/`, `Maintenance_RO_Closer/`, `PostFinalCharges/`
+- [x] Fallback patterns removed: `launch/` deleted (fail-fast instead of silent redirect)
 
 ---
 
 ## 🚀 Execution Order (Completed)
 
-1. ✅ **Create** new folders (`apps/`, `framework/`, `tooling/`, `launch/`, `tests/`)
+1. ✅ **Create** new folders (`apps/`, `framework/`, `tooling/`, `tests/`)
 2. ✅ **Copy** files to new locations
 3. ✅ **Update** all internal references
 4. ✅ **Validate** tests pass
 5. ✅ **Delete** old folders (validation passed, cleanup complete)
+6. ✅ **Remove fallbacks** (deleted `launch/` - fail-fast pattern enforced)
 
 ---
 

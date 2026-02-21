@@ -16,7 +16,7 @@ Dim scriptDir: scriptDir = fso.GetParentFolderName(WScript.ScriptFullName)
 Sub RunStep(scriptName, description)
     WScript.Echo ">>> RUNNING STEP: " & description & " (" & scriptName & ")..."
     
-    Dim command: command = "cscript.exe //NoLogo """ & fso.BuildPath(fso.BuildPath(scriptDir, "tools"), scriptName) & """"
+    Dim command: command = "cscript.exe //NoLogo """ & fso.BuildPath(fso.BuildPath(scriptDir, "tooling"), scriptName) & """"
     Dim exitCode: exitCode = sh.Run(command, 1, True)
     
     If exitCode <> 0 Then
