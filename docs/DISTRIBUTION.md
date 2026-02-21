@@ -28,10 +28,10 @@ CDK/
 ```
 
 ### Core Automation Scripts (Examples)
-- `PostFinalCharges/PostFinalCharges.vbs`
-- `Close_ROs/Close_ROs_Pt1.vbs`
-- `Close_ROs/Close_ROs_Pt2.vbs`
-- `CreateNew_ROs/Create_ROs.vbs`
+- `utilities/PostFinalCharges.vbs`
+- `workflows/repair_order/1_Initialize_RO.vbs`
+- `workflows/repair_order/2_Prepare_Close_Pt1.vbs`
+- `workflows/repair_order/3_Finalize_Close_Pt2.vbs`
 - etc.
 
 ## Distribution Checklist

@@ -3,6 +3,13 @@
         "/^cscript\\.exe utilities\\\\tests\\\\test_hardcoded_paths_comprehensive\\.vbs$/": {
             "approve": true,
             "matchCommandLine": true
+        },
+        "New-Item": true,
+        "Out-Null": true,
+        "Copy-Item": true,
+        "/^cd utilities/tests ; cmd /c \"cscript\\.exe run_all_tests\\.vbs 2>&1\" ; cd \\.\\./\\.\\.$/": {
+            "approve": true,
+            "matchCommandLine": true
         }
     }
 }
