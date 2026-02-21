@@ -37,3 +37,8 @@ tools/ValidateRoList/ValidateRoList_IN.csv
 
 # Ignore other local runtime artifacts
 Temp/
+
+# Test artifacts in root directory
+/test_output.txt
+/validation_output.txt
+/*_output.txt
