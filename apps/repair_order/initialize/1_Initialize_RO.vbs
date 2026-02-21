@@ -36,6 +36,7 @@ Const POST_KEY_WAIT = 350    ' Pause after sending special keys
 Const PROMPT_TIMEOUT_MS = 5000 ' Default prompt timeout
 
 Dim CSV_FILE_PATH: CSV_FILE_PATH = GetConfigPath("Initialize_RO", "CSV")
+Dim OUTPUT_CSV_PATH: OUTPUT_CSV_PATH = GetConfigPath("Initialize_RO", "OutputCSV")
 Dim SCRIPT_FOLDER: SCRIPT_FOLDER = "scripts\archive"
 Dim SLOW_MARKER_PATH: SLOW_MARKER_PATH = GetConfigPath("Initialize_RO", "DebugMarker")
 Dim LOG_FILE_PATH: LOG_FILE_PATH = GetConfigPath("Initialize_RO", "Log")
@@ -54,6 +55,17 @@ On Error GoTo 0
 LOG "Script started - Log file path: " & LOG_FILE_PATH
 
 Set fso = CreateObject("Scripting.FileSystemObject")
+
+' Initialize output CSV with headers if it doesn't exist
+If Not fso.FileExists(OUTPUT_CSV_PATH) Then
+    Dim csvOut
+    Set csvOut = fso.CreateTextFile(OUTPUT_CSV_PATH, True)
+    csvOut.WriteLine "MVA,Mileage,RO_Number,Timestamp"
+    csvOut.Close
+    Set csvOut = Nothing
+    LOG "Created output CSV with headers: " & OUTPUT_CSV_PATH
+End If
+
 If fso.FileExists(CSV_FILE_PATH) Then
     LOG "CSV file found: " & CSV_FILE_PATH
     bzhao.Connect ""
@@ -355,23 +367,34 @@ Function IsTextPresent(textToFind)
 End Function
 
 '--------------------------------------------------------------------
-' Subroutine: LogEntryWithRO - Simple logging
+' Subroutine: LogEntryWithRO - Write to both log and CSV output
 '--------------------------------------------------------------------
 Sub LogEntryWithRO(mva, roNumber)
     If Trim(mva) = "" Then Exit Sub
 
-    Dim logFSO, logFile
+    Dim logFSO, logFile, csvOut
     Set logFSO = CreateObject("Scripting.FileSystemObject")
+    
+    ' Write to transaction log
     Set logFile = logFSO.OpenTextFile(LOG_FILE_PATH, 8, True)
-
     If roNumber = "" Then
         logFile.WriteLine Now & " - MVA: " & mva
     Else
         logFile.WriteLine Now & " - MVA: " & mva & " - RO: " & roNumber
     End If
-
     logFile.Close
     Set logFile = Nothing
+    
+    ' Write to CSV output (only if RO number was successfully scraped)
+    If roNumber <> "" Then
+        Set csvOut = logFSO.OpenTextFile(OUTPUT_CSV_PATH, 8, True)
+        ' Get mileage from the current row being processed
+        Dim currentMileage: currentMileage = Mileage
+        csvOut.WriteLine mva & "," & currentMileage & "," & roNumber & "," & Now
+        csvOut.Close
+        Set csvOut = Nothing
+    End If
+    
     Set logFSO = Nothing
 End Sub
 

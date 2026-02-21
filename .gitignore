@@ -14,6 +14,10 @@ Maintenance_RO_Closer/RO_List.csv
 Maintenance_RO_Closer/RO_Status_Report.csv
 Maintenance_RO_Closer/exception_list.csv
 
+# Output files from scripts (using _out naming convention)
+*_out.csv
+*_out.txt
+
 # Generated debug/diagnostic files
 Maintenance_RO_Closer/coordinate_check.txt
 Close_ROs/msgboxtext.txt
