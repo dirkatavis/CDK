@@ -45,7 +45,9 @@ git checkout -b feature/your-feature-name upstream/main
 Follow the development guidelines:
 - Keep commits focused and descriptive
 - Reference GitHub issues: `Fixes #35` or `Closes #42`
-- Run tests before committing: `cscript utilities\tests\run_all_tests.vbs`
+- Run tests before committing:
+  - Global validation: `cscript tests\run_validation_tests.vbs`
+  - App-specific (e.g., PostFinalCharges): `cscript apps\post_final_charges\tests\run_all_tests.vbs`
 
 ### 4. Push to Your Fork
 
@@ -101,12 +103,15 @@ hub pull-request -b dirkatavis:main -h <your-username>:feature/your-feature-name
 Before submitting a PR:
 
 ```bash
-# Run all tests
-cscript utilities\tests\run_all_tests.vbs
+# Run global validation tests
+cscript tests\run_validation_tests.vbs
 
-# Run specific test category
-cscript utilities\tests\test_hardcoded_paths_comprehensive.vbs
-cscript utilities\tests\run_default_value_tests.vbs
+# Run app-specific tests (PostFinalCharges example)
+cscript apps\post_final_charges\tests\run_all_tests.vbs
+
+# Run specific test categories
+cscript tests\test_hardcoded_paths_comprehensive.vbs
+cscript apps\post_final_charges\tests\run_default_value_tests.vbs
 ```
 
 ## Example PR Checklist
