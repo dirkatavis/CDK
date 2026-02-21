@@ -17,6 +17,8 @@ If Len(repoRoot) = 0 Then
     WScript.Quit 1
 End If
 
+' NOTE: This test is specifically validating the new framework-based PathHelper location.
+' It is expected to fail if migration to framework\PathHelper.vbs has not been completed.
 helperPath = fso.BuildPath(repoRoot, "framework\PathHelper.vbs")
 If Not fso.FileExists(helperPath) Then
     WScript.Echo "FAIL: PathHelper.vbs not found: " & helperPath
@@ -25,7 +27,7 @@ End If
 
 ExecuteGlobal fso.OpenTextFile(helperPath).ReadAll
 
-mapPath = fso.BuildPath(repoRoot, "tools\reorg_path_map.ini")
+mapPath = fso.BuildPath(repoRoot, "tooling\reorg_path_map.ini")
 If Not fso.FileExists(mapPath) Then
     WScript.Echo "FAIL: Migration path map not found: " & mapPath
     WScript.Quit 1
