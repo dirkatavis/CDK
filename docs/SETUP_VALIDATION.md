@@ -65,8 +65,8 @@ This performs a complete pre-flight check of your environment.
 ### ✓ ALL CHECKS PASSED
 Everything is ready! You can run CDK scripts:
 ```cmd
-cscript.exe PostFinalCharges\PostFinalCharges.vbs
-cscript.exe Close_ROs\Close_ROs_Pt1.vbs
+cscript.exe utilities\PostFinalCharges.vbs
+cscript.exe workflows\repair_order\2_Prepare_Close_Pt1.vbs
 ' ... other scripts
 ```
 
