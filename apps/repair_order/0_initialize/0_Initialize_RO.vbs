@@ -186,7 +186,7 @@ Sub Main(mva, mileage)
     '==== INPUT POINT 14: BEFORE SECOND ENTER KEY ====
     ' NEED TO IDENTIFY: What prompt appears before second Enter?
     ' CURRENT: No verification - NEEDS PROMPT DETECTION
-    Call WaitForPrompt("MILEAGE OUT", "<NumpadEnter>", False, 10000)
+    Call WaitForPrompt("MILEAGE OUT", "<NumpadEnter>", False, 30000)
     ' bzhao.Pause 1000
     
     '==== INPUT POINT 15: BEFORE THIRD ENTER KEY ====
@@ -199,7 +199,7 @@ Sub Main(mva, mileage)
     '==== INPUT POINT 16: BEFORE ENTERING FINAL "N" ====
     ' NEED TO IDENTIFY: What question/prompt is asking for N response?
     ' CURRENT: No verification - NEEDS PROMPT DETECTION
-    Call WaitForPrompt("O.K. TO CLOSE RO", "N", true, PROMPT_TIMEOUT_MS)
+    Call WaitForPrompt("O.K. TO CLOSE RO", "N", true, 30000)
     ' bzhao.Pause 1000
 
     ' Scrape and log
@@ -212,7 +212,7 @@ Sub Main(mva, mileage)
     '==== INPUT POINT 17: BEFORE FINAL F3 ====
     ' NEED TO IDENTIFY: What indicates ready for final F3?
     ' CURRENT: No verification - NEEDS PROMPT DETECTION
-    Call WaitForPrompt("Created repair order", "<F3>", False, PROMPT_TIMEOUT_MS)
+    Call WaitForPrompt("Created repair order|R.O. NUMBER", "<F3>", False, 10000)
 End Sub
 
 
@@ -247,6 +247,15 @@ Sub WaitForPrompt(promptText, valueToEnter, sendEnter, timeoutMs)
         ' Exit if timeout reached
         If elapsedMs >= timeoutMs Then
             LOG "Timeout waiting for prompt: " & promptText
+            If InStr(1, UCase(promptText), "MILEAGE OUT", vbTextCompare) > 0 Then
+                Dim timeoutScreen, timeoutRow23, timeoutRow24
+                bzhao.ReadScreen timeoutScreen, 160, 23, 1
+                timeoutRow23 = Left(timeoutScreen, 80)
+                timeoutRow24 = Mid(timeoutScreen, 81, 80)
+                MsgBox "Timeout waiting for prompt: " & promptText & vbCrLf & vbCrLf & _
+                       "Row 23: " & timeoutRow23 & vbCrLf & _
+                       "Row 24: " & timeoutRow24, vbExclamation, "Initialize RO Timeout"
+            End If
             Exit Do
         End If
         LOG elapsedMs & "ms elapsed waiting for prompt: "
@@ -357,11 +366,21 @@ End Function
 ' Function: IsTextPresent - Fast screen reading
 '--------------------------------------------------------------------
 Function IsTextPresent(textToFind)
-    Dim screenContentBuffer 
+    Dim screenContentBuffer
     Dim screenLength
+    Dim targets, i
     screenLength = 24 * 80 
     bzhao.ReadScreen screenContentBuffer, screenLength, 1, 1
-    IsTextPresent = (InStr(1, screenContentBuffer, textToFind, vbTextCompare) > 0)
+
+    targets = Split(textToFind, "|")
+    IsTextPresent = False
+    For i = 0 To UBound(targets)
+        If InStr(1, screenContentBuffer, Trim(targets(i)), vbTextCompare) > 0 Then
+            IsTextPresent = True
+            Exit For
+        End If
+    Next
+
     LOG "Screen content checked for: " & textToFind
     LOG "Text presence result: " & IsTextPresent
 End Function
