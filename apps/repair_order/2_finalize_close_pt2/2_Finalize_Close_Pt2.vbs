@@ -22,7 +22,25 @@ End Function
 
 Dim helperPath
 helperPath = g_fso.BuildPath(FindRepoRootForBootstrap(), "framework\PathHelper.vbs")
-ExecuteGlobal g_fso.OpenTextFile(helperPath).ReadAll
+' Read helper file content into a string, strip common BOMs, then ExecuteGlobal
+Dim helperCode
+helperCode = g_fso.OpenTextFile(helperPath, 1).ReadAll
+'
+' Strip UTF-8 BOM (EF BB BF) if present
+If Len(helperCode) >= 3 Then
+    If Asc(Left(helperCode,1)) = 239 And Asc(Mid(helperCode,2,1)) = 187 And Asc(Mid(helperCode,3,1)) = 191 Then
+        helperCode = Mid(helperCode, 4)
+    End If
+End If
+'
+' Strip Unicode BOM (ChrW(65279)) if present as first character
+If Len(helperCode) >= 1 Then
+    If AscW(Left(helperCode,1)) = 65279 Then
+        helperCode = Mid(helperCode, 2)
+    End If
+End If
+
+ExecuteGlobal helperCode
 
 Dim POLL_INTERVAL
 POLL_INTERVAL = 1 ' 1 second polling interval for development
