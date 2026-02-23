@@ -252,6 +252,18 @@ Sub WaitForTextAtBottom(targetText)
     Dim targets: targets = Split(targetText, "|")
     Dim i
     
+    ' Determine timeout: default 10s, add 30s for slow MILEAGE OUT prompt
+    Dim timeoutMs
+    timeoutMs = 10000
+    If InStr(UCase(targetText), "MILEAGE OUT") > 0 Then
+        timeoutMs = timeoutMs + 30000 ' extend by 30 seconds for MILEAGE OUT
+        LogResult "INFO", "Extended wait for 'MILEAGE OUT' to " & timeoutMs & "ms"
+    End If
+    If InStr(UCase(targetText), "O.K. TO CLOSE RO") > 0 Then
+        timeoutMs = timeoutMs + 30000 ' extend by 30 seconds for O.K. TO CLOSE RO
+        LogResult "INFO", "Extended wait for 'O.K. TO CLOSE RO' to " & timeoutMs & "ms"
+    End If
+
     Do
         bzhao.Pause 500
         elapsed = elapsed + 500
@@ -274,7 +286,7 @@ Sub WaitForTextAtBottom(targetText)
             Exit Do
         End If
         
-        If elapsed >= 10000 Then
+        If elapsed >= timeoutMs Then
             MsgBox "ERROR: Timeout waiting for text '" & targetText & "' to appear at bottom of screen. Script will exit." & vbCrLf & "Last 2 lines: " & vbCrLf & buffer23 & vbCrLf & buffer24, vbCritical
             bzhao.StopScript
         End If
