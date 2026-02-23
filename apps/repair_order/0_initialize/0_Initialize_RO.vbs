@@ -57,14 +57,13 @@ LOG "Script started - Log file path: " & LOG_FILE_PATH
 Set fso = CreateObject("Scripting.FileSystemObject")
 
 ' Initialize output CSV with headers if it doesn't exist
-If Not fso.FileExists(OUTPUT_CSV_PATH) Then
-    Dim csvOut
-    Set csvOut = fso.CreateTextFile(OUTPUT_CSV_PATH, True)
-    csvOut.WriteLine "RO_Number"
-    csvOut.Close
-    Set csvOut = Nothing
-    LOG "Created output CSV with headers: " & OUTPUT_CSV_PATH
-End If
+' Initialize output CSV with headers (overwrite each run)
+Dim csvOut
+Set csvOut = fso.CreateTextFile(OUTPUT_CSV_PATH, True)
+csvOut.WriteLine "RO_Number"
+csvOut.Close
+Set csvOut = Nothing
+LOG "Initialized output CSV (overwritten): " & OUTPUT_CSV_PATH
 
 If fso.FileExists(CSV_FILE_PATH) Then
     LOG "CSV file found: " & CSV_FILE_PATH
