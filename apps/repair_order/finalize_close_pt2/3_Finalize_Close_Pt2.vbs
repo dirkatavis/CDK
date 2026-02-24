@@ -96,7 +96,7 @@ End Function
 '       Consider extracting to shared include file if more scripts need this.
 '-----------------------------------------------------------
 Function DiscoverLineLetters()
-    Dim maxLinesToCheck, i, capturedLetter, screenContentBuffer, readLength
+    Dim maxLinesToCheck, i, capturedLetter, screenContentBuffer, readLength, nextColChar
     Dim foundLetters, foundCount
     Dim startReadRow, startReadColumn, emptyRowCount
     
@@ -108,7 +108,7 @@ Function DiscoverLineLetters()
     ' The prompt area starts at row 23, so we must stop at row 22 to avoid 
     ' misidentifying prompt characters (like 'C' in 'COMMAND:') as line letters.
     Dim startRow, endRow
-    startRow = 7  ' First data row (standard CDK)
+    startRow = 10 ' Anchor at first actual data row (skip header rows)
     endRow = 22   ' Last possible data row before prompt area
     
     For startReadRow = startRow To endRow
@@ -127,9 +127,23 @@ Function DiscoverLineLetters()
         capturedLetter = Trim(screenContentBuffer)
         If Len(capturedLetter) = 1 Then
             If Asc(UCase(capturedLetter)) >= Asc("A") And Asc(UCase(capturedLetter)) <= Asc("Z") Then
-                tempLetters(foundCount) = UCase(capturedLetter)
-                foundCount = foundCount + 1
-                emptyRowCount = 0 ' Reset when a letter is found
+                ' Peek column 2 to ensure this is a line letter (typical form: "A  DESCRIPTION")
+                nextColChar = ""
+                On Error Resume Next
+                bzhao.ReadScreen nextColChar, 1, startReadRow, startReadColumn + 1
+                If Err.Number <> 0 Then
+                    Err.Clear
+                    nextColChar = ""
+                End If
+                On Error GoTo 0
+
+                If Len(nextColChar) > 0 And Asc(nextColChar) = 32 Then
+                    tempLetters(foundCount) = UCase(capturedLetter)
+                    foundCount = foundCount + 1
+                    emptyRowCount = 0 ' Reset when a letter is found
+                Else
+                    emptyRowCount = emptyRowCount + 1
+                End If
             Else
                 emptyRowCount = emptyRowCount + 1
             End If
