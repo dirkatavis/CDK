@@ -1,0 +1,587 @@
+ValidateRoList log started: 2/24/2026 9:39:18 AM | Init
+2/24/2026 9:39:28 AM | TIMEOUT after 10000ms
+2/24/2026 9:39:28 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:39:28 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:39:39 AM | TIMEOUT after 10000ms
+2/24/2026 9:39:39 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:39:39 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:39:50 AM | TIMEOUT after 10000ms
+2/24/2026 9:39:50 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:39:50 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:40:01 AM | TIMEOUT after 10000ms
+2/24/2026 9:40:01 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:40:01 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:40:11 AM | TIMEOUT after 10000ms
+2/24/2026 9:40:11 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:40:11 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:40:22 AM | TIMEOUT after 10000ms
+2/24/2026 9:40:22 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:40:22 AM | EXPANDED MATCH -> NOT ON FILE
+ValidateRoList log started: 2/24/2026 9:41:19 AM | Init
+2/24/2026 9:41:25 AM | TIMEOUT after 5000ms
+2/24/2026 9:41:25 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:41:25 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:41:31 AM | TIMEOUT after 5000ms
+2/24/2026 9:41:31 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:41:31 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:41:36 AM | TIMEOUT after 5000ms
+2/24/2026 9:41:36 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:41:36 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:41:42 AM | TIMEOUT after 5000ms
+2/24/2026 9:41:42 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:41:42 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:41:48 AM | TIMEOUT after 5000ms
+2/24/2026 9:41:48 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:41:48 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:41:53 AM | TIMEOUT after 5000ms
+2/24/2026 9:41:53 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:41:53 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:41:59 AM | TIMEOUT after 5000ms
+2/24/2026 9:41:59 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:41:59 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:42:05 AM | TIMEOUT after 5000ms
+2/24/2026 9:42:05 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:42:05 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:42:11 AM | TIMEOUT after 5000ms
+2/24/2026 9:42:11 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:42:11 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:42:16 AM | TIMEOUT after 5000ms
+2/24/2026 9:42:16 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:42:16 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:42:22 AM | TIMEOUT after 5000ms
+2/24/2026 9:42:22 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:42:22 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:42:28 AM | TIMEOUT after 5000ms
+2/24/2026 9:42:28 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:42:28 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:42:33 AM | TIMEOUT after 5000ms
+2/24/2026 9:42:33 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:42:33 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:42:39 AM | TIMEOUT after 5000ms
+2/24/2026 9:42:39 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:42:39 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:42:45 AM | TIMEOUT after 5000ms
+2/24/2026 9:42:45 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:42:45 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:42:51 AM | TIMEOUT after 5000ms
+2/24/2026 9:42:51 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:42:51 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:42:56 AM | TIMEOUT after 5000ms
+2/24/2026 9:42:56 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:42:56 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:43:02 AM | TIMEOUT after 5000ms
+2/24/2026 9:43:02 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:43:02 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:43:08 AM | TIMEOUT after 5000ms
+2/24/2026 9:43:08 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:43:08 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:43:14 AM | TIMEOUT after 5000ms
+2/24/2026 9:43:14 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:43:14 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:43:19 AM | TIMEOUT after 5000ms
+2/24/2026 9:43:19 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:43:19 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:43:25 AM | TIMEOUT after 5000ms
+2/24/2026 9:43:25 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:43:25 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:43:31 AM | TIMEOUT after 5000ms
+2/24/2026 9:43:31 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:43:31 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:43:36 AM | TIMEOUT after 5000ms
+2/24/2026 9:43:36 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:43:36 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:43:42 AM | TIMEOUT after 5000ms
+2/24/2026 9:43:42 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:43:42 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:43:48 AM | TIMEOUT after 5000ms
+2/24/2026 9:43:48 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:43:48 AM | EXPANDED MATCH -> (PFC) POST FINAL CHARGES
+2/24/2026 9:43:54 AM | TIMEOUT after 5000ms
+2/24/2026 9:43:54 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:43:59 AM | TIMEOUT after 5000ms
+2/24/2026 9:43:59 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:43:59 AM | EXPANDED MATCH -> (PFC) POST FINAL CHARGES
+2/24/2026 9:44:05 AM | TIMEOUT after 5000ms
+2/24/2026 9:44:05 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:44:11 AM | TIMEOUT after 5000ms
+2/24/2026 9:44:11 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:44:11 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:44:16 AM | TIMEOUT after 5000ms
+2/24/2026 9:44:16 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:44:16 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:44:22 AM | TIMEOUT after 5000ms
+2/24/2026 9:44:22 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:44:22 AM | EXPANDED MATCH -> (PFC) POST FINAL CHARGES
+2/24/2026 9:44:28 AM | TIMEOUT after 5000ms
+2/24/2026 9:44:28 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:44:34 AM | TIMEOUT after 5000ms
+2/24/2026 9:44:34 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:44:34 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:44:39 AM | TIMEOUT after 5000ms
+2/24/2026 9:44:39 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:44:39 AM | EXPANDED MATCH -> (PFC) POST FINAL CHARGES
+2/24/2026 9:44:45 AM | TIMEOUT after 5000ms
+2/24/2026 9:44:45 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:44:51 AM | TIMEOUT after 5000ms
+2/24/2026 9:44:51 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:44:51 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:44:56 AM | TIMEOUT after 5000ms
+2/24/2026 9:44:56 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:44:56 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:45:02 AM | TIMEOUT after 5000ms
+2/24/2026 9:45:02 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:45:08 AM | TIMEOUT after 5000ms
+2/24/2026 9:45:08 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:45:08 AM | EXPANDED MATCH -> (PFC) POST FINAL CHARGES
+2/24/2026 9:45:14 AM | TIMEOUT after 5000ms
+2/24/2026 9:45:14 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:45:19 AM | TIMEOUT after 5000ms
+2/24/2026 9:45:19 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:45:19 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:45:25 AM | TIMEOUT after 5000ms
+2/24/2026 9:45:25 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:45:25 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:45:31 AM | TIMEOUT after 5000ms
+2/24/2026 9:45:31 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:45:31 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:45:37 AM | TIMEOUT after 5000ms
+2/24/2026 9:45:37 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:45:37 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:45:42 AM | TIMEOUT after 5000ms
+2/24/2026 9:45:42 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:45:42 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:45:48 AM | TIMEOUT after 5000ms
+2/24/2026 9:45:48 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:45:54 AM | TIMEOUT after 5000ms
+2/24/2026 9:45:54 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:45:54 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:45:59 AM | TIMEOUT after 5000ms
+2/24/2026 9:45:59 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:45:59 AM | EXPANDED MATCH -> (PFC) POST FINAL CHARGES
+2/24/2026 9:46:05 AM | TIMEOUT after 5000ms
+2/24/2026 9:46:05 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:46:11 AM | TIMEOUT after 5000ms
+2/24/2026 9:46:11 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:46:11 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:46:17 AM | TIMEOUT after 5000ms
+2/24/2026 9:46:17 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:46:17 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:46:22 AM | TIMEOUT after 5000ms
+2/24/2026 9:46:22 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:46:22 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:46:28 AM | TIMEOUT after 5000ms
+2/24/2026 9:46:28 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:46:28 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:46:34 AM | TIMEOUT after 5000ms
+2/24/2026 9:46:34 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:46:34 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:46:39 AM | TIMEOUT after 5000ms
+2/24/2026 9:46:39 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:46:39 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:46:45 AM | TIMEOUT after 5000ms
+2/24/2026 9:46:45 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:46:45 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:46:51 AM | TIMEOUT after 5000ms
+2/24/2026 9:46:51 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:46:51 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:46:57 AM | TIMEOUT after 5000ms
+2/24/2026 9:46:57 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:46:57 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:47:02 AM | TIMEOUT after 5000ms
+2/24/2026 9:47:02 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:47:02 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:47:08 AM | TIMEOUT after 5000ms
+2/24/2026 9:47:08 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:47:08 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:47:14 AM | TIMEOUT after 5000ms
+2/24/2026 9:47:14 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:47:14 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:47:19 AM | TIMEOUT after 5000ms
+2/24/2026 9:47:19 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:47:19 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:47:25 AM | TIMEOUT after 5000ms
+2/24/2026 9:47:25 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:47:25 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:47:31 AM | TIMEOUT after 5000ms
+2/24/2026 9:47:31 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:47:31 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:47:37 AM | TIMEOUT after 5000ms
+2/24/2026 9:47:37 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:47:37 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:47:42 AM | TIMEOUT after 5000ms
+2/24/2026 9:47:42 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:47:42 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:47:48 AM | TIMEOUT after 5000ms
+2/24/2026 9:47:48 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:47:48 AM | EXPANDED MATCH -> (PFC) POST FINAL CHARGES
+2/24/2026 9:47:54 AM | TIMEOUT after 5000ms
+2/24/2026 9:47:54 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:47:59 AM | TIMEOUT after 5000ms
+2/24/2026 9:47:59 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:47:59 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:48:05 AM | TIMEOUT after 5000ms
+2/24/2026 9:48:05 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:48:05 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:48:11 AM | TIMEOUT after 5000ms
+2/24/2026 9:48:11 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:48:11 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:48:17 AM | TIMEOUT after 5000ms
+2/24/2026 9:48:17 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:48:17 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:48:22 AM | TIMEOUT after 5000ms
+2/24/2026 9:48:22 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:48:22 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:48:28 AM | TIMEOUT after 5000ms
+2/24/2026 9:48:28 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:48:28 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:48:34 AM | TIMEOUT after 5000ms
+2/24/2026 9:48:34 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:48:34 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:48:40 AM | TIMEOUT after 5000ms
+2/24/2026 9:48:40 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:48:40 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:48:45 AM | TIMEOUT after 5000ms
+2/24/2026 9:48:45 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:48:45 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:48:51 AM | TIMEOUT after 5000ms
+2/24/2026 9:48:51 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:48:51 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:48:57 AM | TIMEOUT after 5000ms
+2/24/2026 9:48:57 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:48:57 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:49:02 AM | TIMEOUT after 5000ms
+2/24/2026 9:49:02 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:49:02 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:49:08 AM | TIMEOUT after 5000ms
+2/24/2026 9:49:08 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:49:08 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:49:14 AM | TIMEOUT after 5000ms
+2/24/2026 9:49:14 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:49:14 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:49:20 AM | TIMEOUT after 5000ms
+2/24/2026 9:49:20 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:49:20 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:49:25 AM | TIMEOUT after 5000ms
+2/24/2026 9:49:25 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:49:25 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:49:31 AM | TIMEOUT after 5000ms
+2/24/2026 9:49:31 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:49:31 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:49:37 AM | TIMEOUT after 5000ms
+2/24/2026 9:49:37 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:49:37 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:49:42 AM | TIMEOUT after 5000ms
+2/24/2026 9:49:42 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:49:42 AM | EXPANDED MATCH -> (PFC) POST FINAL CHARGES
+2/24/2026 9:49:48 AM | TIMEOUT after 5000ms
+2/24/2026 9:49:48 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:49:54 AM | TIMEOUT after 5000ms
+2/24/2026 9:49:54 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:49:54 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:50:00 AM | TIMEOUT after 5000ms
+2/24/2026 9:50:00 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:50:00 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:50:05 AM | TIMEOUT after 5000ms
+2/24/2026 9:50:05 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:50:05 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:50:11 AM | TIMEOUT after 5000ms
+2/24/2026 9:50:11 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:50:11 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:50:17 AM | TIMEOUT after 5000ms
+2/24/2026 9:50:17 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:50:17 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:50:22 AM | TIMEOUT after 5000ms
+2/24/2026 9:50:22 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:50:22 AM | EXPANDED MATCH -> (PFC) POST FINAL CHARGES
+2/24/2026 9:50:28 AM | TIMEOUT after 5000ms
+2/24/2026 9:50:28 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:50:34 AM | TIMEOUT after 5000ms
+2/24/2026 9:50:34 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:50:34 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:50:40 AM | TIMEOUT after 5000ms
+2/24/2026 9:50:40 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:50:40 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:50:45 AM | TIMEOUT after 5000ms
+2/24/2026 9:50:45 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:50:45 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:50:51 AM | TIMEOUT after 5000ms
+2/24/2026 9:50:51 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:50:51 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:50:57 AM | TIMEOUT after 5000ms
+2/24/2026 9:50:57 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:50:57 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:51:03 AM | TIMEOUT after 5000ms
+2/24/2026 9:51:03 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:51:03 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:51:08 AM | TIMEOUT after 5000ms
+2/24/2026 9:51:08 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:51:08 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:51:14 AM | TIMEOUT after 5000ms
+2/24/2026 9:51:14 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:51:14 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:51:20 AM | TIMEOUT after 5000ms
+2/24/2026 9:51:20 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:51:20 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:51:25 AM | TIMEOUT after 5000ms
+2/24/2026 9:51:25 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:51:25 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:51:31 AM | TIMEOUT after 5000ms
+2/24/2026 9:51:31 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:51:31 AM | EXPANDED MATCH -> (PFC) POST FINAL CHARGES
+2/24/2026 9:51:37 AM | TIMEOUT after 5000ms
+2/24/2026 9:51:37 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:51:43 AM | TIMEOUT after 5000ms
+2/24/2026 9:51:43 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:51:43 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:51:48 AM | TIMEOUT after 5000ms
+2/24/2026 9:51:48 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:51:48 AM | EXPANDED MATCH -> (PFC) POST FINAL CHARGES
+2/24/2026 9:51:54 AM | TIMEOUT after 5000ms
+2/24/2026 9:51:54 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:52:00 AM | TIMEOUT after 5000ms
+2/24/2026 9:52:00 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:52:00 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:52:06 AM | TIMEOUT after 5000ms
+2/24/2026 9:52:06 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:52:06 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:52:11 AM | TIMEOUT after 5000ms
+2/24/2026 9:52:11 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:52:11 AM | EXPANDED MATCH -> (PFC) POST FINAL CHARGES
+2/24/2026 9:52:17 AM | TIMEOUT after 5000ms
+2/24/2026 9:52:17 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:52:23 AM | TIMEOUT after 5000ms
+2/24/2026 9:52:23 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:52:23 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:52:28 AM | TIMEOUT after 5000ms
+2/24/2026 9:52:28 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:52:28 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:52:34 AM | TIMEOUT after 5000ms
+2/24/2026 9:52:34 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:52:34 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:52:40 AM | TIMEOUT after 5000ms
+2/24/2026 9:52:40 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:52:40 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:52:46 AM | TIMEOUT after 5000ms
+2/24/2026 9:52:46 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:52:46 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:52:51 AM | TIMEOUT after 5000ms
+2/24/2026 9:52:51 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:52:51 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:52:57 AM | TIMEOUT after 5000ms
+2/24/2026 9:52:57 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:52:57 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:53:03 AM | TIMEOUT after 5000ms
+2/24/2026 9:53:03 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:53:03 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:53:09 AM | TIMEOUT after 5000ms
+2/24/2026 9:53:09 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:53:09 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:53:14 AM | TIMEOUT after 5000ms
+2/24/2026 9:53:14 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:53:14 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:53:20 AM | TIMEOUT after 5000ms
+2/24/2026 9:53:20 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:53:20 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:53:26 AM | TIMEOUT after 5000ms
+2/24/2026 9:53:26 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:53:26 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:53:32 AM | TIMEOUT after 5000ms
+2/24/2026 9:53:32 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:53:32 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:53:37 AM | TIMEOUT after 5000ms
+2/24/2026 9:53:37 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:53:37 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:53:43 AM | TIMEOUT after 5000ms
+2/24/2026 9:53:43 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:53:43 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:53:49 AM | TIMEOUT after 5000ms
+2/24/2026 9:53:49 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:53:49 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:53:55 AM | TIMEOUT after 5000ms
+2/24/2026 9:53:55 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:53:55 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:54:00 AM | TIMEOUT after 5000ms
+2/24/2026 9:54:00 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:54:00 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:54:06 AM | TIMEOUT after 5000ms
+2/24/2026 9:54:06 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:54:06 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:54:12 AM | TIMEOUT after 5000ms
+2/24/2026 9:54:12 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:54:12 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:54:17 AM | TIMEOUT after 5000ms
+2/24/2026 9:54:17 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:54:17 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:54:23 AM | TIMEOUT after 5000ms
+2/24/2026 9:54:23 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:54:23 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:54:29 AM | TIMEOUT after 5000ms
+2/24/2026 9:54:29 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:54:29 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:54:35 AM | TIMEOUT after 5000ms
+2/24/2026 9:54:35 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:54:35 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:54:40 AM | TIMEOUT after 5000ms
+2/24/2026 9:54:40 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:54:40 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:54:46 AM | TIMEOUT after 5000ms
+2/24/2026 9:54:46 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:54:46 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:54:52 AM | TIMEOUT after 5000ms
+2/24/2026 9:54:52 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:54:52 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:54:58 AM | TIMEOUT after 5000ms
+2/24/2026 9:54:58 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:54:58 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:55:03 AM | TIMEOUT after 5000ms
+2/24/2026 9:55:03 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:55:03 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:55:09 AM | TIMEOUT after 5000ms
+2/24/2026 9:55:09 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:55:09 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:55:15 AM | TIMEOUT after 5000ms
+2/24/2026 9:55:15 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:55:15 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:55:20 AM | TIMEOUT after 5000ms
+2/24/2026 9:55:20 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:55:20 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:55:26 AM | TIMEOUT after 5000ms
+2/24/2026 9:55:26 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:55:26 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:55:32 AM | TIMEOUT after 5000ms
+2/24/2026 9:55:32 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:55:32 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:55:38 AM | TIMEOUT after 5000ms
+2/24/2026 9:55:38 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:55:38 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:55:43 AM | TIMEOUT after 5000ms
+2/24/2026 9:55:43 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:55:43 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:55:49 AM | TIMEOUT after 5000ms
+2/24/2026 9:55:49 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:55:49 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:55:55 AM | TIMEOUT after 5000ms
+2/24/2026 9:55:55 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:55:55 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:56:01 AM | TIMEOUT after 5000ms
+2/24/2026 9:56:01 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:56:01 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:56:06 AM | TIMEOUT after 5000ms
+2/24/2026 9:56:06 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:56:06 AM | EXPANDED MATCH -> (PFC) POST FINAL CHARGES
+2/24/2026 9:56:12 AM | TIMEOUT after 5000ms
+2/24/2026 9:56:12 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:56:18 AM | TIMEOUT after 5000ms
+2/24/2026 9:56:18 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:56:18 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:56:23 AM | TIMEOUT after 5000ms
+2/24/2026 9:56:23 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:56:23 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:56:29 AM | TIMEOUT after 5000ms
+2/24/2026 9:56:29 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:56:29 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:56:35 AM | TIMEOUT after 5000ms
+2/24/2026 9:56:35 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:56:35 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:56:41 AM | TIMEOUT after 5000ms
+2/24/2026 9:56:41 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:56:41 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:56:46 AM | TIMEOUT after 5000ms
+2/24/2026 9:56:46 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:56:46 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:56:52 AM | TIMEOUT after 5000ms
+2/24/2026 9:56:52 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:56:52 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:56:58 AM | TIMEOUT after 5000ms
+2/24/2026 9:56:58 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:56:58 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:57:03 AM | TIMEOUT after 5000ms
+2/24/2026 9:57:03 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:57:03 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:57:09 AM | TIMEOUT after 5000ms
+2/24/2026 9:57:09 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:57:09 AM | EXPANDED MATCH -> (PFC) POST FINAL CHARGES
+2/24/2026 9:57:15 AM | TIMEOUT after 5000ms
+2/24/2026 9:57:15 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:57:21 AM | TIMEOUT after 5000ms
+2/24/2026 9:57:21 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:57:21 AM | EXPANDED MATCH -> (PFC) POST FINAL CHARGES
+2/24/2026 9:57:26 AM | TIMEOUT after 5000ms
+2/24/2026 9:57:26 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:57:32 AM | TIMEOUT after 5000ms
+2/24/2026 9:57:32 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:57:32 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:57:38 AM | TIMEOUT after 5000ms
+2/24/2026 9:57:38 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:57:38 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:57:44 AM | TIMEOUT after 5000ms
+2/24/2026 9:57:44 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:57:44 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:57:49 AM | TIMEOUT after 5000ms
+2/24/2026 9:57:49 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:57:49 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:57:55 AM | TIMEOUT after 5000ms
+2/24/2026 9:57:55 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:57:55 AM | EXPANDED MATCH -> NOT ON FILE
+2/24/2026 9:58:01 AM | TIMEOUT after 5000ms
+2/24/2026 9:58:01 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:58:01 AM | EXPANDED MATCH -> (PFC) POST FINAL CHARGES
+2/24/2026 9:58:06 AM | TIMEOUT after 5000ms
+2/24/2026 9:58:06 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:58:12 AM | TIMEOUT after 5000ms
+2/24/2026 9:58:12 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:58:12 AM | EXPANDED MATCH -> (PFC) POST FINAL CHARGES
+2/24/2026 9:58:18 AM | TIMEOUT after 5000ms
+2/24/2026 9:58:18 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:58:24 AM | TIMEOUT after 5000ms
+2/24/2026 9:58:24 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:58:24 AM | EXPANDED MATCH -> (PFC) POST FINAL CHARGES
+2/24/2026 9:58:29 AM | TIMEOUT after 5000ms
+2/24/2026 9:58:29 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:58:35 AM | TIMEOUT after 5000ms
+2/24/2026 9:58:35 AM | Performing expanded retry scan from top of screen
+2/24/2026 9:58:35 AM | EXPANDED MATCH -> NOT ON FILE
+ValidateRoList log started: 2/24/2026 10:28:24 AM | Init
+ValidateRoList log started: 2/24/2026 10:32:31 AM | Init
+ValidateRoList finished: 2/24/2026 10:32:33 AM | Results=C:\Temp_alt\CDK\apps\validate_ro_list\ValidateRoList_IN_out.txt
+ValidateRoList log started: 2/24/2026 10:33:11 AM | Init
+2/24/2026 10:33:21 AM [ERROR] TIMEOUT after 3000ms
+2/24/2026 10:33:24 AM [ERROR] TIMEOUT after 3000ms
+ValidateRoList log started: 2/24/2026 10:36:40 AM | Init
+ValidateRoList log started: 2/24/2026 10:38:16 AM | Init
+2/24/2026 10:39:24 AM [ERROR] TIMEOUT after 3000ms
+2/24/2026 10:39:37 AM [ERROR] TIMEOUT after 3000ms
+2/24/2026 10:39:45 AM [ERROR] TIMEOUT after 3000ms
+2/24/2026 10:39:55 AM [ERROR] TIMEOUT after 3000ms
+2/24/2026 10:40:01 AM [ERROR] TIMEOUT after 3000ms
+2/24/2026 10:40:19 AM [ERROR] TIMEOUT after 3000ms
+2/24/2026 10:41:14 AM [ERROR] TIMEOUT after 3000ms
+2/24/2026 10:42:05 AM [ERROR] TIMEOUT after 3000ms
+2/24/2026 10:42:24 AM [ERROR] TIMEOUT after 3000ms
+2/24/2026 10:42:55 AM [ERROR] TIMEOUT after 3000ms
+2/24/2026 10:43:03 AM [ERROR] TIMEOUT after 3000ms
+2/24/2026 10:43:14 AM [ERROR] TIMEOUT after 3000ms
+ValidateRoList log started: 2/24/2026 10:44:16 AM | Init
+2/24/2026 10:44:58 AM [ERROR] TIMEOUT after 3000ms
+2/24/2026 10:45:02 AM [ERROR] TIMEOUT after 3000ms
+2/24/2026 10:45:13 AM [ERROR] TIMEOUT after 3000ms
+2/24/2026 10:45:20 AM [ERROR] TIMEOUT after 3000ms
+ValidateRoList log started: 2/24/2026 10:50:45 AM | Init
+2/24/2026 10:51:29 AM [ERROR] TIMEOUT after 3000ms
+2/24/2026 10:51:37 AM [ERROR] TIMEOUT after 3000ms
+2/24/2026 10:51:49 AM [ERROR] TIMEOUT after 3000ms
+2/24/2026 10:52:59 AM [ERROR] TIMEOUT after 3000ms
+2/24/2026 10:53:11 AM [ERROR] TIMEOUT after 3000ms
+2/24/2026 10:54:40 AM [ERROR] TIMEOUT after 3000ms
+2/24/2026 10:54:59 AM [ERROR] TIMEOUT after 3000ms
+2/24/2026 10:55:03 AM [ERROR] TIMEOUT after 3000ms
+2/24/2026 10:55:19 AM [ERROR] TIMEOUT after 3000ms
+2/24/2026 10:55:28 AM [ERROR] TIMEOUT after 3000ms
+2/24/2026 10:55:52 AM [ERROR] TIMEOUT after 3000ms
+2/24/2026 10:56:06 AM [ERROR] TIMEOUT after 3000ms
+2/24/2026 10:56:33 AM [ERROR] TIMEOUT after 3000ms
+2/24/2026 10:57:00 AM [ERROR] TIMEOUT after 3000ms
+2/24/2026 10:57:08 AM [ERROR] TIMEOUT after 3000ms
+2/24/2026 10:58:03 AM [ERROR] TIMEOUT after 3000ms
+2/24/2026 10:58:11 AM [ERROR] TIMEOUT after 3000ms
+ValidateRoList finished: 2/24/2026 10:58:18 AM | Results=C:\Temp_alt\CDK\apps\validate_ro_list\ValidateRoList_IN_out.txt

@@ -1,61 +1,54 @@
+Option Explicit
 
 ' --- Load PathHelper for centralized path management ---
-Dim g_fso: Set g_fso = CreateObject("Scripting.FileSystemObject")
-Const BASE_ENV_VAR_LOCAL = "CDK_BASE"
+' We use a minimal bootstrap here to load the shared framework
+Dim fso: Set fso = CreateObject("Scripting.FileSystemObject")
+Dim sh: Set sh = CreateObject("WScript.Shell")
+Dim basePath: basePath = sh.Environment("USER")("CDK_BASE")
+If basePath = "" Or Not fso.FolderExists(basePath) Then
+    MsgBox "Error: CDK_BASE environment variable not set or path does not exist.", vbCritical
+    WScript.Quit
+End If
 
-' Find repo root by searching for .cdkroot marker
-Function FindRepoRootForBootstrap()
-    Dim sh: Set sh = CreateObject("WScript.Shell")
-    Dim basePath: basePath = sh.Environment("USER")(BASE_ENV_VAR_LOCAL)
-
-    If basePath = "" Or Not g_fso.FolderExists(basePath) Then
-        Err.Raise 53, "Bootstrap", "Invalid or missing CDK_BASE. Value: " & basePath
-    End If
-
-    If Not g_fso.FileExists(g_fso.BuildPath(basePath, ".cdkroot")) Then
-        Err.Raise 53, "Bootstrap", "Cannot find .cdkroot in base path:" & vbCrLf & basePath
-    End If
-
-    FindRepoRootForBootstrap = basePath
-End Function
-
-Dim helperPath: helperPath = g_fso.BuildPath(FindRepoRootForBootstrap(), "framework\PathHelper.vbs")
-ExecuteGlobal g_fso.OpenTextFile(helperPath).ReadAll
-
-Option Explicit
+Dim helperPath: helperPath = fso.BuildPath(basePath, "framework\PathHelper.vbs")
+ExecuteGlobal fso.OpenTextFile(helperPath).ReadAll
 
 Dim POLL_INTERVAL: POLL_INTERVAL = 1 ' 1 second polling interval for development
 Dim CSV_FILE_PATH: CSV_FILE_PATH = GetConfigPath("Finalize_Close", "CSV")
 Dim LOG_FILE_PATH: LOG_FILE_PATH = GetConfigPath("Finalize_Close", "Log")
 Dim DebugLevel ' 0=None, 1=Error, 2=Info, 3=Debug
 DebugLevel = 2 ' Set default debug level (change as needed)
-Dim fso, ts, strLine, number
+
+Dim ts, strLine, roNumber, lastRoResult
 Dim bzhao: Set bzhao = CreateObject("BZWhll.WhllObj")
 
 '-----------------------------------------------------------
 ' Main script execution loop
 '-----------------------------------------------------------
-Set fso = CreateObject("Scripting.FileSystemObject")
 If fso.FileExists(CSV_FILE_PATH) Then
-    bzhao.Connect ""
+    Dim connResult: connResult = bzhao.Connect("")
+    If connResult <> 0 Then
+        MsgBox "Error: Could not connect to BlueZone session. Ensure BlueZone is open and active.", vbCritical, "Connection Failed"
+        WScript.Quit 1
+    End If
+    
     Set ts = fso.OpenTextFile(CSV_FILE_PATH, 1)
     ts.ReadLine   ' Skip header row if present
 
     Do While Not ts.AtEndOfStream
         strLine = ts.ReadLine
-        number = Trim(strLine)
-        If Len(number) > 0 And IsNumeric(number) Then
-            Call Main(number)
+        roNumber = Trim(strLine)
+        If Len(roNumber) > 0 And IsNumeric(roNumber) Then
+            Call Main(roNumber)
         End If
     Loop
 
     ts.Close
     Set ts = Nothing
+    bzhao.Disconnect
 Else
     MsgBox "Error: The file '" & CSV_FILE_PATH & "' was not found.", vbCritical, "File Not Found"
 End If
-
-Set fso = Nothing
 
 '-----------------------------------------------------------
 ' Main subroutine to check and process each RO number
@@ -66,13 +59,13 @@ Sub Main(number)
 
     ' Check for NOT ON FILE error in line 2
     If CheckForTextInLine2("NOT ON FILE") Then
-    LogResult "INFO", "RO NOT ON FILE - Skipping to next. RO: " & number
+        LogResult "INFO", "RO NOT ON FILE - Skipping to next. RO: " & number
         Exit Sub
     End If
 
     ' Check for "is closed" response in line 2
     If CheckForTextInLine2("is closed") Then
-    LogResult "INFO", "RO IS CLOSED - Skipping to next. RO: " & number
+        LogResult "INFO", "RO IS CLOSED - Skipping to next. RO: " & number
         Exit Sub
     End If
 
@@ -115,7 +108,7 @@ Function DiscoverLineLetters()
     ' The prompt area starts at row 23, so we must stop at row 22 to avoid 
     ' misidentifying prompt characters (like 'C' in 'COMMAND:') as line letters.
     Dim startRow, endRow
-    startRow = 10 ' First data row
+    startRow = 7  ' First data row (standard CDK)
     endRow = 22   ' Last possible data row before prompt area
     
     For startReadRow = startRow To endRow
@@ -278,7 +271,7 @@ Sub WaitForTextAtBottom(targetText)
         
         If elapsed >= 10000 Then
             MsgBox "ERROR: Timeout waiting for text '" & targetText & "' to appear at bottom of screen. Script will exit." & vbCrLf & "Last 2 lines: " & vbCrLf & buffer23 & vbCrLf & buffer24, vbCritical
-            bzhao.StopScript
+            WScript.Quit
         End If
     Loop
 End Sub
@@ -297,19 +290,19 @@ End Function
 ' EnterTextAndWait subroutine
 ' If the entry requires an enter key press, use this subroutine.
 '-----------------------------------------------------------
-Sub EnterTextAndWait(text, wait)
-    bzhao.SendKey text
+Sub EnterTextAndWait(textVal, waitMs)
+    bzhao.SendKey textVal
     bzhao.Pause 100 ' Small delay to allow text to register
-    Call PressKey ("<NumpadEnter>")
-    bzhao.Pause 500
+    Call PressKey("<NumpadEnter>")
+    bzhao.Pause waitMs
 End Sub
 
 '-----------------------------------------------------------
 ' PressKey subroutine
 ' If the entry requires no enter key press, use this subroutine.
 '-----------------------------------------------------------
-Sub PressKey(key)
-   bzhao.SendKey key
+Sub PressKey(keyName)
+   bzhao.SendKey keyName
    bzhao.Pause 100 ' Small delay to allow key press to register  
 End Sub
 
@@ -317,13 +310,24 @@ Sub LogResult(logType, message)
     ' logType: "ERROR"=1, "INFO"=2, "DEBUG"=3
     Dim logFSO, logFile, typeLevel
     Select Case UCase(logType)
-        Case "ERROR": typeLevel = 1
-        Case "INFO": typeLevel = 2
-        Case "DEBUG": typeLevel = 3
-        Case Else: typeLevel = 2 ' Default to INFO
+        Case "ERROR"
+            typeLevel = 1
+        Case "INFO"
+            typeLevel = 2
+        Case "DEBUG"
+            typeLevel = 3
+        Case Else
+            typeLevel = 2 ' Default to INFO
     End Select
     If typeLevel <= DebugLevel Then
         Set logFSO = CreateObject("Scripting.FileSystemObject")
+        
+        ' Ensure parent folder exists
+        Dim logDir: logDir = logFSO.GetParentFolderName(LOG_FILE_PATH)
+        If Not logFSO.FolderExists(logDir) Then
+            logFSO.CreateFolder(logDir)
+        End If
+
         Set logFile = logFSO.OpenTextFile(LOG_FILE_PATH, 8, True)
         logFile.WriteLine Now & "  [" & logType & "] " & message
         logFile.Close
@@ -337,7 +341,7 @@ Function HandleCloseoutErrors()
     bzhao.ReadScreen screenContentBuffer, screenLength, 20, 1
 
     If InStr(1, screenContentBuffer, "ERROR", vbTextCompare) > 0 Then
-    LogResult "ERROR", "Closeout failed due to error on screen."
+        LogResult "ERROR", "Closeout failed due to error on screen."
         ' Send 'E' to exit back to main screen
         bzhao.SendKey "E"
         bzhao.Pause 100
@@ -421,7 +425,7 @@ Sub AddStory(bzhao, storyCode)
         elapsed = Timer - startTime
         If elapsed > 20 Then
             MsgBox "ERROR: Timeout in AddStory for " & storyCode & ". Script will exit to prevent data corruption." & vbCrLf & "Current screen prompt area: " & vbCrLf & screenContent, vbCritical
-            bzhao.StopScript
+            WScript.Quit
         End If
     Loop
 End Sub
@@ -431,5 +435,3 @@ Sub EnterText(bzhao, textToEnter)
     bzhao.Pause 150 ' Small delay to allow text to register
     bzhao.SendKey "<NumpadEnter>"
 End Sub
-
-bzhao.Disconnect

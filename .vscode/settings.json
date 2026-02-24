@@ -10,6 +10,7 @@
         "/^cd utilities/tests ; cmd /c \"cscript\\.exe run_all_tests\\.vbs 2>&1\" ; cd \\.\\./\\.\\.$/": {
             "approve": true,
             "matchCommandLine": true
-        }
+        },
+        "%": true
     }
 }

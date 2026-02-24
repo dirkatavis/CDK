@@ -48,7 +48,11 @@ Set fso = CreateObject("Scripting.FileSystemObject")
 
 ' Connect to BlueZone
 Set bzhao = CreateObject("BZWhll.WhllObj")
-bzhao.Connect ""
+Dim connResult: connResult = bzhao.Connect("")
+If connResult <> 0 Then
+    MsgBox "Error: Could not connect to BlueZone session. Ensure BlueZone is open and active.", vbCritical, "Connection Failed"
+    WScript.Quit 1
+End If
 
 ' Check and Open Input File
 If fso.FileExists(CSV_FILE) Then
@@ -105,10 +109,10 @@ Function DiscoverLineLetters()
     maxLinesToCheck = 10 ' Practical limit: Check up to 10 line letters (business logic constraint)
     missingLetters = 0
     
-    ' The LC column header is typically on row 6, and line letters start on row 10
+    ' The LC column header is typically on row 6, and line letters start on row 7
     ' Column 1 contains the line letter (under the "L" in "LC")
     Dim startRow
-    startRow = 10 ' First data row (line letters always start at row 10)
+    startRow = 7 ' First data row (standard CDK)
     
     ' Read the screen area where line letters appear (column 1, multiple rows)
     For i = 0 To maxLinesToCheck - 1
@@ -298,6 +302,13 @@ Sub LogResult(ro, result)
     Dim fsoLog, logFile, logPath
     logPath = GetConfigPath("Prepare_Close_Pt1", "Log")
     Set fsoLog = CreateObject("Scripting.FileSystemObject")
+    
+    ' Ensure parent folder exists
+    Dim logDir: logDir = fsoLog.GetParentFolderName(logPath)
+    If Not fsoLog.FolderExists(logDir) Then
+        fsoLog.CreateFolder(logDir)
+    End If
+
     Set logFile = fsoLog.OpenTextFile(logPath, 8, True)
     logFile.WriteLine Now & "  " & ro & " - Result: " & result
     logFile.Close
