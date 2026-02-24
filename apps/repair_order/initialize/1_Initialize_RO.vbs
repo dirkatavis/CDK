@@ -56,7 +56,14 @@ LOG "Script started - Log file path: " & LOG_FILE_PATH
 Set fso = CreateObject("Scripting.FileSystemObject")
 If fso.FileExists(CSV_FILE_PATH) Then
     LOG "CSV file found: " & CSV_FILE_PATH
-    bzhao.Connect ""
+    
+    Dim connResult: connResult = bzhao.Connect("")
+    If connResult <> 0 Then
+        LOG "Connection failed: Could not connect to BlueZone session."
+        MsgBox "Error: Could not connect to BlueZone session. Ensure BlueZone is open and active.", vbCritical, "Connection Failed"
+        WScript.Quit 1
+    End If
+    
     LOG "Connected to BlueZone"
     Set ts = fso.OpenTextFile(CSV_FILE_PATH, 1)
     ts.ReadLine   ' Skip header row
@@ -403,6 +410,12 @@ Sub LOG(msg)
     On Error Resume Next
     Dim lfs, lfile, errorNum, errorDesc
     Set lfs = CreateObject("Scripting.FileSystemObject")
+    
+    ' Ensure parent folder exists
+    Dim logDir: logDir = lfs.GetParentFolderName(LOG_FILE_PATH)
+    If Not lfs.FolderExists(logDir) Then
+        lfs.CreateFolder(logDir)
+    End If
     
     ' Try to create log entry
     Set lfile = lfs.OpenTextFile(LOG_FILE_PATH, 8, True)
