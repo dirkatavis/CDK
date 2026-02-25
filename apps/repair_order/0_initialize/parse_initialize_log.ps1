@@ -29,7 +29,7 @@ function Fail([string]$msg, [int]$code=1) {
 $PSScriptRootResolved = Split-Path -Parent $MyInvocation.MyCommand.Definition
 
 if (-not $LogPath) {
-    $configPath = Join-Path $PSScriptRootResolved '..\config\config.ini'
+    $configPath = Join-Path $PSScriptRootResolved '..\..\config\config.ini'
     $configPath = Resolve-Path $configPath -ErrorAction SilentlyContinue
     if (-not $configPath) { Fail "config/config.ini not found at expected location. Provide -LogPath explicitly." 2 }
     $configPath = $configPath.ProviderPath
@@ -59,7 +59,7 @@ if (-not $LogPath) {
     if (-not $logValue) { Fail "'Log' key not found in [$section] of config/config.ini. Provide -LogPath explicitly." 4 }
 
     # If the config value is relative, interpret it relative to repo root
-    $repoRoot = Resolve-Path (Join-Path $PSScriptRootResolved '..')
+    $repoRoot = Resolve-Path (Join-Path $PSScriptRootResolved '..' )
     if (-not [System.IO.Path]::IsPathRooted($logValue)) {
         $LogPath = Join-Path $repoRoot $logValue
     } else {
