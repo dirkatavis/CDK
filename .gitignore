@@ -39,8 +39,8 @@ tools/ValidateRoList/ValidateRoList_IN.csv
 Temp/
 
 # Generated parser outputs (reproducible; ignored)
-apps/repair_order/0_initialize/parse_initialize_log_ro.txt
-apps/repair_order/0_initialize/parse_initialize_log_mva.txt
+apps/repair_order/0_Open_RO/parse_open_ro_log_ro.txt
+apps/repair_order/0_Open_RO/parse_open_ro_log_mva.txt
 
 # Test artifacts in root directory
 /test_output.txt

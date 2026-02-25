@@ -35,11 +35,11 @@ Const PRE_KEY_WAIT = 150     ' Pause before sending special keys
 Const POST_KEY_WAIT = 350    ' Pause after sending special keys
 Const PROMPT_TIMEOUT_MS = 5000 ' Default prompt timeout
 
-Dim CSV_FILE_PATH: CSV_FILE_PATH = GetConfigPath("Initialize_RO", "CSV")
-Dim OUTPUT_CSV_PATH: OUTPUT_CSV_PATH = GetConfigPath("Initialize_RO", "OutputCSV")
+Dim CSV_FILE_PATH: CSV_FILE_PATH = GetConfigPath("Open_RO", "CSV")
+Dim OUTPUT_CSV_PATH: OUTPUT_CSV_PATH = GetConfigPath("Open_RO", "OutputCSV")
 Dim SCRIPT_FOLDER: SCRIPT_FOLDER = "scripts\archive"
-Dim SLOW_MARKER_PATH: SLOW_MARKER_PATH = GetConfigPath("Initialize_RO", "DebugMarker")
-Dim LOG_FILE_PATH: LOG_FILE_PATH = GetConfigPath("Initialize_RO", "Log")
+Dim SLOW_MARKER_PATH: SLOW_MARKER_PATH = GetConfigPath("Open_RO", "DebugMarker")
+Dim LOG_FILE_PATH: LOG_FILE_PATH = GetConfigPath("Open_RO", "Log")
 
 Dim fso, ts, strLine, arrValues, i, MVA, Mileage
 
@@ -464,7 +464,7 @@ Sub LOG(msg)
     Else
         ' If main log fails, try creating a fallback log with error info
         Dim fallbackPath
-        fallbackPath = GetConfigPath("Initialize_RO", "FallbackLog")
+        fallbackPath = GetConfigPath("Open_RO", "FallbackLog")
         Set lfile = lfs.OpenTextFile(fallbackPath, 8, True)
         If Err.Number = 0 Then
             lfile.WriteLine Now & " - LOG ERROR: " & errorNum & " - " & errorDesc
