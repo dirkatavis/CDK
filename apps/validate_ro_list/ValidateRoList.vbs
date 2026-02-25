@@ -312,10 +312,11 @@ Do Until inTS.AtEndOfStream
     If roVal <> "" Then
         ' Direct terminal entry: includes requested 500ms delays for UI stability
         If Not mockMode Then
-            bzhao.Pause 500 ' Delay before typing RO
+            bzhao.Pause 700 ' Delay before typing RO
             bzhao.SendKey roVal
             bzhao.Pause 500 ' Delay before Enter
-            bzhao.SendKey "<NumpadEnter>"
+            bzhao.SendKey "<NumpadEnter>"	    
+            bzhao.Pause 500 ' Delay before Enter
         End If
 
         ' Wait for the UI cue to appear (250ms polling)
