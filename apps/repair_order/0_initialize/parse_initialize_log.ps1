@@ -29,7 +29,11 @@ function Fail([string]$msg, [int]$code=1) {
 $PSScriptRootResolved = Split-Path -Parent $MyInvocation.MyCommand.Definition
 
 if (-not $LogPath) {
-    $configPath = Join-Path $PSScriptRootResolved '..\..\config\config.ini'
+    # Repo root is three levels up from this initialize folder
+    $repoRootCandidate = Resolve-Path (Join-Path $PSScriptRootResolved '..\..\..') -ErrorAction SilentlyContinue
+    if (-not $repoRootCandidate) { Fail "Unable to locate repository root. Provide -LogPath explicitly." 2 }
+    $repoRootCandidate = $repoRootCandidate.ProviderPath
+    $configPath = Join-Path $repoRootCandidate 'config\config.ini'
     $configPath = Resolve-Path $configPath -ErrorAction SilentlyContinue
     if (-not $configPath) { Fail "config/config.ini not found at expected location. Provide -LogPath explicitly." 2 }
     $configPath = $configPath.ProviderPath
@@ -58,28 +62,28 @@ if (-not $LogPath) {
 
     if (-not $logValue) { Fail "'Log' key not found in [$section] of config/config.ini. Provide -LogPath explicitly." 4 }
 
-    # If the config value is relative, interpret it relative to repo root
-    $repoRoot = Resolve-Path (Join-Path $PSScriptRootResolved '..' )
+    # If the config value is relative, interpret it relative to the repo root we discovered
     if (-not [System.IO.Path]::IsPathRooted($logValue)) {
-        $LogPath = Join-Path $repoRoot $logValue
+        $LogPath = Join-Path $repoRootCandidate $logValue
     } else {
         $LogPath = $logValue
     }
 }
 
-$LogPath = (Resolve-Path -LiteralPath $LogPath -ErrorAction SilentlyContinue)
-if (-not $LogPath) { Fail "Resolved log path does not exist. Provide a valid -LogPath or update config/config.ini." 5 }
-$LogPath = $LogPath.ProviderPath
+if ([string]::IsNullOrWhiteSpace($LogPath)) { Fail "No log path available to resolve. Provide -LogPath explicitly or fix config." 5 }
+if (-not [System.IO.Path]::IsPathRooted($LogPath)) { $LogPath = Join-Path $repoRootCandidate $LogPath }
+if (-not (Test-Path $LogPath)) { Fail "Resolved log path does not exist. Provide a valid -LogPath or update config/config.ini." 5 }
+$LogPath = (Get-Item -Path $LogPath).FullName
 
 $outFolder = Split-Path -Parent $LogPath
 $roFile = Join-Path $outFolder 'parse_initialize_log_ro.txt'
 $mvaFile = Join-Path $outFolder 'parse_initialize_log_mva.txt'
 
 # Overwrite (truncate) output files
-if (Test-Path $roFile) { Remove-Item -LiteralPath $roFile -Force }
-New-Item -LiteralPath $roFile -ItemType File -Force | Out-Null
-if (Test-Path $mvaFile) { Remove-Item -LiteralPath $mvaFile -Force }
-New-Item -LiteralPath $mvaFile -ItemType File -Force | Out-Null
+if (Test-Path $roFile) { Remove-Item -Path $roFile -Force }
+New-Item -Path $roFile -ItemType File -Force | Out-Null
+if (Test-Path $mvaFile) { Remove-Item -Path $mvaFile -Force }
+New-Item -Path $mvaFile -ItemType File -Force | Out-Null
 
 Write-Output "Parsing log: $LogPath"
 
@@ -95,8 +99,8 @@ try {
         if ($m.Success) {
             $mva = $m.Groups[1].Value
             $ro  = $m.Groups[2].Value
-            Add-Content -LiteralPath $roFile -Value $ro
-            Add-Content -LiteralPath $mvaFile -Value $mva
+            Add-Content -Path $roFile -Value $ro
+            Add-Content -Path $mvaFile -Value $mva
             $matchCount++
         }
     }
