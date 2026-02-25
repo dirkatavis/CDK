@@ -1,14 +1,14 @@
 <#
 .SYNOPSIS
-  Parse Initialize_RO.log and extract RO numbers and MVA numbers.
+  Parse Open_RO.log and extract RO numbers and MVA numbers.
 
 .DESCRIPTION
-  Reads a log path from the `-LogPath` parameter or from the `Initialize_RO->Log` key
+  Reads a log path from the `-LogPath` parameter or from the `Open_RO->Log` key
   in `config/config.ini` (located at repository root). The resolved log file MUST
   exist — there are NO fallback paths. The script parses lines matching the pattern
   `MVA: <digits> - RO: <digits>` and writes two files next to the log:
-    - parse_initialize_log_ro.txt  (one RO per line)
-    - parse_initialize_log_mva.txt (one MVA per line)
+    - parse_open_ro_log_ro.txt  (one RO per line)
+    - parse_open_ro_log_mva.txt (one MVA per line)
 
 .NOTES
   - Targets PowerShell 5.1+ (uses core features only).
@@ -49,7 +49,7 @@ if (-not $LogPath) {
         Fail "Failed reading config file: $configPath" 3
     }
 
-    $section = 'Initialize_RO'
+    $section = 'Open_RO'
     $inSection = $false
     $logValue = $null
     foreach ($line in $iniLines) {
@@ -88,8 +88,8 @@ if (-not (Test-Path $LogPath)) { Fail "Resolved log path does not exist. Provide
 $LogPath = (Get-Item -Path $LogPath).FullName
 
 $outFolder = Split-Path -Parent $LogPath
-$roFile = Join-Path $outFolder 'parse_initialize_log_ro.txt'
-$mvaFile = Join-Path $outFolder 'parse_initialize_log_mva.txt'
+$roFile = Join-Path $outFolder 'parse_open_ro_log_ro.txt'
+$mvaFile = Join-Path $outFolder 'parse_open_ro_log_mva.txt'
 
 # Overwrite (truncate) output files
 if (Test-Path $roFile) { Remove-Item -Path $roFile -Force }
