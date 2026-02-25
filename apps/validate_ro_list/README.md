@@ -12,7 +12,7 @@ Validates Repair Order lists against CDK system data to ensure accuracy before p
 ## Output/Logs
 - Logs written to `runtime/logs/validate_ro_list/ValidateRoList.log`
 - Screen mapping data: `ro_screen_map_pfc.txt`, `sample_map_pfc.txt`
-- Validation results: `ValidateRoList_out.txt`, `ValidateRoList_IN_out.txt`
+- Validation results: `ValidateRoList_OUT.txt`
 - Mock test artifacts: `ValidateRoList_mock_log.txt`, `ValidateRoList_mock_out.txt`
 
 ## Usage
