@@ -223,7 +223,7 @@ End Function
 Function DiscoverLineLetters()
     Dim i, capturedLetter, screenContentBuffer, readLength
     Dim foundLetters, foundCount
-    Dim startReadRow, startReadColumn, emptyRowCount
+    Dim startReadRow, startReadColumn, emptyRowCount, nextColChar
     Dim startRow, endRow
     
     ' Array to store discovered line letters
@@ -232,7 +232,8 @@ Function DiscoverLineLetters()
     emptyRowCount = 0
     
     ' The prompt area starts at row 23, so we must stop at row 22
-    startRow = 7 ' First data row in CDK
+    ' Anchor scanning at row 10 to skip header rows (e.g., REPAIR, REMARKS)
+    startRow = 10 ' First data row in CDK
     endRow = 22  ' Last possible data row before prompt area
     
     For startReadRow = startRow To endRow
@@ -251,9 +252,23 @@ Function DiscoverLineLetters()
         capturedLetter = Trim(screenContentBuffer)
         If Len(capturedLetter) = 1 Then
             If Asc(UCase(capturedLetter)) >= Asc("A") And Asc(UCase(capturedLetter)) <= Asc("Z") Then
-                tempLetters(foundCount) = UCase(capturedLetter)
-                foundCount = foundCount + 1
-                emptyRowCount = 0 ' Reset when a letter is found
+                ' Peek column 2 to ensure this is a line letter (typical form: "A  DESCRIPTION")
+                nextColChar = ""
+                On Error Resume Next
+                bzhao.ReadScreen nextColChar, 1, startReadRow, startReadColumn + 1
+                If Err.Number <> 0 Then
+                    Err.Clear
+                    nextColChar = ""
+                End If
+                On Error GoTo 0
+
+                If Len(nextColChar) > 0 And Asc(nextColChar) = 32 Then
+                    tempLetters(foundCount) = UCase(capturedLetter)
+                    foundCount = foundCount + 1
+                    emptyRowCount = 0 ' Reset when a letter is found
+                Else
+                    emptyRowCount = emptyRowCount + 1
+                End If
             Else
                 emptyRowCount = emptyRowCount + 1
             End If

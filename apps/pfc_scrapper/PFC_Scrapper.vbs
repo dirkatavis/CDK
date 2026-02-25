@@ -229,19 +229,23 @@ Function GetRepairOrderStatus()
 End Function
 
 Function GetLineDescription(letter)
-    Dim row, buf, foundText
+    Dim row, buf, foundText, nextColChar
     GetLineDescription = ""
     ' Header ends at Row 6 (REMARKS). Lines A, B, C start at Row 7.
-    For row = 7 To 22
-        bzhao.ReadScreen buf, 80, row, 1
+    ' We scan from Row 10 to skip potential multi-line headers (e.g. REPAIR, REMARKS)
+    For row = 10 To 22
+        bzhao.ReadScreen buf, 1, row, 1
         ' Look for the letter specifically in column 1
-        ' Ensuring it's the anchor (usually followed by spaces or punctuation)
-        If UCase(Mid(buf, 1, 1)) = UCase(letter) Then
-            ' Found the line letter anchor in Col 1
-            ' Based on previous working state, description starts around Col 7
-            bzhao.ReadScreen foundText, 50, row, 7
-            GetLineDescription = Left(Trim(foundText), 25)
-            Exit Function
+        If UCase(Trim(buf)) = UCase(letter) Then
+            ' Peek column 2 to ensure this is a line letter (typical form: "A  DESCRIPTION")
+            bzhao.ReadScreen nextColChar, 1, row, 2
+            If Asc(nextColChar) = 32 Then
+                ' Found the line letter anchor in Col 1
+                ' Based on previous working state, description starts around Col 7
+                bzhao.ReadScreen foundText, 50, row, 7
+                GetLineDescription = Left(Trim(foundText), 25)
+                Exit Function
+            End If
         End If
     Next
 End Function
