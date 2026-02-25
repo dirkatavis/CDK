@@ -38,6 +38,10 @@ tools/ValidateRoList/ValidateRoList_IN.csv
 # Ignore other local runtime artifacts
 Temp/
 
+# Generated parser outputs (reproducible; ignored)
+apps/repair_order/0_initialize/parse_initialize_log_ro.txt
+apps/repair_order/0_initialize/parse_initialize_log_mva.txt
+
 # Test artifacts in root directory
 /test_output.txt
 /validation_output.txt
