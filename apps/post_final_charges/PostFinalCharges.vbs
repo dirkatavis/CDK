@@ -215,6 +215,8 @@ Function CreateLineItemPromptDictionary()
     ' When screen shows "OPERATION CODE FOR LINE A, L1 ()?", sends "I" (empty parens = no default)
     ' When screen shows "OPERATION CODE FOR LINE A, L1?", sends "I" (no parentheses)
     Call AddPromptToDictEx(dict, "OPERATION CODE FOR LINE.*(\([A-Za-z0-9]*\))?\?", "I", "<NumpadEnter>", False, True)
+    ' Narrow watcher for the rare no-parenthesis variant - avoid matching lines that include '('
+    Call AddPromptToDict(dict, "OPERATION CODE FOR LINE[^\(]*\?", "I", "<NumpadEnter>", False)
     Call AddPromptToDict(dict, "COMMAND:\(SEQ#/E/N/B/\?\)", "", "", True)
     ' COMMAND: prompt removed - handled by legacy WaitForPrompt in ProcessLineItems
     Call AddPromptToDict(dict, "This OpCode was performed in the last 270 days.", "", "", False)
