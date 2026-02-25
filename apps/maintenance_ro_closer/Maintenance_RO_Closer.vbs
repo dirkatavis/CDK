@@ -475,8 +475,12 @@ Function HandleReviewPrompts(lineLetter)
         ' For field-level prompts in review, we use EnterReviewPrompt for speed
         If TestPrompt(regEx, screenContent, "LABOR TYPE|LTYPE") Then
             EnterReviewPrompt ""
-        ElseIf TestPrompt(regEx, screenContent, "OP CODE|OPERATION CODE.*(\([A-Za-z0-9]*\))?\?") Then
+        ' Prefer pattern that explicitly contains a parenthesized default (accept default)
+        ElseIf TestPrompt(regEx, screenContent, "OP CODE|OPERATION CODE.*\([A-Za-z0-9]+\)\?") Then
             EnterReviewPrompt ""
+        ' Fallback: no-parenthesis variant (e.g. "OPERATION CODE FOR LINE A, L1?")
+        ElseIf TestPrompt(regEx, screenContent, "OP CODE|OPERATION CODE.*\?") Then
+            EnterReviewPrompt "I"
         ElseIf TestPrompt(regEx, screenContent, "DESC:") Then
             EnterReviewPrompt ""
         ElseIf TestPrompt(regEx, screenContent, "TECHNICIAN.*(\([A-Za-z0-9]*\))?\?") Then
