@@ -1,0 +1,30 @@
+RO SCREEN COORDINATE MAP
+Generated: 2/24/2026 12:28:26 PM
+
+                1         2         3         4         5         6         7         8
+      01234567890123456789012345678901234567890123456789012345678901234567890123456789
+      --------------------------------------------------------------------------------
+01 | ONSITE PLUS SERVICE            (PFC) POST FINAL CHARGES            24FEB26 12:28
+02 |                                                                                 
+03 | RO: 874100     TAG: T5635604 SA: 71454   25 SUBARU SUBARU VIN: 4S4WMADD4S3404613
+04 | NAME:                   PMT: CASH      MILEAGE:   31256     OPENED DATE: 24FEB26
+05 | RO STATUS: READY TO POST          PROMISED: 24FEB26 17:00   OPENED TIME:   07:24
+06 | REMARKS:                                                   WAR EXP DATE:        
+07 | REPAIR ORDER #874100 DETAIL                                                     
+08 | LC DESCRIPTION                           TECH... LTYPE    ACT   SOLD    SALE AMT
+09 |                                                                                 
+10 | A  REPLACE OIL AND FILTER, PERFORM SERVI C92                                    
+11 |    L1 PMSCRT REPLACE OIL AND FILTER, PER 71454   I       0.02   0.50       28.00
+12 | B  CHECK AND ADJUST TIRE PRESSURE        C92                                    
+13 |    L1 CATP CHECK AND ADJUST TIRE PRESSUR 71454   I       0.00   0.10        8.10
+14 | C  MEASURE AND DOCUMENT TIRE TREAD DEPTH C92                                    
+15 |    L1 MTD MEASURE AND DOCUMENT TIRE TREA 71454   I       0.00   0.10        8.10
+16 |                                                                                 
+17 |                                                                                 
+18 |                                                                                 
+19 |                                                                                 
+20 |                                                                                 
+21 |                                                                                 
+22 |                                                                 (END OF DISPLAY)
+23 | COMMAND:                                                                        
+      --------------------------------------------------------------------------------
