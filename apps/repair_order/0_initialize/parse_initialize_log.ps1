@@ -28,11 +28,16 @@ function Fail([string]$msg, [int]$code=1) {
 
 $PSScriptRootResolved = Split-Path -Parent $MyInvocation.MyCommand.Definition
 
+# Discover repo root candidate (three levels up) for resolving relative paths.
+# This is used when resolving config `Log=` values and when an explicit
+# `-LogPath` is provided as a relative path.
+$repoRootCandidate = $null
+$tryRepo = Resolve-Path (Join-Path $PSScriptRootResolved '..\..\..') -ErrorAction SilentlyContinue
+if ($tryRepo) { $repoRootCandidate = $tryRepo.ProviderPath }
+
 if (-not $LogPath) {
-    # Repo root is three levels up from this initialize folder
-    $repoRootCandidate = Resolve-Path (Join-Path $PSScriptRootResolved '..\..\..') -ErrorAction SilentlyContinue
+    # We expect to have discovered the repo root earlier; fail if not found.
     if (-not $repoRootCandidate) { Fail "Unable to locate repository root. Provide -LogPath explicitly." 2 }
-    $repoRootCandidate = $repoRootCandidate.ProviderPath
     $configPath = Join-Path $repoRootCandidate 'config\config.ini'
     $configPath = Resolve-Path $configPath -ErrorAction SilentlyContinue
     if (-not $configPath) { Fail "config/config.ini not found at expected location. Provide -LogPath explicitly." 2 }
@@ -71,7 +76,14 @@ if (-not $LogPath) {
 }
 
 if ([string]::IsNullOrWhiteSpace($LogPath)) { Fail "No log path available to resolve. Provide -LogPath explicitly or fix config." 5 }
-if (-not [System.IO.Path]::IsPathRooted($LogPath)) { $LogPath = Join-Path $repoRootCandidate $LogPath }
+if (-not [System.IO.Path]::IsPathRooted($LogPath)) {
+    if ($repoRootCandidate) {
+        $LogPath = Join-Path $repoRootCandidate $LogPath
+    } else {
+        # Fall back to current working directory when repo root is not discoverable
+        $LogPath = Join-Path (Get-Location).Path $LogPath
+    }
+}
 if (-not (Test-Path $LogPath)) { Fail "Resolved log path does not exist. Provide a valid -LogPath or update config/config.ini." 5 }
 $LogPath = (Get-Item -Path $LogPath).FullName
 
