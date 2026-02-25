@@ -1,6 +1,6 @@
 Option Explicit
 
-' WRAPPER_TARGET: apps\repair_order\prepare_close_pt1\2_Prepare_Close_Pt1.vbs
+' WRAPPER_TARGET: apps\repair_order\1_prepare_close_pt1\1_Prepare_Close_Pt1.vbs
 ' Legacy launch compatibility wrapper - REMOVABLE at sunset
 
 Dim fso: Set fso = CreateObject("Scripting.FileSystemObject")
@@ -15,7 +15,7 @@ If Not fso.FileExists(fso.BuildPath(basePath, ".cdkroot")) Then
     Err.Raise 53, "Wrapper", "Cannot find .cdkroot in base path:" & vbCrLf & basePath
 End If
 
-Dim targetPath: targetPath = fso.BuildPath(basePath, "apps\repair_order\prepare_close_pt1\2_Prepare_Close_Pt1.vbs")
+Dim targetPath: targetPath = fso.BuildPath(basePath, "apps\repair_order\1_prepare_close_pt1\1_Prepare_Close_Pt1.vbs")
 If Not fso.FileExists(targetPath) Then
     Err.Raise 53, "Wrapper", "Wrapper target not found:" & vbCrLf & targetPath
 End If

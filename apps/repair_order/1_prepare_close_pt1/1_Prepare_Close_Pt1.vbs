@@ -87,13 +87,13 @@ Function DiscoverLineLetters()
     Dim maxLinesToCheck, i, capturedLetter, screenContentBuffer, readLength
     Dim foundLetters, foundCount
     Dim startReadRow, startReadColumn
-    Dim missingLetters
+    Dim missingLetters, nextColChar
     Dim tempLetters(25)
     foundCount = 0
     maxLinesToCheck = 10
     missingLetters = 0
     Dim startRow
-    startRow = 7
+    startRow = 10 ' Anchor at first actual data row (skip header rows)
     For i = 0 To maxLinesToCheck - 1
         startReadRow = startRow + i
         startReadColumn = 1
@@ -108,9 +108,23 @@ Function DiscoverLineLetters()
         capturedLetter = Trim(screenContentBuffer)
         If Len(capturedLetter) = 1 Then
             If Asc(UCase(capturedLetter)) >= Asc("A") And Asc(UCase(capturedLetter)) <= Asc("Z") Then
-                tempLetters(foundCount) = UCase(capturedLetter)
-                foundCount = foundCount + 1
-                missingLetters = 0
+                ' Peek column 2 to ensure this is a line letter (typical form: "A  DESCRIPTION")
+                nextColChar = ""
+                On Error Resume Next
+                bzhao.ReadScreen nextColChar, 1, startReadRow, startReadColumn + 1
+                If Err.Number <> 0 Then
+                    Err.Clear
+                    nextColChar = ""
+                End If
+                On Error GoTo 0
+
+                If Len(nextColChar) > 0 And Asc(nextColChar) = 32 Then
+                    tempLetters(foundCount) = UCase(capturedLetter)
+                    foundCount = foundCount + 1
+                    missingLetters = 0
+                Else
+                    missingLetters = missingLetters + 1
+                End If
             Else
                 missingLetters = missingLetters + 1
             End If

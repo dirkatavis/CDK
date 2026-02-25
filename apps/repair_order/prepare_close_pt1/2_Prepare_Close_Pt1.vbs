@@ -101,7 +101,7 @@ Function DiscoverLineLetters()
     Dim maxLinesToCheck, i, capturedLetter, screenContentBuffer, readLength
     Dim foundLetters, foundCount
     Dim startReadRow, startReadColumn
-    Dim missingLetters
+    Dim missingLetters, nextColChar
     
     ' Array to store discovered line letters
     Dim tempLetters(25) ' Max 26 letters A-Z (sized for theoretical maximum)
@@ -111,8 +111,9 @@ Function DiscoverLineLetters()
     
     ' The LC column header is typically on row 6, and line letters start on row 7
     ' Column 1 contains the line letter (under the "L" in "LC")
+    ' We anchor at row 10 to skip potential multi-line headers (e.g., REPAIR, REMARKS)
     Dim startRow
-    startRow = 7 ' First data row (standard CDK)
+    startRow = 10 ' First data row (standard CDK)
     
     ' Read the screen area where line letters appear (column 1, multiple rows)
     For i = 0 To maxLinesToCheck - 1
@@ -132,9 +133,23 @@ Function DiscoverLineLetters()
         capturedLetter = Trim(screenContentBuffer)
         If Len(capturedLetter) = 1 Then
             If Asc(UCase(capturedLetter)) >= Asc("A") And Asc(UCase(capturedLetter)) <= Asc("Z") Then
-                tempLetters(foundCount) = UCase(capturedLetter)
-                foundCount = foundCount + 1
-                missingLetters = 0 ' Reset counter when we find a letter
+                ' Peek column 2 to ensure this is a line letter (typical form: "A  DESCRIPTION")
+                nextColChar = ""
+                On Error Resume Next
+                bzhao.ReadScreen nextColChar, 1, startReadRow, startReadColumn + 1
+                If Err.Number <> 0 Then
+                    Err.Clear
+                    nextColChar = ""
+                End If
+                On Error GoTo 0
+
+                If Len(nextColChar) > 0 And Asc(nextColChar) = 32 Then
+                    tempLetters(foundCount) = UCase(capturedLetter)
+                    foundCount = foundCount + 1
+                    missingLetters = 0 ' Reset counter when we find a letter
+                Else
+                    missingLetters = missingLetters + 1
+                End If
             Else
                 missingLetters = missingLetters + 1
             End If
