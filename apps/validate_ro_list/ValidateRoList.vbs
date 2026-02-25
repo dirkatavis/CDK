@@ -68,17 +68,10 @@ If Not fso.FolderExists(toolsOutDir) Then
     Err.Raise 53, "ValidateRoList", "OutDir path does not exist: " & toolsOutDir
 End If
 
-' Use explicit output file from config if present
+' Use explicit output file from config (Mandatory - Fail Fast)
 Dim outputFile: outputFile = GetConfigPath("ValidateRoList", "OutputFile")
-
-Dim outputBaseName: outputBaseName = "ValidateRoList"
-If inputFile <> "" Then
-    outputBaseName = fso.GetBaseName(inputFile)
-End If
-
-' If no explicit outputFile was configured, build it relative to OutDir
 If outputFile = "" Then
-    outputFile = fso.BuildPath(toolsOutDir, outputBaseName & "_out.txt")
+    Err.Raise 53, "ValidateRoList", "Missing config.ini entry: [ValidateRoList] OutputFile"
 End If
 
 ' --- Logging initialization (must be available before WaitForOneOf uses it) ---
