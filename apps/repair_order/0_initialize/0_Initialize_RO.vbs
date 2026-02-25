@@ -42,6 +42,30 @@ Dim SLOW_MARKER_PATH: SLOW_MARKER_PATH = GetConfigPath("Initialize_RO", "DebugMa
 Dim LOG_FILE_PATH: LOG_FILE_PATH = GetConfigPath("Initialize_RO", "Log")
 
 Dim fso, ts, strLine, arrValues, i, MVA, Mileage
+
+' --- Initialize Files (Overwrite for new session) ---
+Set fso = CreateObject("Scripting.FileSystemObject")
+
+' Initialize log file
+Dim logInit
+Set logInit = fso.CreateTextFile(LOG_FILE_PATH, True)
+logInit.WriteLine "===================================================="
+logInit.WriteLine "SESSION START: " & Now
+logInit.WriteLine "===================================================="
+logInit.Close
+Set logInit = Nothing
+
+' Initialize output CSV with headers
+Dim csvOut
+Set csvOut = fso.CreateTextFile(OUTPUT_CSV_PATH, True)
+csvOut.WriteLine "RO_Number"
+csvOut.Close
+Set csvOut = Nothing
+
+' Test logging immediately to verify log file creation
+LOG "Script started - Log file path: " & LOG_FILE_PATH
+LOG "Initialized output CSV (overwritten): " & OUTPUT_CSV_PATH
+
 Dim Bzhao
 On Error Resume Next
 Set Bzhao = CreateObject("BZWhll.WhllObj")
@@ -50,20 +74,6 @@ If Err.Number <> 0 Then
     Err.Clear
 End If
 On Error GoTo 0
-
-' Test logging immediately to verify log file creation
-LOG "Script started - Log file path: " & LOG_FILE_PATH
-
-Set fso = CreateObject("Scripting.FileSystemObject")
-
-' Initialize output CSV with headers if it doesn't exist
-' Initialize output CSV with headers (overwrite each run)
-Dim csvOut
-Set csvOut = fso.CreateTextFile(OUTPUT_CSV_PATH, True)
-csvOut.WriteLine "RO_Number"
-csvOut.Close
-Set csvOut = Nothing
-LOG "Initialized output CSV (overwritten): " & OUTPUT_CSV_PATH
 
 If fso.FileExists(CSV_FILE_PATH) Then
     LOG "CSV file found: " & CSV_FILE_PATH
