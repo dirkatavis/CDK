@@ -60,7 +60,7 @@ Sub RunScrapper()
 
     ' Initialize CSV (Overwrite)
     Set csvFile = g_fso.CreateTextFile(OUTPUT_CSV_PATH, True)
-    csvFile.WriteLine "RO number, RO status, Line A, Line B, Line C, Open Date"
+    csvFile.WriteLine "RO number, RO status, Line A, Line B, Line C, Open Date, Tech ID"
 
     Do
         LogResult "INFO", "Processing sequence: " & i
@@ -136,7 +136,7 @@ End Sub
 ' --- Scraping functions ---
 
 Function ScrapeCurrentRO()
-    Dim roNum, roStatus, lineA, lineB, lineC, openDate
+    Dim roNum, roStatus, lineA, lineB, lineC, openDate, techId
     
     ' Scrape Header (RO and Date)
     roNum = GetROFromScreen()
@@ -150,6 +150,9 @@ Function ScrapeCurrentRO()
     lineB = GetLineDescription("B")
     lineC = GetLineDescription("C")
     
+    ' Scrape Tech ID (specifically for Line A)
+    techId = GetTechId()
+
     ' Clean commas for CSV safety
     roNum = Replace(roNum, ",", " ")
     roStatus = Replace(roStatus, ",", " ")
@@ -157,8 +160,26 @@ Function ScrapeCurrentRO()
     lineB = Replace(lineB, ",", " ")
     lineC = Replace(lineC, ",", " ")
     openDate = Replace(openDate, ",", " ")
+    techId = Replace(techId, ",", " ")
 
-    ScrapeCurrentRO = roNum & "," & roStatus & "," & lineA & "," & lineB & "," & lineC & "," & openDate
+    ScrapeCurrentRO = roNum & "," & roStatus & "," & lineA & "," & lineB & "," & lineC & "," & openDate & "," & techId
+End Function
+
+Function GetTechId()
+    Dim row, buf, foundText
+    GetTechId = ""
+    ' Find Line A specifically
+    For row = 10 To 21 ' Scan until 21 so we can safely check row + 1
+        bzhao.ReadScreen buf, 1, row, 1
+        If UCase(Trim(buf)) = "A" Then
+            ' First tech is usually on the row directly below Line A (L1 line)
+            ' Based on coordinate map: Row for 'A' is 10, L1 is 11. Tech is at Col 53.
+            ' We'll check column 53 on the next row for a tech ID up to 5 digits.
+            bzhao.ReadScreen foundText, 5, row + 1, 53
+            GetTechId = Trim(foundText)
+            Exit Function
+        End If
+    Next
 End Function
 
 Function GetROFromScreen()
