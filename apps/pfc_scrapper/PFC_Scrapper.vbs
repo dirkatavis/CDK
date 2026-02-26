@@ -166,10 +166,10 @@ Function ScrapeCurrentRO()
 End Function
 
 Function GetTechId()
-    Dim row, buf, foundText, i, re, matches, wholeLine, debugRange
+    Dim row, buf, foundText, i, re, matches, wholeLine
     GetTechId = ""
     
-    ' Setup Regex for tech ID (2-5 digits, must be a whole word/block)
+    ' Setup Regex for tech ID (2-5 digits, word boundaries to avoid catching floating decimals)
     Set re = CreateObject("VBScript.RegExp")
     re.Pattern = "\b\d{2,5}\b"
     re.Global = False
@@ -182,30 +182,18 @@ Function GetTechId()
             ' Once 'A' is found, scan rows below for the L1 labor line
             For i = 0 To 3
                 If row + i <= 24 Then
-                    ' DEBUG: Read the whole line and specifically the 40-50 range
                     bzhao.ReadScreen wholeLine, 80, row + i, 1
-                    bzhao.ReadScreen debugRange, 11, row + i, 40
-                    
-                    ' Check for L1 (Flexible check)
+                    ' Check for L1 marker (indicators say it starts around Col 4)
                     If InStr(1, wholeLine, "L1", vbTextCompare) > 0 Then
-                        ' Found the labor line, now try to extract tech ID
-                        ' We read a safe block (50-70) for the tech ID
-                        bzhao.ReadScreen foundText, 20, row + i, 50 
+                        ' Based on debug: Tech ID is visible if reading from Col 40
+                        ' We read a larger block covering the tech field and ltype
+                        bzhao.ReadScreen foundText, 15, row + i, 40 
                         
                         If re.Test(foundText) Then
                             Set matches = re.Execute(foundText)
                             GetTechId = matches(0).Value
+                            Exit Function
                         End If
-                        
-                        ' Debug MsgBox as requested
-                        MsgBox "DEBUG INFO:" & vbCrLf & _
-                               "Row: " & (row + i) & vbCrLf & _
-                               "Line Text: [" & wholeLine & "]" & vbCrLf & _
-                               "Col 40-50: [" & debugRange & "]" & vbCrLf & _
-                               "Extracted Tech: [" & GetTechId & "]", _
-                               vbInformation, "GetTechId Debugger"
-                               
-                        If GetTechId <> "" Then Exit Function
                     End If
                 End If
             Next
