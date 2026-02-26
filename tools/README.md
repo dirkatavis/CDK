@@ -1,4 +1,4 @@
-# Tooling - Setup, Diagnostics & Development Utilities
+# Tools - Setup, Diagnostics & Development Utilities
 
 ## Purpose
 Developer and operator tooling for setup, validation, diagnostics, and migration tracking. These scripts are for **one-time setup**, **troubleshooting**, and **development workflows** - not production automation.
@@ -8,19 +8,19 @@ Developer and operator tooling for setup, validation, diagnostics, and migration
 ### First-Time Setup
 ```cmd
 # 1. Set CDK_BASE environment variable
-cscript.exe tooling\setup_cdk_base.vbs
+cscript.exe tools\setup_cdk_base.vbs
 
 # 2. Validate environment
-cscript.exe tooling\validate_dependencies.vbs
+cscript.exe tools\validate_dependencies.vbs
 
 # 3. Test path resolution
-cscript.exe tooling\test_path_helper.vbs
+cscript.exe tools\test_path_helper.vbs
 ```
 
 ### Pre-Commit Validation
 ```cmd
 # Run all validation tests to ensure no regressions
-cscript.exe tooling\run_validation_tests.vbs
+cscript.exe tools\run_validation_tests.vbs
 ```
 
 ## Categories

@@ -46,7 +46,7 @@ ExecuteGlobal CreateObject("Scripting.FileSystemObject").OpenTextFile(repoRoot &
 
 ' Run validation before script execution
 If Not ValidateEnvironment() Then
-    WScript.Echo "Setup validation failed. Run tooling\validate_dependencies.vbs"
+    WScript.Echo "Setup validation failed. Run tools\validate_dependencies.vbs"
     WScript.Quit 1
 End If
 ```
@@ -77,7 +77,7 @@ End If
 
 ## Dependencies
 - `config/config.ini` - Configuration file (PathHelper dependency)
-- `CDK_BASE` environment variable - Set by `tooling/setup_cdk_base.vbs`
+- `CDK_BASE` environment variable - Set by `tools/setup_cdk_base.vbs`
 - `.cdkroot` marker file at repo root - Validated by PathHelper
 
 ## Adding New Framework Components
@@ -91,7 +91,7 @@ End If
 Framework components are tested via:
 - App-level integration tests (all apps use these components)
 - Repo-level global tests in `tests/` folder
-- `tooling/run_validation_tests.vbs` validates setup and paths
+- `tools/run_validation_tests.vbs` validates setup and paths
 
 ## Notes
 - Keep framework minimal - prefer app-local helpers over framework bloat

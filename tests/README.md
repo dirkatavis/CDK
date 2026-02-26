@@ -39,7 +39,7 @@ Master test suites that orchestrate validation.
 
 **`run_migration_target_tests.vbs`** - Final-state progress tracker (red→green)
   - Reports migration progress: % complete, phase gates
-  - Validates target structure matches `tooling/reorg_path_map.ini`
+  - Validates target structure matches `tools/reorg_path_map.ini`
   - Intentionally red/yellow until migration reaches 100%
 
 ## Running Tests
@@ -66,7 +66,7 @@ cscript.exe tests\test_path_helper.vbs
 - **1** = One or more tests failed
 
 ## Test Data Sources
-- **`tooling/reorg_path_map.ini`** - Migration contract definitions (LegacyEntrypoints, WrapperTargets, ConfigContracts, etc.)
+- **`tools/reorg_path_map.ini`** - Migration contract definitions (LegacyEntrypoints, WrapperTargets, ConfigContracts, etc.)
 - **`config/config.ini`** - Path configuration for contract validation
 
 ## Design Principles
@@ -101,7 +101,7 @@ cscript test_validation.vbs > runtime\logs\tests\validation_output.txt
 1. Test must validate a cross-cutting concern (affects multiple apps or core infrastructure)
 2. Add test script to `tests/` folder
 3. If part of validation suite, add to `run_validation_tests.vbs`
-4. If part of migration tracking, update `tooling/reorg_path_map.ini` and `run_migration_target_tests.vbs`
+4. If part of migration tracking, update `tools/reorg_path_map.ini` and `run_migration_target_tests.vbs`
 5. Update this README with test description
 
 ## Notes
