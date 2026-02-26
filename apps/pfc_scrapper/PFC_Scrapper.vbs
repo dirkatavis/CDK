@@ -166,17 +166,36 @@ Function ScrapeCurrentRO()
 End Function
 
 Function GetTechId()
-    Dim row, buf, foundText
+    Dim row, buf, foundText, i, re, matches
     GetTechId = ""
-    ' Find Line A specifically
-    For row = 10 To 21 ' Scan until 21 so we can safely check row + 1
+    
+    ' Setup Regex for tech ID (2-5 digits)
+    Set re = CreateObject("VBScript.RegExp")
+    re.Pattern = "\d{2,5}"
+    re.Global = False
+
+    ' Find Line A header first to anchor our search
+    For row = 10 To 22 
         bzhao.ReadScreen buf, 1, row, 1
+        ' Look for 'A' in the line code column (Column 1)
         If UCase(Trim(buf)) = "A" Then
-            ' First tech is usually on the row directly below Line A (L1 line)
-            ' Based on coordinate map: Row for 'A' is 10, L1 is 11. Tech is at Col 53.
-            ' We'll check column 53 on the next row for a tech ID up to 5 digits.
-            bzhao.ReadScreen foundText, 5, row + 1, 53
-            GetTechId = Trim(foundText)
+            ' Once 'A' is found, the labor line (L1) should be immediately below or within 3 rows
+            For i = 0 To 3
+                If row + i <= 24 Then
+                    ' Look for "L1" marker which indicates the labor detail line
+                    bzhao.ReadScreen buf, 2, row + i, 4 
+                    If buf = "L1" Then
+                        ' The tech id is in a fixed region (around Col 53 based on coordinate map)
+                        ' We read a larger block and extract the numeric ID
+                        bzhao.ReadScreen foundText, 15, row + i, 50 
+                        If re.Test(foundText) Then
+                            Set matches = re.Execute(foundText)
+                            GetTechId = matches(0).Value
+                            Exit Function
+                        End If
+                    End If
+                End If
+            Next
             Exit Function
         End If
     Next
