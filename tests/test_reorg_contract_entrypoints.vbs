@@ -32,9 +32,9 @@ If Not fso.FileExists(mapPath) Then
     WScript.Quit 1
 End If
 
-Dim entrypoints: Set entrypoints = ReadIniSection(mapPath, "LegacyEntrypoints")
+Dim entrypoints: Set entrypoints = ReadIniSection(mapPath, "TargetEntrypoints")
 If entrypoints.Count = 0 Then
-    WScript.Echo "FAIL: No entries found in [LegacyEntrypoints]"
+    WScript.Echo "FAIL: No entries found in [TargetEntrypoints]"
     WScript.Quit 1
 End If
 
