@@ -69,7 +69,7 @@ g_CurrentVerbosity = VERB_MAX ' Show maximum detail during startup
 g_SessionDateLogged = False
 
 
-LEGACY_BASE_PATH = g_fso.BuildPath(GetRepoRoot(), "PostFinalCharges")
+LEGACY_BASE_PATH = g_fso.BuildPath(GetRepoRoot(), "apps\post_final_charges")
 LEGACY_CSV_PATH = GetConfigPath("PostFinalCharges_Main", "CSV")
 LEGACY_LOG_PATH = GetConfigPath("PostFinalCharges_Main", "Log")
 LEGACY_DIAG_LOG_PATH = GetConfigPath("PostFinalCharges_Main", "DiagnosticLog")
@@ -1331,7 +1331,7 @@ Function GetBaseScriptPath()
     End If
     On Error GoTo 0
     
-    g_BaseScriptPath = g_fso.BuildPath(repoRoot, "PostFinalCharges")
+    g_BaseScriptPath = g_fso.BuildPath(repoRoot, "apps\post_final_charges")
     Call LogEvent("comm", "high", "GetBaseScriptPath resolved to: " & g_BaseScriptPath, "GetBaseScriptPath", "", "")
     GetBaseScriptPath = g_BaseScriptPath
 End Function
@@ -1668,6 +1668,15 @@ End Function
 Sub ProcessRONumbers()
     If g_ShouldAbort Then Exit Sub ' Exit if config is invalid
 
+    ' Ensure we are at a clean COMMAND: prompt before starting the session
+    ' This addresses the "E before prompt" bug on the first sequence
+    Call LogEvent("comm", "low", "Ensuring terminal is at COMMAND: prompt before starting", "ProcessRONumbers", "", "")
+    If Not WaitForPrompt("COMMAND:", "", False, 10000, "Initial Command Prompt") Then
+        Call LogEvent("crit", "low", "Terminal not at COMMAND: prompt. Manual intervention required.", "ProcessRONumbers", "", "Stopping script - fail fast requested")
+        g_ShouldAbort = True
+        Exit Sub
+    End If
+
     Dim roNumber
     Dim lineCount
     Dim sequenceLabel
@@ -1882,8 +1891,13 @@ Sub Main(roNumber)
         Call LogEvent("comm", "med", roNumber & " - Repair Order Open", "Main", "", "")
     End If
     
-    ' Allow time for RO details to fully load before checking status
-    'Call WaitMs(2000)
+    ' Ensure the RO screen is fully drawn and interactive by waiting for the bottom prompt.
+    ' This addresses the "E before prompt" issue especially on first sequence.
+    If Not WaitForPrompt("COMMAND:", "", False, 5000, "RO Screen Ready") Then
+        Call LogEvent("crit", "low", "COMMAND prompt did not appear on RO screen. Manual intervention required.", "Main", "", "Stopping script - fail fast requested")
+        g_ShouldAbort = True
+        Exit Sub
+    End If
     
     ' After opening an RO, ensure it has the expected READY TO POST status.
     If Not IsStatusReady() Then
