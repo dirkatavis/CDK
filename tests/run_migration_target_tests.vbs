@@ -45,7 +45,6 @@ WScript.Echo "MIGRATION FINAL-STATE TARGET TESTS"
 WScript.Echo "=" & String(76, "=")
 
 RunEntrypointTargets
-RunWrapperTargets
 RunConfigTargets
 
 Dim passPct

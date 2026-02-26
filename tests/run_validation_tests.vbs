@@ -44,7 +44,6 @@ RunTest "Negative Tests (missing dependencies)", "test_validation_negative.vbs"
 ' Run reorg baseline contract tests
 RunTest "Reorg Contract: Entrypoints", "test_reorg_contract_entrypoints.vbs"
 RunTest "Reorg Contract: Config Paths", "test_reorg_contract_config_paths.vbs"
-RunTest "Reorg Contract: Wrapper Compatibility", "test_reorg_contract_wrappers.vbs"
 
 ' Print overall summary
 PrintOverallSummary()

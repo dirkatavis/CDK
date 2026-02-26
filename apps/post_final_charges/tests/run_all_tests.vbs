@@ -54,6 +54,11 @@ Sub Main()
     WScript.Echo "=== PostFinalCharges Testing Suite ==="
     WScript.Echo ""
 
+    ' Change working directory to current script folder
+    Dim scriptDir
+    scriptDir = fso.GetParentFolderName(WScript.ScriptFullName)
+    shell.CurrentDirectory = scriptDir
+
     ' Test 1: Standalone Mock Test
     RunTest "Standalone Mock Test", "cscript.exe test_mock_bzhao.vbs"
 
