@@ -60,7 +60,7 @@ Sub RunScrapper()
 
     ' Initialize CSV (Overwrite)
     Set csvFile = g_fso.CreateTextFile(OUTPUT_CSV_PATH, True)
-    csvFile.WriteLine "RO number, RO status, Line A, Line B, Line C, Open Date, Tech ID"
+    csvFile.WriteLine "RO number, Tech ID, RO status, Line A, Line B, Line C, Open Date"
 
     Do
         LogResult "INFO", "Processing sequence: " & i
@@ -162,7 +162,7 @@ Function ScrapeCurrentRO()
     openDate = Replace(openDate, ",", " ")
     techId = Replace(techId, ",", " ")
 
-    ScrapeCurrentRO = roNum & "," & roStatus & "," & lineA & "," & lineB & "," & lineC & "," & openDate & "," & techId
+    ScrapeCurrentRO = roNum & "," & techId & "," & roStatus & "," & lineA & "," & lineB & "," & lineC & "," & openDate
 End Function
 
 Function GetTechId()
