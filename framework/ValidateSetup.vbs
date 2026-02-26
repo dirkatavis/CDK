@@ -57,7 +57,7 @@ Function ValidateScriptDependencies()
     
     ' Check 3: Verify PathHelper.vbs exists
     Dim pathHelperPath
-    pathHelperPath = fso.BuildPath(repoRoot, "common\PathHelper.vbs")
+    pathHelperPath = fso.BuildPath(repoRoot, "framework\PathHelper.vbs")
     If Not fso.FileExists(pathHelperPath) Then
         Call SafeOutput("ERROR: PathHelper.vbs not found at " & pathHelperPath)
         failures = failures + 1
