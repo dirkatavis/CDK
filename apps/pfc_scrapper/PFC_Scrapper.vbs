@@ -169,9 +169,9 @@ Function GetTechId()
     Dim row, buf, foundText, i, re, matches
     GetTechId = ""
     
-    ' Setup Regex for tech ID (2-5 digits)
+    ' Setup Regex for tech ID (2-5 digits, must be a whole word/block)
     Set re = CreateObject("VBScript.RegExp")
-    re.Pattern = "\d{2,5}"
+    re.Pattern = "\b\d{2,5}\b"
     re.Global = False
 
     ' Find Line A header first to anchor our search
@@ -179,15 +179,14 @@ Function GetTechId()
         bzhao.ReadScreen buf, 1, row, 1
         ' Look for 'A' in the line code column (Column 1)
         If UCase(Trim(buf)) = "A" Then
-            ' Once 'A' is found, the labor line (L1) should be immediately below or within 3 rows
+            ' Once 'A' is found, scan rows below for the L1 labor line
             For i = 0 To 3
                 If row + i <= 24 Then
-                    ' Look for "L1" marker which indicates the labor detail line
-                    bzhao.ReadScreen buf, 2, row + i, 4 
-                    If buf = "L1" Then
-                        ' The tech id is in a fixed region (around Col 53 based on coordinate map)
-                        ' We read a larger block and extract the numeric ID
-                        bzhao.ReadScreen foundText, 15, row + i, 50 
+                    ' Based on your coordinate map, L1 is at Column 44 (Ruler 4-4)
+                    bzhao.ReadScreen buf, 2, row + i, 44 
+                    If Trim(buf) = "L1" Then
+                        ' The tech id starts at Column 53. We read a safe block (50-70).
+                        bzhao.ReadScreen foundText, 20, row + i, 50 
                         If re.Test(foundText) Then
                             Set matches = re.Execute(foundText)
                             GetTechId = matches(0).Value
