@@ -169,9 +169,10 @@ Function GetTechId()
     Dim row, buf, foundText, i, re, matches, wholeLine
     GetTechId = ""
     
-    ' Setup Regex for tech ID (2-5 digits, word boundaries to avoid catching floating decimals)
+    ' Setup Regex for tech ID (2-5 digits OR literal "MULTI")
     Set re = CreateObject("VBScript.RegExp")
-    re.Pattern = "\b\d{2,5}\b"
+    re.Pattern = "\b(\d{2,5}|MULTI)\b"
+    re.IgnoreCase = True
     re.Global = False
 
     ' Find Line A header first to anchor our search
@@ -191,7 +192,7 @@ Function GetTechId()
                         
                         If re.Test(foundText) Then
                             Set matches = re.Execute(foundText)
-                            GetTechId = matches(0).Value
+                            GetTechId = UCase(matches(0).Value)
                             Exit Function
                         End If
                     End If
