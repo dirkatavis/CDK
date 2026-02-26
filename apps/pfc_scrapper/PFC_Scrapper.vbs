@@ -60,7 +60,7 @@ Sub RunScrapper()
 
     ' Initialize CSV (Overwrite)
     Set csvFile = g_fso.CreateTextFile(OUTPUT_CSV_PATH, True)
-    csvFile.WriteLine "RO number, RO status, Line A, Line B, Line C, Open Date"
+    csvFile.WriteLine "RO number, Tech ID, RO status, Line A, Line B, Line C, Open Date"
 
     Do
         LogResult "INFO", "Processing sequence: " & i
@@ -136,7 +136,7 @@ End Sub
 ' --- Scraping functions ---
 
 Function ScrapeCurrentRO()
-    Dim roNum, roStatus, lineA, lineB, lineC, openDate
+    Dim roNum, roStatus, lineA, lineB, lineC, openDate, techId
     
     ' Scrape Header (RO and Date)
     roNum = GetROFromScreen()
@@ -150,6 +150,9 @@ Function ScrapeCurrentRO()
     lineB = GetLineDescription("B")
     lineC = GetLineDescription("C")
     
+    ' Scrape Tech ID (specifically for Line A)
+    techId = GetTechId()
+
     ' Clean commas for CSV safety
     roNum = Replace(roNum, ",", " ")
     roStatus = Replace(roStatus, ",", " ")
@@ -157,8 +160,47 @@ Function ScrapeCurrentRO()
     lineB = Replace(lineB, ",", " ")
     lineC = Replace(lineC, ",", " ")
     openDate = Replace(openDate, ",", " ")
+    techId = Replace(techId, ",", " ")
 
-    ScrapeCurrentRO = roNum & "," & roStatus & "," & lineA & "," & lineB & "," & lineC & "," & openDate
+    ScrapeCurrentRO = roNum & "," & techId & "," & roStatus & "," & lineA & "," & lineB & "," & lineC & "," & openDate
+End Function
+
+Function GetTechId()
+    Dim row, buf, foundText, i, re, matches, wholeLine
+    GetTechId = ""
+    
+    ' Setup Regex for tech ID (2-5 digits OR literal "MULTI")
+    Set re = CreateObject("VBScript.RegExp")
+    re.Pattern = "\b(\d{2,5}|MULTI)\b"
+    re.IgnoreCase = True
+    re.Global = False
+
+    ' Find Line A header first to anchor our search
+    For row = 10 To 22 
+        bzhao.ReadScreen buf, 1, row, 1
+        ' Look for 'A' in the line code column (Column 1)
+        If UCase(Trim(buf)) = "A" Then
+            ' Once 'A' is found, scan rows below for the L1 labor line
+            For i = 0 To 3
+                If row + i <= 24 Then
+                    bzhao.ReadScreen wholeLine, 80, row + i, 1
+                    ' Check for L1 marker (indicators say it starts around Col 4)
+                    If InStr(1, wholeLine, "L1", vbTextCompare) > 0 Then
+                        ' Based on debug: Tech ID is visible if reading from Col 40
+                        ' We read a larger block covering the tech field and ltype
+                        bzhao.ReadScreen foundText, 15, row + i, 40 
+                        
+                        If re.Test(foundText) Then
+                            Set matches = re.Execute(foundText)
+                            GetTechId = UCase(matches(0).Value)
+                            Exit Function
+                        End If
+                    End If
+                End If
+            Next
+            Exit Function
+        End If
+    Next
 End Function
 
 Function GetROFromScreen()
