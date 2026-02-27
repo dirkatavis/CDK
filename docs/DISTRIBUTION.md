@@ -57,6 +57,17 @@ CDK/
 - [ ] `tools/run_validation_tests.vbs`
 - [ ] `docs/IMPLEMENTATION_SUMMARY.md`
 
+## The Three Pillars of the System
+
+### 1. Centralized Configuration (`config/config.ini`)
+Scripts read from a single config file instead of hardcoding paths, making the system fully portable.
+
+### 2. Path Resolution Library (`framework/PathHelper.vbs`)
+Shared engine that builds absolute paths at runtime relative to the `CDK_BASE` environment variable.
+
+### 3. Dependency Validation System (`framework/ValidateSetup.vbs`)
+Automatic pre-flight checks that ensure the environment is correctly "initialized" before any script execution.
+
 ## Installation Instructions for Recipients
 
 ### Step 1: Initial Setup (One-Time)
