@@ -7,32 +7,25 @@ This guide explains how to package and distribute the CDK automation system to o
 ### Required Files
 ```
 CDK/
-├── .cdkroot                           # Repo marker (create empty file)
-├── config.ini                         # Central configuration
-├── common/
+├── .cdkroot                           # Repo marker
+├── config/
+│   └── config.ini                    # Central configuration
+├── framework/
 │   ├── PathHelper.vbs                # Path resolution library
-│   └── ValidateSetup.vbs             # Validation library (BlueZone-safe)
+│   └── ValidateSetup.vbs             # Validation library
 ├── tools/
 │   ├── validate_dependencies.vbs      # Pre-flight check tool
-│   ├── setup_cdk_base.vbs            # Environment setup tool
-│   ├── show_cdk_base.vbs             # Check current CDK_BASE
-│   ├── test_validation_positive.vbs  # Test suite (optional)
-│   ├── test_validation_negative.vbs  # Test suite (optional)
-│   └── run_validation_tests.vbs      # Test runner (optional)
+│   └── setup_cdk_base.vbs            # Environment setup tool
 ├── docs/
-│   ├── SETUP_VALIDATION.md           # User validation guide
-│   ├── VALIDATION_ARCHITECTURE.md    # Technical architecture
-│   ├── BLUEZONE_COMPATIBILITY.md     # BlueZone context guide
-│   └── PATH_CONFIGURATION.md         # config.ini documentation
-└── [automation scripts and data folders]
+│   ├── USER_SETUP.md                 # End-user setup guide
+│   └── DEVELOPER_HANDBOOK.md         # Technical documentation
+└── apps/                              # Automation scripts
 ```
 
-### Core Automation Scripts (Examples)
-- `utilities/PostFinalCharges.vbs`
-- `workflows/repair_order/1_Initialize_RO.vbs`
-- `workflows/repair_order/2_Prepare_Close_Pt1.vbs`
-- `workflows/repair_order/3_Finalize_Close_Pt2.vbs`
-- etc.
+### Core Automation Apps
+- `apps/post_final_charges/`
+- `apps/repair_order/`
+- `apps/maintenance_ro_closer/`
 
 ## Distribution Checklist
 
@@ -48,18 +41,16 @@ CDK/
 
 **Critical (Must Include):**
 - [ ] `.cdkroot` marker file
-- [ ] `config.ini` with all required sections
-- [ ] `common/PathHelper.vbs`
-- [ ] `common/ValidateSetup.vbs`
+- [ ] `config/config.ini`
+- [ ] `framework/PathHelper.vbs`
+- [ ] `framework/ValidateSetup.vbs`
 - [ ] `tools/validate_dependencies.vbs`
 - [ ] `tools/setup_cdk_base.vbs`
-- [ ] `docs/SETUP_VALIDATION.md`
+- [ ] `docs/USER_SETUP.md`
 
 **Recommended (Should Include):**
 - [ ] `tools/show_cdk_base.vbs`
-- [ ] `docs/PATH_CONFIGURATION.md`
-- [ ] `docs/VALIDATION_ARCHITECTURE.md`
-- [ ] `docs/BLUEZONE_COMPATIBILITY.md`
+- [ ] `docs/DEVELOPER_HANDBOOK.md`
 
 **Optional (Nice to Have):**
 - [ ] Test suites (`test_validation_*.vbs`)
