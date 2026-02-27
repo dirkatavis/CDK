@@ -4,16 +4,16 @@ This repository contains VBScript automation for the CDK Dealership Management S
 
 ## Documentation
 
+- **Master Health Check**: [VALIDATE_SYSTEM.bat](VALIDATE_SYSTEM.bat) (Run this first!)
 - **For End Users**: [docs/USER_SETUP.md](docs/USER_SETUP.md) (Installation & Verification)
 - **For Developers**: [docs/DEVELOPER_HANDBOOK.md](docs/DEVELOPER_HANDBOOK.md) (Architecture & Patterns)
 - **For Distribution**: [docs/DISTRIBUTION.md](docs/DISTRIBUTION.md) (Packaging Guide)
 
 ## Quick Start for End Users
 
-1. **Extract the CDK folder** to your machine.
-2. **Run setup**: Double-click `tools/setup_cdk_base.vbs` to set environment.
-3. **Restart BlueZone** to refresh variables.
-4. **Test the setup**: Run `tools/validate_dependencies.vbs`.
+1. **One-Click Validation**: Double-click `VALIDATE_SYSTEM.bat` in the root folder. This confirms everything is ready for use.
+2. **Extract the CDK folder** to your machine (if you haven't already).
+3. **Run setup**: If validation fails on environment, double-click `tools/setup_cdk_base.vbs`.
 
 The scripts automatically find their files - no configuration needed!
 
