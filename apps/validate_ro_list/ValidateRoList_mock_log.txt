@@ -1,4 +1,4 @@
-Mock map run started: 2/27/2026 11:17:54 AM | maps=C:\Temp_alt\CDK\apps\validate_ro_list\tests\test_artifacts\mock_map_1.txt;C:\Temp_alt\CDK\apps\validate_ro_list\tests\test_artifacts\mock_map_2.txt
-2/27/2026 11:17:54 AM | MAP=C:\Temp_alt\CDK\apps\validate_ro_list\tests\test_artifacts\mock_map_1.txt -> Open
-2/27/2026 11:17:54 AM | MAP=C:\Temp_alt\CDK\apps\validate_ro_list\tests\test_artifacts\mock_map_2.txt -> NOT ON FILE
-Mock map run finished: 2/27/2026 11:17:54 AM | out=C:\Temp_alt\CDK\apps\validate_ro_list\tests\test_artifacts\test_output.txt
+Mock map run started: 2/27/2026 11:52:15 AM | maps=C:\Temp_alt\CDK\apps\validate_ro_list\tests\test_artifacts\mock_map_1.txt;C:\Temp_alt\CDK\apps\validate_ro_list\tests\test_artifacts\mock_map_2.txt
+2/27/2026 11:52:15 AM | MAP=C:\Temp_alt\CDK\apps\validate_ro_list\tests\test_artifacts\mock_map_1.txt -> Open
+2/27/2026 11:52:15 AM | MAP=C:\Temp_alt\CDK\apps\validate_ro_list\tests\test_artifacts\mock_map_2.txt -> NOT ON FILE
+Mock map run finished: 2/27/2026 11:52:15 AM | out=C:\Temp_alt\CDK\apps\validate_ro_list\tests\test_artifacts\test_output.txt
