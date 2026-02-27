@@ -69,6 +69,27 @@ Else
 End If
 ```
 
+### AdvancedMock.vbs
+**Purpose:** High-fidelity terminal simulation for offline testing
+- Simulates BlueZone COM objects (`BZWhll.WhllObj`)
+- Provides latency, partial load, and auto-responder features
+- Enables stress testing and race condition detection
+
+**Key Features:**
+- `SetLatency(ms)` - Simulates network/terminal delay
+- `SetPartialLoad(bool)` - Simulates asynchronous screen rendering
+- `SetPromptSequence(array)` - Defences a stateful conversation flow
+
+**Usage Pattern:**
+```vbs
+' Load for offline test scripts
+ExecuteGlobal fso.OpenTextFile(repoRoot & "\framework\AdvancedMock.vbs").ReadAll()
+
+Dim bz: Set bz = New AdvancedMock
+bz.SetLatency 1000
+bz.SetPromptSequence Array(Array("COMMAND:", "S"), Array("R.O.", "1234"))
+```
+
 ## Design Principles
 - **Zero Hardcoded Paths:** All paths resolved via PathHelper from config.ini
 - **Fail Fast:** Clear error messages instead of silent fallbacks

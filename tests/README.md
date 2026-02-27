@@ -7,6 +7,8 @@ This directory contains the global validation framework. It is organized into a 
 These are your primary entry points. Use these to check the overall pulse of the repository.
 
 - [run_all.vbs](run_all.vbs) - **The Grand Suite**. Orchestrates every test in the repo (Infra, Environment, Migration, and Apps).
+- [run_validation_tests.vbs](run_validation_tests.vbs) - **CDK Grand Validation Suite**. The authoritative CI/CD runner for overall repository health.
+- [run_stress_tests.vbs](run_stress_tests.vbs) - **Stress Suite**. Validates resilience against high terminal latency and partial screen loads.
 - [run_migration.vbs](run_migration.vbs) - Tracks progress of the repository reorganization toward the target architecture.
 
 ## 📂 Categorized Tests (Workers)
@@ -17,6 +19,7 @@ Validates the core VBScript/PowerShell plumbing that powers the rest of the tool
 - [infrastructure/test_path_helper.vbs](infrastructure/test_path_helper.vbs) - Unit tests for PathHelper's relative-to-absolute resolution logic.
 - [infrastructure/test_config_exhaustion.vbs](infrastructure/test_config_exhaustion.vbs) - Verifies that every single path defined in `config.ini` resolves to a real file.
 - [infrastructure/test_hardcoded_paths.vbs](infrastructure/test_hardcoded_paths.vbs) - Scans the codebase for hardcoded absolute paths that should be using `PathHelper`.
+- [infrastructure/test_syntax_validation.vbs](infrastructure/test_syntax_validation.vbs) - Scans for environment-breaking syntax (e.g., `DoEvents`, `MsgBox`, incorrect `Option Explicit` placement).
 
 ### 🌍 Environment
 Checks the setup of the developer's machine and external dependencies.
