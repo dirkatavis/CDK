@@ -15,12 +15,10 @@ if %ERRORLEVEL% NEQ 0 (
     echo.
     echo [ERROR] System Unhealthy. Review the red [FAIL] flags above.
     echo.
-    if "%1" neq "/silent" pause
     exit /b 1
 )
 
 echo.
 echo [SUCCESS] All systems functional.
 echo.
-if "%1" neq "/silent" pause
 exit /b 0
