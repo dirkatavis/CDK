@@ -2,13 +2,18 @@
 
 This repository contains VBScript automation for the CDK Dealership Management System (DMS) using BlueZone terminal emulator.
 
+## Documentation
+
+- **For End Users**: [docs/USER_SETUP.md](docs/USER_SETUP.md) (Installation & Verification)
+- **For Developers**: [docs/DEVELOPER_HANDBOOK.md](docs/DEVELOPER_HANDBOOK.md) (Architecture & Patterns)
+- **For Distribution**: [docs/DISTRIBUTION.md](docs/DISTRIBUTION.md) (Packaging Guide)
+
 ## Quick Start for End Users
 
-1. **Copy the entire CDK folder** to your machine (anywhere you want)
-2. **Run setup**: Double-click `tools\setup_cdk_base.vbs` to set `CDK_BASE`
-3. **Restart BlueZone** so it picks up the new variable
-4. **Test the setup**: Run `tools\test_path_helper.vbs` from BlueZone
-5. **Run scripts**: Double-click any `.vbs` script or run from command line
+1. **Extract the CDK folder** to your machine.
+2. **Run setup**: Double-click `tools/setup_cdk_base.vbs` to set environment.
+3. **Restart BlueZone** to refresh variables.
+4. **Test the setup**: Run `tools/validate_dependencies.vbs`.
 
 The scripts automatically find their files - no configuration needed!
 
@@ -28,42 +33,40 @@ CDK/
 ├── .cdkroot                    # Don't delete - scripts need this!
 ├── config/
 │   └── config.ini              # Edit this to change file locations
-├── common/
+├── framework/
 │   └── PathHelper.vbs          # Shared path functions
-├── workflows/
+├── apps/
 │   └── repair_order/           # RO workflow automation scripts
-│       ├── 1_Initialize_RO.vbs      # Create new ROs from CSV
-│       ├── 2_Prepare_Close_Pt1.vbs  # Pre-closeout (before manual step)
-│       └── 3_Finalize_Close_Pt2.vbs # Post-closeout (after manual step)
-├── utilities/                  # Standalone utility scripts
-│   ├── PostFinalCharges.vbs    # Complete RO closeout (state machine)
-│   └── Maintenance_RO_Closer.vbs # Automated PM RO processing
+│       ├── initialize/         # Create new ROs from CSV
+│       ├── prepare_close_pt1/  # Pre-closeout (before manual step)
+│       └── finalize_close_pt2/ # Post-closeout (after manual step)
+├── utilities/                  # Standalone utility scripts (legacy location)
 ├── tools/                      # Setup, testing, validation scripts
 └── docs/                       # Documentation
 ```
 
 ### Script Purposes
 
-**workflows/repair_order/** - Sequential RO processing workflow
-- **1_Initialize_RO.vbs**: Create new repair orders from CSV input (MVA/mileage entry)
-- **2_Prepare_Close_Pt1.vbs**: Pre-manual processing - Dynamic line discovery, initial closeout steps
-- **3_Finalize_Close_Pt2.vbs**: Post-manual processing - Finalize closeout, add stories
+**apps/repair_order/** - Sequential RO processing workflow
+- **initialize/**: Create new repair orders from CSV input (MVA/mileage entry)
+- **prepare_close_pt1/**: Pre-manual processing - Dynamic line discovery
+- **finalize_close_pt2/**: Post-manual processing - Finalize closeout, add stories
 - Pattern: "Sandwich automation" with manual intervention between Pt1 and Pt2
 
-**utilities/** - Standalone automation tools
-- **PostFinalCharges.vbs**: Complete automated RO closeout using state machine logic
-  - Handles 30+ conditional prompts, multi-line processing, FNL→R workflow
-  - Production ready - successfully tested with live BlueZone terminal
-  - See [utilities/README.md](utilities/README.md) for detailed features
-- **Maintenance_RO_Closer.vbs**: Automated PM (preventive maintenance) RO processing
-  - Matches criteria from PM_Match_Criteria.txt, processes ROs from list
-  - Generates status reports in RO_Status_Report.csv
+**apps/post_final_charges/** - State-machine based RO closeout
+- Handles 30+ conditional prompts, multi-line processing, FNL→R workflow
+- Production ready - successfully tested with live BlueZone terminal
 
-## For Developers
+**apps/maintenance_ro_closer/** - Automated PM (preventive maintenance) processing
+- Matches criteria from PM_Match_Criteria.txt, processes ROs from list
+- Generates status reports in RO_Status_Report.csv
 
-- **Path Configuration**: See [docs/PATH_CONFIGURATION.md](docs/PATH_CONFIGURATION.md)
-- **Contributing**: See [.github/copilot-instructions.md](.github/copilot-instructions.md)
-- **Testing**: Run `tools\test_path_helper.vbs` to validate path setup
+## Technical Documentation
+
+For developers, automated systems, or deep technical dives:
+- **Architecture & Setup**: [docs/DEVELOPER_HANDBOOK.md](docs/DEVELOPER_HANDBOOK.md)
+- **Path Configuration**: [docs/PATH_CONFIGURATION.md](docs/PATH_CONFIGURATION.md)
+- **Validation Layers**: [docs/VALIDATION_ARCHITECTURE.md](docs/VALIDATION_ARCHITECTURE.md)
 
 ## Distributing to Other Users
 
@@ -75,12 +78,12 @@ When sharing these scripts:
 ## Troubleshooting
 
 **Scripts can't find files?**
-- Run `tools\show_cdk_base.vbs` to confirm `CDK_BASE`
-- Re-run `tools\setup_cdk_base.vbs` to reset `CDK_BASE`
+- Run `tools/show_cdk_base.vbs` to confirm `CDK_BASE`
+- Re-run `tools/setup_cdk_base.vbs` to reset `CDK_BASE`
 - Restart BlueZone after setting the variable
 - Verify `.cdkroot` file exists in the repo root
-- Run `tools\test_path_helper.vbs` to diagnose
-- Check `config.ini` has correct relative paths
+- Run `tests/test_path_helper.vbs` to diagnose
+- Check `config/config.ini` has correct relative paths
 
 **Want to reorganize files?**
 - Edit `config/config.ini` (don't move files manually)

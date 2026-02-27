@@ -47,7 +47,13 @@ incCode = ReadFile(helperPath)
 ExecuteGlobal incCode
 
 ' --- Use GetConfigPath for required files (fail-fast) ---
-Dim inputFile: inputFile = GetConfigPath("ValidateRoList", "InputFile")
+Dim inputFile: inputFile = sh.Environment("PROCESS")("MOCK_INPUT_FILE")
+If mockMode And inputFile <> "" Then
+    ' Use environment override
+Else
+    inputFile = GetConfigPath("ValidateRoList", "InputFile")
+End If
+
 ' Validate inputFile unless we're in mock mode with MOCK_SCREEN_MAPS
 Dim mockMapsEnvCheck: mockMapsEnvCheck = sh.Environment("PROCESS")("MOCK_SCREEN_MAPS")
 If mockMapsEnvCheck = "" Then mockMapsEnvCheck = sh.Environment("USER")("MOCK_SCREEN_MAPS")
@@ -69,10 +75,19 @@ If Not fso.FolderExists(toolsOutDir) Then
 End If
 
 ' Use explicit output file from config (Mandatory - Fail Fast)
-Dim outputFile: outputFile = GetConfigPath("ValidateRoList", "OutputFile")
+Dim outputFile: outputFile = sh.Environment("PROCESS")("MOCK_OUTPUT_FILE")
+If mockMode And outputFile <> "" Then
+    ' Use environment override
+Else
+    outputFile = GetConfigPath("ValidateRoList", "OutputFile")
+End If
+
 If outputFile = "" Then
     Err.Raise 53, "ValidateRoList", "Missing config.ini entry: [ValidateRoList] OutputFile"
 End If
+
+Dim outputBaseName: outputBaseName = "ValidateRoList"
+If outputFile <> "" Then outputBaseName = fso.GetBaseName(outputFile)
 
 ' --- Logging initialization (must be available before WaitForOneOf uses it) ---
 ' Logging level: 1=ERROR,2=INFO,3=DEBUG. Can override with env VALIDATERO_DEBUG
@@ -167,8 +182,10 @@ MainPromptLine = 23
 Dim mockMapsEnv: mockMapsEnv = sh.Environment("PROCESS")("MOCK_SCREEN_MAPS")
 If mockMapsEnv = "" Then mockMapsEnv = sh.Environment("USER")("MOCK_SCREEN_MAPS")
 If mockMode And mockMapsEnv <> "" Then
-    ' use configured OutDir (validated during bootstrap)
-    Dim mockOut: mockOut = fso.BuildPath(toolsOutDir, "ValidateRoList_mock_out.txt")
+    ' Use environment override for output if provided, else use default in toolsOutDir
+    Dim mockOut: mockOut = sh.Environment("PROCESS")("MOCK_OUTPUT_FILE")
+    If mockOut = "" Then mockOut = fso.BuildPath(toolsOutDir, "ValidateRoList_mock_out.txt")
+    
     Dim mockLog: mockLog = fso.BuildPath(toolsOutDir, "ValidateRoList_mock_log.txt")
     Dim mockOutTS: Set mockOutTS = fso.CreateTextFile(mockOut, True)
     Dim mockLogTS: Set mockLogTS = fso.CreateTextFile(mockLog, True)

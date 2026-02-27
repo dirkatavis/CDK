@@ -46,7 +46,7 @@ ExecuteGlobal CreateObject("Scripting.FileSystemObject").OpenTextFile(repoRoot &
 
 ' Run validation before script execution
 If Not ValidateEnvironment() Then
-    WScript.Echo "Setup validation failed. Run tooling\validate_dependencies.vbs"
+    WScript.Echo "Setup validation failed. Run tools\validate_dependencies.vbs"
     WScript.Quit 1
 End If
 ```
@@ -69,6 +69,27 @@ Else
 End If
 ```
 
+### AdvancedMock.vbs
+**Purpose:** High-fidelity terminal simulation for offline testing
+- Simulates BlueZone COM objects (`BZWhll.WhllObj`)
+- Provides latency, partial load, and auto-responder features
+- Enables stress testing and race condition detection
+
+**Key Features:**
+- `SetLatency(ms)` - Simulates network/terminal delay
+- `SetPartialLoad(bool)` - Simulates asynchronous screen rendering
+- `SetPromptSequence(array)` - Defences a stateful conversation flow
+
+**Usage Pattern:**
+```vbs
+' Load for offline test scripts
+ExecuteGlobal fso.OpenTextFile(repoRoot & "\framework\AdvancedMock.vbs").ReadAll()
+
+Dim bz: Set bz = New AdvancedMock
+bz.SetLatency 1000
+bz.SetPromptSequence Array(Array("COMMAND:", "S"), Array("R.O.", "1234"))
+```
+
 ## Design Principles
 - **Zero Hardcoded Paths:** All paths resolved via PathHelper from config.ini
 - **Fail Fast:** Clear error messages instead of silent fallbacks
@@ -77,7 +98,7 @@ End If
 
 ## Dependencies
 - `config/config.ini` - Configuration file (PathHelper dependency)
-- `CDK_BASE` environment variable - Set by `tooling/setup_cdk_base.vbs`
+- `CDK_BASE` environment variable - Set by `tools/setup_cdk_base.vbs`
 - `.cdkroot` marker file at repo root - Validated by PathHelper
 
 ## Adding New Framework Components
@@ -91,7 +112,7 @@ End If
 Framework components are tested via:
 - App-level integration tests (all apps use these components)
 - Repo-level global tests in `tests/` folder
-- `tooling/run_validation_tests.vbs` validates setup and paths
+- `tools/run_validation_tests.vbs` validates setup and paths
 
 ## Notes
 - Keep framework minimal - prefer app-local helpers over framework bloat

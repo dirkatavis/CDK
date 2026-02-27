@@ -1,0 +1,2 @@
+mock_map_1.txt,Open
+mock_map_2.txt,NOT ON FILE

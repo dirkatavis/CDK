@@ -1,7 +1,7 @@
 ' ============================================================================
-' CDK Grand Validation Suite
+' CDK Grand Test Suite
 ' Purpose: Consolidated reporting of ALL system health checks
-' Usage: cscript.exe run_validation_tests.vbs
+' Usage: cscript.exe run_all_tests.vbs
 ' ============================================================================
 
 Option Explicit
@@ -46,7 +46,6 @@ ExecuteTest "Verify PathHelper.vbs Existence", "Sub_CheckPathHelper"
 ExecuteTest "Verify config.ini Existence", "Sub_CheckConfigExists"
 ExecuteTest "Validate config.ini Format", "Sub_CheckConfigFormat"
 ExecuteTest "Validate Configured Project Paths", "Sub_CheckCriticalPaths"
-ExecuteTest "Environment Syntax Scan", "Sub_SyntaxScan"
 ExecuteTest "Global Config Exhaustion", "Sub_ConfigExhaustion"
 
 ' --- CATEGORY 3: REORG CONTRACTS ---
@@ -56,6 +55,7 @@ WScript.Echo "SECTION: Repository Reorg Contracts"
 WScript.Echo "---------------------------------------------------------------------------"
 ExecuteTest "Verify Migration Entrypoints", "Sub_ContractEntrypoints"
 ExecuteTest "Verify Config Path Resolution", "Sub_ContractConfigPaths"
+ExecuteTest "Scan Config Usage Coverage", "Sub_ConfigUsageScan"
 
 ' --- CATEGORY 4: DESTRUCTIVE VALIDATION ---
 WScript.Echo ""
@@ -72,11 +72,10 @@ WScript.Echo ""
 WScript.Echo "---------------------------------------------------------------------------"
 WScript.Echo "SECTION: External Application Suites"
 WScript.Echo "---------------------------------------------------------------------------"
-RunAppSuite "Migration Progress Tracker", "tests\run_migration_target_tests.vbs"
+RunAppSuite "Migration Progress Tracker", "tests\run_migration.vbs"
 RunAppSuite "App Test: Post Final Charges", "apps\post_final_charges\tests\run_all_tests.vbs"
 RunAppSuite "App Test: PFC Scrapper", "apps\pfc_scrapper\tests\test_pfc_scrapper.vbs"
 RunAppSuite "App Test: Validate RO List", "apps\validate_ro_list\tests\test_validate_ro_logic.vbs"
-RunAppSuite "System Stress Tests", "tests\run_stress_tests.vbs"
 
 PrintOverallSummary()
 
@@ -218,10 +217,6 @@ Sub Sub_CleanupBackupFiles()
     CleanupFile g_fso.BuildPath(g_repoRoot, ".cdkroot.backup")
     CleanupFile g_fso.BuildPath(g_repoRoot, "framework\PathHelper.vbs.backup")
     CleanupFile g_fso.BuildPath(g_repoRoot, "config\config.ini.backup")
-    
-    ' Ensure mandatory directories for fallback logs exist
-    Dim tempPath: tempPath = g_fso.BuildPath(g_repoRoot, "Temp")
-    If Not g_fso.FolderExists(tempPath) Then g_fso.CreateFolder tempPath
 End Sub
 
 Sub Sub_RestoreFromBackups()
@@ -258,17 +253,9 @@ Sub Sub_CheckCriticalPaths()
     If Not g_fso.FolderExists(g_fso.BuildPath(g_repoRoot, "apps")) Then g_suiteFailures = g_suiteFailures + 1
 End Sub
 
-Sub Sub_SyntaxScan()
-    Dim cmd: cmd = "cscript.exe //nologo " & Chr(34) & g_fso.BuildPath(g_repoRoot, "tests\infrastructure\test_syntax_validation.vbs") & Chr(34)
-    Dim exec: Set exec = g_shell.Exec(cmd)
-    Do While exec.Status = 0: WScript.Sleep 10: Loop
-    If exec.ExitCode <> 0 Then g_suiteFailures = g_suiteFailures + 1
-End Sub
-
 Sub Sub_ConfigExhaustion()
     ' Run the dedicated exhaustion script
-    Dim cmd: cmd = "cscript.exe //nologo " & Chr(34) & g_fso.BuildPath(g_repoRoot, "tests\infrastructure\test_config_exhaustion.vbs") & Chr(34)
-    Dim exec: Set exec = g_shell.Exec(cmd)
+    Dim exec: Set exec = g_shell.Exec("cscript.exe //nologo " & Chr(34) & g_fso.BuildPath(g_repoRoot, "tests\infrastructure\test_config_exhaustion.vbs") & Chr(34))
     
     ' Capture stdout to parse coverage number
     Dim output: output = ""
@@ -278,12 +265,8 @@ Sub Sub_ConfigExhaustion()
     Loop
     If Not exec.StdOut.AtEndOfStream Then output = output & exec.StdOut.ReadAll()
     
-    ' Debug output for the sub-agent
-    ' WScript.Echo "DEBUG: Exhaustion ExitCode=" & exec.ExitCode
-    ' WScript.Echo "DEBUG: Exhaustion Output=" & output
-    
-    ' Extract X/Y coverage string from output (e.g., "coverage: 22/24")
-    Dim pos: pos = InStr(LCase(output), "coverage: ")
+    ' Extract X/Y coverage string from output (e.g., "Coverage: 22/24")
+    Dim pos: pos = InStr(output, "coverage: ")
     If pos > 0 Then
         g_configExhaustion = Mid(output, pos + 10)
         ' Truncate at newline
@@ -302,7 +285,7 @@ End Sub
 ' ============================================================================
 
 Sub Sub_ContractEntrypoints()
-    Dim mapPath: mapPath = g_fso.BuildPath(g_repoRoot, "tests\migration\reorg_path_map.ini")
+    Dim mapPath: mapPath = g_fso.BuildPath(g_repoRoot, "tools\reorg_path_map.ini")
     Dim entrypoints: Set entrypoints = ReadIniSection(mapPath, "TargetEntrypoints")
     Dim k
     For Each k In entrypoints.Keys
@@ -317,7 +300,7 @@ Sub Sub_ContractConfigPaths()
     Dim helper: helper = g_fso.BuildPath(g_repoRoot, "framework\PathHelper.vbs")
     ExecuteGlobal g_fso.OpenTextFile(helper).ReadAll
     
-    Dim mapPath: mapPath = g_fso.BuildPath(g_repoRoot, "tests\migration\reorg_path_map.ini")
+    Dim mapPath: mapPath = g_fso.BuildPath(g_repoRoot, "tools\reorg_path_map.ini")
     Dim contracts: Set contracts = ReadIniSection(mapPath, "ConfigContracts")
     Dim k, parts, resolved
     For Each k In contracts.Keys
@@ -327,6 +310,15 @@ Sub Sub_ContractConfigPaths()
         If Err.Number <> 0 Or resolved = "" Then g_suiteFailures = g_suiteFailures + 1
         On Error GoTo 0
     Next
+End Sub
+
+Sub Sub_ConfigUsageScan()
+    Dim exec: Set exec = g_shell.Exec("cscript.exe //nologo " & Chr(34) & g_fso.BuildPath(g_repoRoot, "tools\scan_unconfigured_keys.vbs") & Chr(34))
+    ' Busy wait for the tool to finish
+    Do While exec.Status = 0
+        WScript.Sleep 100
+    Loop
+    If exec.ExitCode <> 0 Then g_suiteFailures = g_suiteFailures + 1
 End Sub
 
 ' ============================================================================

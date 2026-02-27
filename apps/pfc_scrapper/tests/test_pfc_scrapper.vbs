@@ -18,6 +18,8 @@ End Class
 
 Dim bzhao: Set bzhao = New MockBzhao
 Dim screenGrid(23)
+Dim g_testsPassed: g_testsPassed = 0
+Dim g_testsFailed: g_testsFailed = 0
 
 Sub SetRow(rowIdx, content)
     screenGrid(rowIdx) = Left(content & String(80, " "), 80)
@@ -95,34 +97,81 @@ Sub TestExtraction()
     ' Test RO Number
     Dim roNum: roNum = GetROFromScreen()
     WScript.Echo "Test RO Number: " & roNum
-    If roNum = "123456" Then WScript.Echo "[PASS]" Else WScript.Echo "[FAIL]"
+    If roNum = "123456" Then 
+        WScript.Echo "[PASS]" 
+        g_testsPassed = g_testsPassed + 1
+    Else 
+        WScript.Echo "[FAIL]"
+        g_testsFailed = g_testsFailed + 1
+    End If
     
     ' Test Date
     Dim openDate: openDate = GetOpenDateFromScreen()
     WScript.Echo "Test Open Date: " & openDate
-    If openDate = "01/20/26" Then WScript.Echo "[PASS]" Else WScript.Echo "[FAIL]"
+    If openDate = "01/20/26" Then 
+        WScript.Echo "[PASS]" 
+        g_testsPassed = g_testsPassed + 1
+    Else 
+        WScript.Echo "[FAIL]"
+        g_testsFailed = g_testsFailed + 1
+    End If
     
     ' Test Status
     Dim roStatus: roStatus = GetRepairOrderStatus()
     WScript.Echo "Test Status: '" & roStatus & "'"
-    if roStatus = "READY TO POST" Then WScript.Echo "[PASS]" Else WScript.Echo "[FAIL]"
+    If roStatus = "READY TO POST" Then 
+        WScript.Echo "[PASS]" 
+        g_testsPassed = g_testsPassed + 1
+    Else 
+        WScript.Echo "[FAIL]"
+        g_testsFailed = g_testsFailed + 1
+    End If
     
     ' Test Line A
     Dim lineA: lineA = GetLineDescription("A")
     WScript.Echo "Test Line A: '" & lineA & "'"
-    If lineA = "OIL CHANGE" Then WScript.Echo "[PASS]" Else WScript.Echo "[FAIL]"
+    If lineA = "OIL CHANGE" Then 
+        WScript.Echo "[PASS]" 
+        g_testsPassed = g_testsPassed + 1
+    Else 
+        WScript.Echo "[FAIL]"
+        g_testsFailed = g_testsFailed + 1
+    End If
     
     ' Test Line B (Missing)
     Dim lineB: lineB = GetLineDescription("B")
     WScript.Echo "Test Line B: '" & lineB & "'"
-    If lineB = "" Then WScript.Echo "[PASS]" Else WScript.Echo "[FAIL]"
+    If lineB = "" Then 
+        WScript.Echo "[PASS]" 
+        g_testsPassed = g_testsPassed + 1
+    Else 
+        WScript.Echo "[FAIL]"
+        g_testsFailed = g_testsFailed + 1
+    End If
     
     ' Test Line C
     Dim lineC: lineC = GetLineDescription("C")
     WScript.Echo "Test Line C: '" & lineC & "'"
-    If lineC = "TIRE ROTATION" Then WScript.Echo "[PASS]" Else WScript.Echo "[FAIL]"
+    If lineC = "TIRE ROTATION" Then 
+        WScript.Echo "[PASS]" 
+        g_testsPassed = g_testsPassed + 1
+    Else 
+        WScript.Echo "[FAIL]"
+        g_testsFailed = g_testsFailed + 1
+    End If
     
-    WScript.Echo "Tests Completed."
+    WScript.Echo ""
+    WScript.Echo "--- PFC Scrapper Test Summary ---"
+    WScript.Echo "Total Tests: " & (g_testsPassed + g_testsFailed)
+    WScript.Echo "Passed: " & g_testsPassed
+    WScript.Echo "Failed: " & g_testsFailed
+    
+    If g_testsFailed > 0 Then
+        WScript.Echo "FAILURE: Extraction logic is broken."
+        WScript.Quit 1
+    Else
+        WScript.Echo "SUCCESS: All extractions passed."
+    End If
 End Sub
 
 TestExtraction

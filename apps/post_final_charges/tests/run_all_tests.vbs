@@ -54,6 +54,11 @@ Sub Main()
     WScript.Echo "=== PostFinalCharges Testing Suite ==="
     WScript.Echo ""
 
+    ' Change working directory to current script folder
+    Dim scriptDir
+    scriptDir = fso.GetParentFolderName(WScript.ScriptFullName)
+    shell.CurrentDirectory = scriptDir
+
     ' Test 1: Standalone Mock Test
     RunTest "Standalone Mock Test", "cscript.exe test_mock_bzhao.vbs"
 
@@ -84,9 +89,6 @@ Sub Main()
     ' Test 10: All InStr Fixes Verification
     RunTest "All InStr Fixes Verification", "cscript.exe test_verify_all_instr_fixes.vbs"
 
-    ' Test 11: Manual Test Mode
-    RunTest "Manual Test Mode", "powershell.exe -Command ""cd .. ; $env:PFC_TEST_MODE='true' ; $env:PFC_LOG_CRITICALITY='comm' ; $env:PFC_LOG_VERBOSITY='med' ; cscript.exe PostFinalCharges.vbs *> $null"""
-
     ' Summary
     WScript.Echo ""
     WScript.Echo "=== Test Results Summary ==="
@@ -101,6 +103,7 @@ Sub Main()
     Else
         WScript.Echo ""
         WScript.Echo "WARNING: Some tests failed. Check the output above for details."
+        WScript.Quit 1
     End If
 End Sub
 

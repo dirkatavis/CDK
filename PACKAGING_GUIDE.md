@@ -24,37 +24,32 @@ If validation passes, everything is ready. If it fails, validation provides clea
 
 ## The Three Pillars of the Packaging System
 
-### 1. Centralized Configuration (`config.ini`)
+### 1. Centralized Configuration (`config/config.ini`)
 - **What:** Single file defining all paths and parameters
-- **Where:** At repository root
+- **Where:** In `config/` folder
 - **Purpose:** Scripts read from here instead of hardcoding paths
 - **Benefit:** Change paths once in config.ini, all scripts use new paths
 
 Example:
 ```ini
 [PostFinalCharges_Main]
-CSV=PostFinalCharges\CashoutRoList.csv
-Log=PostFinalCharges\PostFinalCharges.log
-
-[Close_ROs_Pt1]
-CSV=Close_ROs\Close_ROs_Pt1.csv
-Log=Close_ROs\Close_ROs_Pt1.log
+CSV=apps\post_final_charges\CashoutRoList.csv
+Log=runtime\logs\post_final_charges\PostFinalCharges.log
 ```
 
-### 2. Path Resolution Library (`common\PathHelper.vbs`)
+### 2. Path Resolution Library (`framework\PathHelper.vbs`)
 - **What:** Shared library for reading config and resolving paths
-- **Where:** In `common` folder
+- **Where:** In `framework/` folder
 - **Purpose:** All scripts use this to get paths from config.ini
 - **Benefit:** Consistent path handling across all scripts
 
 Functions provided:
 - `GetRepoRoot()` - Get base installation folder
 - `GetConfigPath(section, key)` - Read value from config.ini
-- `ResolvePath(relPath, baseFolder)` - Convert relative to absolute paths
 
-### 3. Dependency Validation System (`common\ValidateSetup.vbs` + `tools\validate_dependencies.vbs`)
+### 3. Dependency Validation System (`framework\ValidateSetup.vbs` + `tools\validate_dependencies.vbs`)
 - **What:** Automatic checks that dependencies are available
-- **Where:** ValidateSetup in `common` (included in scripts), tool in `tools`
+- **Where:** ValidateSetup in `framework/` (included in scripts), tool in `tools/`
 - **Purpose:** Catch missing setup before scripts fail
 - **Benefit:** Clear error messages guide users to fix issues
 
@@ -71,17 +66,17 @@ Checks performed:
 | File | Purpose |
 |------|---------|
 | `.cdkroot` | Repository marker (validates structure) |
-| `config.ini` | Central configuration (paths and parameters) |
-| `common/PathHelper.vbs` | Path resolution library |
-| `common/ValidateSetup.vbs` | Validation library (both contexts) |
+| `config/config.ini` | Central configuration (paths and parameters) |
+| `framework/PathHelper.vbs` | Path resolution library |
+| `framework/ValidateSetup.vbs` | Validation library (BlueZone-safe) |
 | `tools/validate_dependencies.vbs` | Standalone validation tool |
 | `tools/setup_cdk_base.vbs` | Environment setup script |
 
 ### Recommended (Enhance User Experience)
 | File | Purpose |
 |------|---------|
-| `docs/SETUP_VALIDATION.md` | User setup and validation guide |
-| `docs/PATH_CONFIGURATION.md` | config.ini structure documentation |
+| `docs/USER_SETUP.md` | User setup and verification guide |
+| `docs/DEVELOPER_HANDBOOK.md` | Core technical documentation |
 | `tools/show_cdk_base.vbs` | Check current CDK_BASE setting |
 
 ### Optional (For Testing)

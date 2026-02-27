@@ -1,7 +1,7 @@
 # Repository Reorganization Migration Mapping
 
 ## Migration Date: February 21, 2026
-## Goal: Domain-first folder structure (apps/framework/tooling)
+## Goal: Domain-first folder structure (apps/framework/tools)
 
 ---
 
@@ -11,7 +11,7 @@
 |--------|---------|----------|
 | `apps/` | Production workflows | Self-contained apps with tests/README |
 | `framework/` | Shared reusable components | PathHelper.vbs, ValidateSetup.vbs, HostCompat.vbs |
-| `tooling/` | Setup/diagnostics/testing | setup_cdk_base.vbs, validate_dependencies.vbs, test scripts |
+| `tools/` | Setup/diagnostics/testing | setup_cdk_base.vbs, validate_dependencies.vbs, test scripts |
 | `launch/` | Backward compatibility wrappers | Temporary wrappers for legacy paths (removable at sunset) |
 | `tests/` | Repo-level global tests | Cross-cutting infrastructure tests |
 | `runtime/` | Generated artifacts | logs/, data/out/ (created at runtime) |
@@ -23,7 +23,7 @@
 | Folder | Reason | Replaced By |
 |--------|--------|-------------|
 | `common/` | Renamed for clarity | `framework/` |
-| `tools/` | Renamed for domain separation | `tooling/` |
+| `tooling/` | Renamed for domain separation | `tools/` |
 | `utilities/` | Reorganized to self-contained apps | `apps/` (post_final_charges, maintenance_ro_closer, etc.) |
 | `workflows/` | Reorganized to self-contained apps | `apps/repair_order/` |
 | `Close_ROs/` | Legacy runtime output (stale logs) | `runtime/logs/` |
@@ -41,14 +41,14 @@ common/ValidateSetup.vbs        → framework/ValidateSetup.vbs
 common/HostCompat.vbs           → framework/HostCompat.vbs
 ```
 
-### Tooling Scripts
+### Tools Scripts
 ```
-tools/setup_cdk_base.vbs        → tooling/setup_cdk_base.vbs
-tools/validate_dependencies.vbs → tooling/validate_dependencies.vbs
-tools/scan_hardcoded_paths.vbs  → tooling/scan_hardcoded_paths.vbs
-tools/test_*.vbs                → tooling/test_*.vbs (all test scripts)
-tools/run_*.vbs                 → tooling/run_*.vbs (test runners)
-tools/reorg_path_map.ini        → tooling/reorg_path_map.ini
+tools/setup_cdk_base.vbs        → tools/setup_cdk_base.vbs
+tools/validate_dependencies.vbs → tools/validate_dependencies.vbs
+tools/scan_hardcoded_paths.vbs  → tools/scan_hardcoded_paths.vbs
+tools/test_*.vbs                → tools/test_*.vbs (all test scripts)
+tools/run_*.vbs                 → tools/run_*.vbs (test runners)
+tools/reorg_path_map.ini        → tools/reorg_path_map.ini
 ```
 
 ### Production Apps
@@ -101,7 +101,7 @@ tools/run_migration_target_tests.vbs → tests/run_migration_target_tests.vbs
 
 ### Code References to Update:
 - **All `.vbs` files**: `common\` → `framework\`
-- **All `.vbs` files**: `tools\` → `tooling\`
+- **All `.vbs` files**: `tooling\` → `tools\`
 - **Documentation**: Update all path examples
 - **config.ini**: Update all app paths to `apps/*`
 - **reorg_path_map.ini**: Update target contracts to `apps/*` and `launch/*`
@@ -116,7 +116,7 @@ tools/run_migration_target_tests.vbs → tests/run_migration_target_tests.vbs
 
 After migration:
 - [ ] All `apps/` scripts load from `framework/`
-- [ ] All `tooling/` scripts load from `framework/`
+- [ ] All `tools/` scripts load from `framework/`
 - [x] `config.ini` paths resolve to `apps/`, `runtime/`
 - [x] `launch/` wrappers forward correctly
 - [x] Tests pass: `cscript tests\run_validation_tests.vbs`
@@ -127,7 +127,7 @@ After migration:
 
 ## 🚀 Execution Order (Completed)
 
-1. ✅ **Create** new folders (`apps/`, `framework/`, `tooling/`, `launch/`, `tests/`)
+1. ✅ **Create** new folders (`apps/`, `framework/`, `tools/`, `launch/`, `tests/`)
 2. ✅ **Copy** files to new locations
 3. ✅ **Update** all internal references
 4. ✅ **Validate** tests pass

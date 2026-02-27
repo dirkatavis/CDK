@@ -1,111 +1,60 @@
-# Tests - Global Repository Tests
+# Repository Test Suite
 
-## Purpose
-Repository-level tests that validate cross-cutting concerns, infrastructure, and migration contracts. These tests ensure the **entire codebase** maintains integrity, not just individual apps.
+## Overview
+This directory contains the global validation framework. It is organized into a **command-and-control** structure designed for immediate clarity, even for new developers.
 
-## Contrast with App Tests
-- **App tests** (`apps/*/tests/`) - Validate single app behavior, mocked inputs, unit logic
-- **Repo tests** (`tests/`) - Validate infrastructure, path resolution, migration contracts, cross-app concerns
+## 🎯 Master Runners (Commanders)
+These are your primary entry points. Use these to check the overall pulse of the repository.
 
-## Test Categories
+- [run_all.vbs](run_all.vbs) - **The Grand Suite**. Orchestrates every test in the repo (Infra, Environment, Migration, and Apps).
+- [run_validation_tests.vbs](run_validation_tests.vbs) - **CDK Grand Validation Suite**. The authoritative CI/CD runner for overall repository health.
+- [run_stress_tests.vbs](run_stress_tests.vbs) - **Stress Suite**. Validates resilience against high terminal latency and partial screen loads.
+- [run_migration.vbs](run_migration.vbs) - Tracks progress of the repository reorganization toward the target architecture.
 
-### 🏗️ Infrastructure Validation
-Tests that verify foundational components work correctly.
+## 📂 Categorized Tests (Workers)
+Logic is grouped by purpose to simplify troubleshooting. If a master runner reports a failure in a specific section, you can find the relevant worker here.
 
-**`test_path_helper.vbs`** - Unit tests for PathHelper path resolution logic
-**`test_hardcoded_paths_comprehensive.vbs`** - Scans entire codebase for hardcoded paths that should use PathHelper
+### 🏗️ Infrastructure
+Validates the core VBScript/PowerShell plumbing that powers the rest of the tools.
+- [infrastructure/test_path_helper.vbs](infrastructure/test_path_helper.vbs) - Unit tests for PathHelper's relative-to-absolute resolution logic.
+- [infrastructure/test_config_exhaustion.vbs](infrastructure/test_config_exhaustion.vbs) - Verifies that every single path defined in `config.ini` resolves to a real file.
+- [infrastructure/test_hardcoded_paths.vbs](infrastructure/test_hardcoded_paths.vbs) - Scans the codebase for hardcoded absolute paths that should be using `PathHelper`.
+- [infrastructure/test_syntax_validation.vbs](infrastructure/test_syntax_validation.vbs) - Scans for environment-breaking syntax (e.g., `DoEvents`, `MsgBox`, incorrect `Option Explicit` placement).
 
-### ✅ Environment Validation
-Tests that ensure the environment is correctly configured.
+### 🌍 Environment
+Checks the setup of the developer's machine and external dependencies.
+- [environment/test_positive.vbs](environment/test_positive.vbs) - Verifies all required environment variables and folders exist.
+- [environment/test_negative.vbs](environment/test_negative.vbs) - Simulates a "broken" environment to ensure the validation logic correctly catches it.
+- [environment/test_reset.vbs](environment/test_reset.vbs) - Restores the workspace to a clean state (cleanup of log artifacts, etc.).
 
-**`test_validation_positive.vbs`** - Validates all dependencies are present (should PASS)
-**`test_validation_negative.vbs`** - Simulates missing dependencies and verifies validation catches them (should FAIL appropriately)
-**`test_reset_state.vbs`** - Preflight cleanup for deterministic test runs
+### 📋 Migration
+Ensures that moving files doesn't break existing scripts or configuration.
+- [migration/test_entrypoints.vbs](migration/test_entrypoints.vbs) - Validates that legacy entry points (stubs) still exist and are functional.
+- [migration/test_config_paths.vbs](migration/test_config_paths.vbs) - Validates that `config.ini` paths align with the master reorg plan.
+- [migration/test_wrappers.vbs](migration/test_wrappers.vbs) - Ensures shim/wrapper scripts point to their new targets correctly.
 
-### 📋 Migration Contract Tests
-Tests that validate the repository reorganization maintains backward compatibility.
+---
 
-**`test_reorg_contract_entrypoints.vbs`** - Validates legacy entry paths still exist
-**`test_reorg_contract_config_paths.vbs`** - Validates config.ini paths resolve correctly
-**`test_reorg_contract_wrappers.vbs`** - Validates wrapper targets exist in new locations
+## 🚀 Usage Guide
 
-### 🎯 Test Runners
-Master test suites that orchestrate validation.
-
-**`run_validation_tests.vbs`** - Current-state validation (MUST stay green)
-  - Runs: Preflight Reset → Positive Tests → Negative Tests → Reorg Contracts
-  - Exit 0 = all pass, Exit 1 = failure
-  - Use for pre-commit validation
-
-**`run_migration_target_tests.vbs`** - Final-state progress tracker (red→green)
-  - Reports migration progress: % complete, phase gates
-  - Validates target structure matches `tooling/reorg_path_map.ini`
-  - Intentionally red/yellow until migration reaches 100%
-
-## Running Tests
-
-### Quick Pre-Commit Check
+### Full Repo Validation
+Run this before submitting any PR. It must stay green at all times.
 ```cmd
-cscript.exe tests\run_validation_tests.vbs
+cscript.exe //nologo tests\run_all.vbs
 ```
-Should show: `6/6 tests passed` (or current count)
 
-### Migration Progress Check
+### Check Migration Progress
+Use this to see how close the repository is to the final target structure.
 ```cmd
-cscript.exe tests\run_migration_target_tests.vbs
-```
-Shows: `XX/YY checks passed (ZZ%)` and phase gate status
-
-### Individual Test
-```cmd
-cscript.exe tests\test_path_helper.vbs
+cscript.exe //nologo tests\run_migration.vbs
 ```
 
 ## Exit Codes
-- **0** = All tests passed
-- **1** = One or more tests failed
-
-## Test Data Sources
-- **`tooling/reorg_path_map.ini`** - Migration contract definitions (LegacyEntrypoints, WrapperTargets, ConfigContracts, etc.)
-- **`config/config.ini`** - Path configuration for contract validation
+- **0** = SUCCESS: All tests passed.
+- **1** = FAILURE: One or more tests failed or encountered an error.
 
 ## Design Principles
-- **Fast Feedback:** Tests run in seconds, not minutes
-- **Fail Fast:** Clear error messages pointing to root cause
-- **No Mocking (Infra Tests):** Infrastructure tests use real paths/files
-- **Deterministic:** `test_reset_state.vbs` ensures clean slate
+- **Fast Feedback:** The entire suite execution is measured in seconds.
+- **Command & Control:** Root level contains "Commanders" (scripts you run); subfolders contain "Workers" (logic details).
+- **Silent unless Failed:** Internal workers are typically verbose, but the Grand Suite provides a high-level table view.
 
-## When to Run
-- **Before commits:** `run_validation_tests.vbs` ensures no regressions
-- **After file moves:** Migration contract tests catch broken references
-- **During reorganization:** `run_migration_target_tests.vbs` tracks progress
-- **CI/CD pipelines:** Automated validation on every push
-
-## Test Output Handling
-Test output files should **never** be written to the repository root. Use proper locations:
-
-- **Test logs:** `runtime/logs/tests/` - For detailed test execution logs
-- **Shell redirection:** When capturing output via `>`, redirect to `runtime/logs/tests/test_name_output.txt`
-- **Root directory:** Avoided - files here create clutter and are gitignored
-
-Example proper usage:
-```cmd
-REM ❌ Wrong - writes to root
-cscript test_validation.vbs > test_output.txt
-
-REM ✅ Correct - writes to runtime/logs/tests/
-cscript test_validation.vbs > runtime\logs\tests\validation_output.txt
-```
-
-## Adding New Global Tests
-1. Test must validate a cross-cutting concern (affects multiple apps or core infrastructure)
-2. Add test script to `tests/` folder
-3. If part of validation suite, add to `run_validation_tests.vbs`
-4. If part of migration tracking, update `tooling/reorg_path_map.ini` and `run_migration_target_tests.vbs`
-5. Update this README with test description
-
-## Notes
-- Keep repo tests **minimal** - most testing should be app-local
-- Focus on infrastructure, contracts, and cross-cutting concerns
-- App-specific behavior belongs in `apps/*/tests/`
-- See `PACKAGING_GUIDE.md` - repo tests are NOT distributed to end users (developers only)
