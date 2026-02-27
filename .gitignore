@@ -30,10 +30,20 @@ Close_ROs/msgboxtext.txt
 Thumbs.db
 
 # Ignore ValidateRoList runtime artifacts and test outputs
+# (Old paths)
 tools/ValidateRoList/*.log
 tools/ValidateRoList/*_out.txt
 tools/ValidateRoList/*_mock_*.txt
 tools/ValidateRoList/ValidateRoList_IN.csv
+
+# New local test artifact folders
+**/test_artifacts/
+
+# Local app outputs/logs
+apps/**/*.log
+apps/**/*_out.csv
+apps/**/*_OUT.txt
+apps/**/FALLBACK_ERROR.txt
 
 # Ignore other local runtime artifacts
 Temp/

@@ -27,7 +27,11 @@ End If
 
 ExecuteGlobal fso.OpenTextFile(helperPath).ReadAll
 
+<<<<<<< HEAD
 mapPath = fso.BuildPath(repoRoot, "tools\reorg_path_map.ini")
+=======
+mapPath = fso.BuildPath(repoRoot, "tests\migration\reorg_path_map.ini")
+>>>>>>> feature/cleanup
 If Not fso.FileExists(mapPath) Then
     WScript.Echo "FAIL: Migration path map not found: " & mapPath
     WScript.Quit 1

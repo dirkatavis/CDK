@@ -14,7 +14,12 @@ g_repoRoot = g_shell.Environment("USER")("CDK_BASE")
 If g_repoRoot = "" Then WScript.Quit 1
 
 ' Prepare mock files
+<<<<<<< HEAD
 Dim testDir: testDir = g_fso.BuildPath(g_repoRoot, "runtime\tests\validate_ro")
+=======
+Dim scriptDir: scriptDir = g_fso.GetParentFolderName(WScript.ScriptFullName)
+Dim testDir: testDir = g_fso.BuildPath(scriptDir, "test_artifacts")
+>>>>>>> feature/cleanup
 If Not g_fso.FolderExists(testDir) Then GeneratePath(testDir)
 
 Dim mockInput: mockInput = g_fso.BuildPath(testDir, "test_input.csv")

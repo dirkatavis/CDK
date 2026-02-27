@@ -26,7 +26,11 @@ If Len(repoRoot) = 0 Then
     WScript.Quit 1
 End If
 
+<<<<<<< HEAD
 mapPath = fso.BuildPath(repoRoot, "tools\reorg_path_map.ini")
+=======
+mapPath = fso.BuildPath(repoRoot, "tests\migration\reorg_path_map.ini")
+>>>>>>> feature/cleanup
 If Not fso.FileExists(mapPath) Then
     WScript.Echo "FAIL: Missing map file: " & mapPath
     WScript.Quit 1
