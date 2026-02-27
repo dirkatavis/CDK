@@ -1,22 +1,23 @@
 '=====================================================================================
 ' Test PFC Scrapper Extraction
-' Purpose: Verify data extraction logic using mock screen buffers.
+' Purpose: Verify data extraction logic using central AdvancedMock framework.
 '=====================================================================================
 
 Option Explicit
 
-' Mock BZWhll.WhllObj
-Class MockBzhao
-    Public Buffer
-    Public Sub ReadScreen(ByRef content, length, row, col)
-        Dim startPos: startPos = ((row-1) * 80) + (col-1) + 1
-        content = Mid(Buffer, startPos, length)
-    End Sub
-    Public Sub Pause(ms) : End Sub
-    Public Sub SendKey(key) : End Sub
-End Class
+' Load AdvancedMock from framework
+Dim fso: Set fso = CreateObject("Scripting.FileSystemObject")
+' The repo root is two levels up from apps/pfc_scrapper/tests
+Dim scriptDir: scriptDir = fso.GetParentFolderName(WScript.ScriptFullName)
+Dim appDir: appDir = fso.GetParentFolderName(scriptDir)
+Dim appsDir: appsDir = fso.GetParentFolderName(appDir)
+Dim repoRoot: repoRoot = fso.GetParentFolderName(appsDir)
+Dim mockPath: mockPath = fso.BuildPath(repoRoot, "framework\AdvancedMock.vbs")
+ExecuteGlobal fso.OpenTextFile(mockPath).ReadAll
 
-Dim bzhao: Set bzhao = New MockBzhao
+Dim bzhao: Set bzhao = New AdvancedMock
+bzhao.Connect "A"
+
 Dim screenGrid(23)
 Dim g_testsPassed: g_testsPassed = 0
 Dim g_testsFailed: g_testsFailed = 0
@@ -92,7 +93,7 @@ Sub TestExtraction()
     SetRow 9, "A      OIL CHANGE"
     SetRow 11, "C      TIRE ROTATION"
     
-    bzhao.Buffer = Join(screenGrid, "")
+    bzhao.SetBuffer Join(screenGrid, "")
     
     ' Test RO Number
     Dim roNum: roNum = GetROFromScreen()

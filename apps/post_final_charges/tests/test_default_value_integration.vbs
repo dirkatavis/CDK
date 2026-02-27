@@ -11,127 +11,31 @@
 Option Explicit
 
 ' Include required files
-Function IncludeFile(filePath)
-    On Error Resume Next
-    Dim fsoInclude, fileContent, includeStream
-    Dim scriptDir, absolutePath
-
-    Set fsoInclude = CreateObject("Scripting.FileSystemObject")
-    
-    ' Get the directory where this script is located
-    scriptDir = fsoInclude.GetParentFolderName(WScript.ScriptFullName)
-    
-    ' Convert relative path to absolute path based on script location
-    If Left(filePath, 3) = "../" Then
-        absolutePath = fsoInclude.GetParentFolderName(scriptDir) & "\" & Mid(filePath, 4)
-    Else
-        absolutePath = scriptDir & "\" & filePath
-    End If
-
-    If Not fsoInclude.FileExists(absolutePath) Then
-        WScript.Echo "IncludeFile - File not found: " & absolutePath
-        IncludeFile = False
-        Exit Function
-    End If
-
-    Set includeStream = fsoInclude.OpenTextFile(absolutePath, 1)
-    fileContent = includeStream.ReadAll
-    includeStream.Close
-    Set includeStream = Nothing
-
-    ExecuteGlobal fileContent
-    IncludeFile = True
-End Function
-
-' Enhanced MockBzhao for default value testing
-Class TestMockBzhao
-    Private screenBuffer
-    Private connected
-    Private sentKeys
-    Private currentPrompt
-    Private promptSequence
-    Private promptIndex
-    
-    Private Sub Class_Initialize()
-        connected = False
-        sentKeys = ""
-        promptIndex = 0
-        
-        ' Define a sequence of prompts that include default values
-        promptSequence = Array( _
-            "TECHNICIAN (72925)?", _
-            "ACTUAL HOURS (117)?", _
-            "SOLD HOURS (0)?", _
-            "TECHNICIAN (99)?", _
-            "COMMAND:" _
-        )
-        
-        currentPrompt = promptSequence(0)
-    End Sub
-    
-    Public Sub Connect(session)
-        connected = True
-        WScript.Echo "MockBzhao: Connected to session " & session
-    End Sub
-    
-    Public Sub SendKey(key)
-        If Not connected Then Exit Sub
-        
-        sentKeys = sentKeys & key & ";"
-        WScript.Echo "MockBzhao: Received key: " & key
-        
-        ' Advance to next prompt when Enter is pressed
-        If key = "<NumpadEnter>" Or key = "<Enter>" Then
-            promptIndex = promptIndex + 1
-            If promptIndex < UBound(promptSequence) + 1 Then
-                currentPrompt = promptSequence(promptIndex)
-                WScript.Echo "MockBzhao: Advanced to prompt: " & currentPrompt
-            End If
-        End If
-    End Sub
-    
-    Public Sub ReadScreen(content, length, row, col)
-        ' Return the current prompt as screen content
-        content = String(length, " ")
-        If connected And currentPrompt <> "" Then
-            ' Place the current prompt at the beginning of the screen buffer
-            If Len(currentPrompt) <= length Then
-                content = currentPrompt & String(length - Len(currentPrompt), " ")
-            End If
-        End If
-    End Sub
-    
-    Public Function GetSentKeys()
-        GetSentKeys = sentKeys
-    End Function
-    
-    Public Function GetCurrentPrompt()
-        GetCurrentPrompt = currentPrompt
-    End Function
-    
-    Public Sub Disconnect()
-        connected = False
-        WScript.Echo "MockBzhao: Disconnected"
-    End Sub
-    
-    ' Additional methods that might be called by the main script
-    Public Sub Pause(milliseconds)
-        ' Do nothing for testing
-    End Sub
-    
-    Public Sub Wait(seconds)
-        ' Do nothing for testing  
-    End Sub
-End Class
+Dim fso: Set fso = CreateObject("Scripting.FileSystemObject")
+Dim scriptDir: scriptDir = fso.GetParentFolderName(WScript.ScriptFullName)
+Dim appDir: appDir = fso.GetParentFolderName(scriptDir)
+Dim appsDir: appsDir = fso.GetParentFolderName(appDir)
+Dim repoRoot: repoRoot = fso.GetParentFolderName(appsDir)
+Dim mockPath: mockPath = fso.BuildPath(repoRoot, "framework\AdvancedMock.vbs")
+ExecuteGlobal fso.OpenTextFile(mockPath).ReadAll
 
 ' Test the complete prompt processing with default values
 Sub TestDefaultValueProcessing()
-    WScript.Echo "Testing Default Value Processing with Mock..."
+    WScript.Echo "Testing Default Value Processing with AdvancedMock..."
     WScript.Echo String(50, "=")
     
     ' Create our test mock
     Dim testMock
-    Set testMock = New TestMockBzhao
+    Set testMock = New AdvancedMock
+    
+    ' Define a sequence of prompts that include default values
+    testMock.SetPromptSequence Array( _
+        "TECHNICIAN (72925)?", _
+        "ACTUAL HOURS (117)?", _
+        "SOLD HOURS (0)?", _
+        "TECHNICIAN (99)?", _
+        "COMMAND:" _
+    )
     
     ' Replace the global bzhao with our test mock
     Set bzhao = testMock
@@ -259,16 +163,16 @@ Sub Main()
     WScript.Echo ""
 
     ' Load required files
-    If Not IncludeFile("../mocks/MockBzhao.vbs") Then
-        WScript.Echo "Failed to load MockBzhao.vbs"
-        Exit Sub
-    End If
+    ' AdvancedMock is already loaded via ExecuteGlobal in the script header
     
-    If Not IncludeFile("../PostFinalCharges.vbs") Then
-        WScript.Echo "Failed to load PostFinalCharges.vbs"
-        WScript.Echo "Make sure this test is run from the tests directory"
+    ' Load the main script for functions like HasDefaultValueInPrompt (if they exist there)
+    ' Using absolute path logic to match the header
+    Dim libPath: libPath = fso.BuildPath(appDir, "PostFinalCharges.vbs")
+    If Not fso.FileExists(libPath) Then
+        WScript.Echo "Failed to find: " & libPath
         Exit Sub
     End If
+    ExecuteGlobal fso.OpenTextFile(libPath).ReadAll
 
     ' Run the tests
     TestDefaultValueProcessing()

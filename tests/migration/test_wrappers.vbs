@@ -21,7 +21,7 @@ If Not fso.FolderExists(repoRoot) Then
     WScript.Quit 1
 End If
 
-mapPath = fso.BuildPath(repoRoot, "tools\reorg_path_map.ini")
+mapPath = fso.BuildPath(repoRoot, "tests\migration\reorg_path_map.ini")
 If Not fso.FileExists(mapPath) Then
     WScript.Echo "FAIL: Migration path map not found: " & mapPath
     WScript.Quit 1

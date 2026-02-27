@@ -289,7 +289,7 @@ End Sub
 ' ============================================================================
 
 Sub Sub_ContractEntrypoints()
-    Dim mapPath: mapPath = g_fso.BuildPath(g_repoRoot, "tools\reorg_path_map.ini")
+    Dim mapPath: mapPath = g_fso.BuildPath(g_repoRoot, "tests\migration\reorg_path_map.ini")
     Dim entrypoints: Set entrypoints = ReadIniSection(mapPath, "TargetEntrypoints")
     Dim k
     For Each k In entrypoints.Keys
@@ -304,7 +304,7 @@ Sub Sub_ContractConfigPaths()
     Dim helper: helper = g_fso.BuildPath(g_repoRoot, "framework\PathHelper.vbs")
     ExecuteGlobal g_fso.OpenTextFile(helper).ReadAll
     
-    Dim mapPath: mapPath = g_fso.BuildPath(g_repoRoot, "tools\reorg_path_map.ini")
+    Dim mapPath: mapPath = g_fso.BuildPath(g_repoRoot, "tests\migration\reorg_path_map.ini")
     Dim contracts: Set contracts = ReadIniSection(mapPath, "ConfigContracts")
     Dim k, parts, resolved
     For Each k In contracts.Keys

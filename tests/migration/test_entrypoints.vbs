@@ -26,7 +26,7 @@ If Not fso.FileExists(fso.BuildPath(repoRoot, ".cdkroot")) Then
     WScript.Quit 1
 End If
 
-mapPath = fso.BuildPath(repoRoot, "tools\reorg_path_map.ini")
+mapPath = fso.BuildPath(repoRoot, "tests\migration\reorg_path_map.ini")
 If Not fso.FileExists(mapPath) Then
     WScript.Echo "FAIL: Migration path map not found: " & mapPath
     WScript.Quit 1
@@ -39,7 +39,7 @@ If entrypoints.Count = 0 Then
 End If
 
 ' Always validate core map and config files as static contracts.
-CheckFile "tools\reorg_path_map.ini"
+CheckFile "tests\migration\reorg_path_map.ini"
 CheckFile "framework\PathHelper.vbs"
 CheckFile "config\config.ini"
 

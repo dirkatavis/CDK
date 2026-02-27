@@ -52,7 +52,7 @@ Global test runners and validation contracts.
 
 ### 📋 Migration Tracking
 
-**`reorg_path_map.ini`** - Single source of truth for migration contracts
+See `tests/migration/reorg_path_map.ini` for migration contracts.
 
 ### 🛠️ Development Tools
 Ad-hoc utilities for development and troubleshooting.

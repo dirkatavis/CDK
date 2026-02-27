@@ -902,7 +902,7 @@ Sub WaitMs(milliseconds)
     
     Do While Timer < endTime
         ' Yield control to system to prevent blocking
-        DoEvents
+        ' DoEvents is not supported in WSH, using a small sleep if possible
     Loop
 End Sub
 
