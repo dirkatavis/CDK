@@ -8,7 +8,7 @@ Option Explicit
 ' Usage in your script:
 '   1. Include this file: ExecuteGlobal fso.OpenTextFile("path\to\PathHelper.vbs").ReadAll
 '   2. Get the repo root: root = GetRepoRoot()
-'   3. Get a configured path: csvPath = GetConfigPath("Close_ROs_Pt1", "CSV")
+'   3. Get a configured path: csvPath = GetConfigPath("Initialize_RO", "CSV")
 ' ==============================================================================
 
 Dim g_fso
@@ -74,7 +74,7 @@ End Function
 ' GetConfigPath - Builds absolute path from config.ini settings
 ' ------------------------------------------------------------------------------
 ' Parameters:
-'   section - INI section name (e.g., "Close_ROs_Pt1")
+'   section - INI section name (e.g., "Initialize_RO")
 '   key     - Setting name (e.g., "CSV")
 ' Returns: Absolute path built from repo root + relative path from config
 ' ------------------------------------------------------------------------------
