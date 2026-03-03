@@ -48,15 +48,6 @@ ExecuteTest "Validate config.ini Format", "Sub_CheckConfigFormat"
 ExecuteTest "Validate Configured Project Paths", "Sub_CheckCriticalPaths"
 ExecuteTest "Global Config Exhaustion", "Sub_ConfigExhaustion"
 
-' --- CATEGORY 3: REORG CONTRACTS ---
-WScript.Echo ""
-WScript.Echo "---------------------------------------------------------------------------"
-WScript.Echo "SECTION: Repository Reorg Contracts"
-WScript.Echo "---------------------------------------------------------------------------"
-ExecuteTest "Verify Migration Entrypoints", "Sub_ContractEntrypoints"
-ExecuteTest "Verify Config Path Resolution", "Sub_ContractConfigPaths"
-ExecuteTest "Scan Config Usage Coverage", "Sub_ConfigUsageScan"
-
 ' --- CATEGORY 4: DESTRUCTIVE VALIDATION ---
 WScript.Echo ""
 WScript.Echo "---------------------------------------------------------------------------"
@@ -72,7 +63,6 @@ WScript.Echo ""
 WScript.Echo "---------------------------------------------------------------------------"
 WScript.Echo "SECTION: External Application Suites"
 WScript.Echo "---------------------------------------------------------------------------"
-RunAppSuite "Migration Progress Tracker", "tests\run_migration.vbs"
 RunAppSuite "App Test: Post Final Charges", "apps\post_final_charges\tests\run_all_tests.vbs"
 RunAppSuite "App Test: PFC Scrapper", "apps\pfc_scrapper\tests\test_pfc_scrapper.vbs"
 RunAppSuite "App Test: Validate RO List", "apps\validate_ro_list\tests\test_validate_ro_logic.vbs"

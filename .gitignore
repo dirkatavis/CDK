@@ -1,33 +1,32 @@
-﻿# Temporary files
+﻿# Global file extensions (Ignore all logs, text outputs, and temporary files)
 *.tmp
-scanner_checkpoint.tmp
-
-# Log files (all script-generated logs)
 *.log
-PostFinalCharges/PostFinalCharges.log
-Maintenance_RO_Closer/Maintenance_RO_Scanner.log
-Maintenance_RO_Closer/Maintenance_RO_Closer.log
-
-# CSV data files (runtime input/output)
-Close_ROs/Close_ROs_Pt1.csv
-Maintenance_RO_Closer/RO_List.csv
-Maintenance_RO_Closer/RO_Status_Report.csv
-Maintenance_RO_Closer/exception_list.csv
-
-# Generated debug/diagnostic files
-Maintenance_RO_Closer/coordinate_check.txt
-Close_ROs/msgboxtext.txt
-
-# BlueZone session files
-*.zsn
-
-# Backup files
+*.txt
 *.bak
 *.old
 *~
-
-# Windows thumbnail cache
+*.zsn
+scanner_checkpoint.tmp
 Thumbs.db
+
+# Directory-level ignores
+**/test_artifacts/
+Temp/
+runtime/logs/
+runtime/data/out/
+
+# CSV data files (Assume-unchanged will be applied to tracked CSVs separately)
+# We only ignore CSVs that should NEVER be tracked.
+*._*
+# (Any CSV that is NOT tracked but generated should be ignored)
+apps/**/*_out.csv
+ValidateRoList_OUT.csv
+
+# Legacy ignores (kept for backward compatibility with older checkouts)
+Close_ROs/
+Maintenance_RO_Closer/RO_Status_Report.csv
+Maintenance_RO_Closer/exception_list.csv
+Maintenance_RO_Closer/coordinate_check.txt
 
 # Ignore ValidateRoList runtime artifacts and test outputs
 # (Old paths)

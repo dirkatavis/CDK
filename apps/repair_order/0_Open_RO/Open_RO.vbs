@@ -39,16 +39,17 @@ Dim CSV_FILE_PATH: CSV_FILE_PATH = GetConfigPath("Open_RO", "CSV")
 Dim OUTPUT_CSV_PATH: OUTPUT_CSV_PATH = GetConfigPath("Open_RO", "OutputCSV")
 Dim SCRIPT_FOLDER: SCRIPT_FOLDER = "scripts\archive"
 Dim SLOW_MARKER_PATH: SLOW_MARKER_PATH = GetConfigPath("Open_RO", "DebugMarker")
+Const AppendMode = 8
 Dim LOG_FILE_PATH: LOG_FILE_PATH = GetConfigPath("Open_RO", "Log")
 
 Dim fso, ts, strLine, arrValues, i, MVA, Mileage
 
-' --- Initialize Files (Overwrite for new session) ---
+' --- Initialize Files (Amend for new session) ---
 Set fso = CreateObject("Scripting.FileSystemObject")
 
 ' Initialize log file
 Dim logInit
-Set logInit = fso.CreateTextFile(LOG_FILE_PATH, True)
+Set logInit = fso.OpenTextFile(LOG_FILE_PATH, AppendMode, True)
 logInit.WriteLine "===================================================="
 logInit.WriteLine "SESSION START: " & Now
 logInit.WriteLine "===================================================="
