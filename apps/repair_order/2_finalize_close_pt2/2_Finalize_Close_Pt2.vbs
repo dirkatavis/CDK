@@ -14,7 +14,7 @@ Dim helperPath: helperPath = fso.BuildPath(basePath, "framework\PathHelper.vbs")
 ExecuteGlobal fso.OpenTextFile(helperPath).ReadAll
 
 Dim POLL_INTERVAL: POLL_INTERVAL = 1 ' 1 second polling interval for development
-Dim CSV_FILE_PATH: CSV_FILE_PATH = GetConfigPath("Finalize_Close", "CSV")
+Dim CSV_FILE_PATH: CSV_FILE_PATH = GetConfigPath("Prepare_Close_Pt1", "CSV")
 Dim LOG_FILE_PATH: LOG_FILE_PATH = GetConfigPath("Finalize_Close", "Log")
 Dim DebugLevel ' 0=None, 1=Error, 2=Info, 3=Debug
 DebugLevel = 2 ' Set default debug level (change as needed)
