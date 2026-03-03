@@ -245,8 +245,17 @@ End Sub
 Sub Sub_CheckConfigFormat()
     Dim ts: Set ts = g_fso.OpenTextFile(g_fso.BuildPath(g_repoRoot, "config\config.ini"), 1)
     Dim content: content = ts.ReadAll: ts.Close
+    
+    ' Basic Format check
     If InStr(content, "[") = 0 Or InStr(content, "=") = 0 Then g_suiteFailures = g_suiteFailures + 1
+    
+    ' Integrity scan: Check for conflict markers or corruption
+    If InStr(content, "<<<<<<<") > 0 Or InStr(content, "=======") > 0 Or InStr(content, ">>>>>>>") > 0 Then
+        WScript.Echo "    " & String(40, ".") & " [FAIL] Conflict markers found"
+        g_suiteFailures = g_suiteFailures + 1
+    End If
 End Sub
+
 
 Sub Sub_CheckCriticalPaths()
     ' Minimal check for fresh install paths
