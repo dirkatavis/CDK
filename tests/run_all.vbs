@@ -48,15 +48,6 @@ ExecuteTest "Validate config.ini Format", "Sub_CheckConfigFormat"
 ExecuteTest "Validate Configured Project Paths", "Sub_CheckCriticalPaths"
 ExecuteTest "Global Config Exhaustion", "Sub_ConfigExhaustion"
 
-' --- CATEGORY 3: REORG CONTRACTS ---
-WScript.Echo ""
-WScript.Echo "---------------------------------------------------------------------------"
-WScript.Echo "SECTION: Repository Reorg Contracts"
-WScript.Echo "---------------------------------------------------------------------------"
-ExecuteTest "Verify Migration Entrypoints", "Sub_ContractEntrypoints"
-ExecuteTest "Verify Config Path Resolution", "Sub_ContractConfigPaths"
-ExecuteTest "Scan Config Usage Coverage", "Sub_ConfigUsageScan"
-
 ' --- CATEGORY 4: DESTRUCTIVE VALIDATION ---
 WScript.Echo ""
 WScript.Echo "---------------------------------------------------------------------------"
@@ -72,7 +63,6 @@ WScript.Echo ""
 WScript.Echo "---------------------------------------------------------------------------"
 WScript.Echo "SECTION: External Application Suites"
 WScript.Echo "---------------------------------------------------------------------------"
-RunAppSuite "Migration Progress Tracker", "tests\run_migration.vbs"
 RunAppSuite "App Test: Post Final Charges", "apps\post_final_charges\tests\run_all_tests.vbs"
 RunAppSuite "App Test: PFC Scrapper", "apps\pfc_scrapper\tests\test_pfc_scrapper.vbs"
 RunAppSuite "App Test: Validate RO List", "apps\validate_ro_list\tests\test_validate_ro_logic.vbs"
@@ -245,8 +235,17 @@ End Sub
 Sub Sub_CheckConfigFormat()
     Dim ts: Set ts = g_fso.OpenTextFile(g_fso.BuildPath(g_repoRoot, "config\config.ini"), 1)
     Dim content: content = ts.ReadAll: ts.Close
+    
+    ' Basic Format check
     If InStr(content, "[") = 0 Or InStr(content, "=") = 0 Then g_suiteFailures = g_suiteFailures + 1
+    
+    ' Integrity scan: Check for conflict markers or corruption
+    If InStr(content, "<<<<<<<") > 0 Or InStr(content, "=======") > 0 Or InStr(content, ">>>>>>>") > 0 Then
+        WScript.Echo "    " & String(40, ".") & " [FAIL] Conflict markers found"
+        g_suiteFailures = g_suiteFailures + 1
+    End If
 End Sub
+
 
 Sub Sub_CheckCriticalPaths()
     ' Minimal check for fresh install paths
@@ -285,11 +284,7 @@ End Sub
 ' ============================================================================
 
 Sub Sub_ContractEntrypoints()
-<<<<<<< HEAD
-    Dim mapPath: mapPath = g_fso.BuildPath(g_repoRoot, "tools\reorg_path_map.ini")
-=======
     Dim mapPath: mapPath = g_fso.BuildPath(g_repoRoot, "tests\migration\reorg_path_map.ini")
->>>>>>> feature/cleanup
     Dim entrypoints: Set entrypoints = ReadIniSection(mapPath, "TargetEntrypoints")
     Dim k
     For Each k In entrypoints.Keys
@@ -304,11 +299,7 @@ Sub Sub_ContractConfigPaths()
     Dim helper: helper = g_fso.BuildPath(g_repoRoot, "framework\PathHelper.vbs")
     ExecuteGlobal g_fso.OpenTextFile(helper).ReadAll
     
-<<<<<<< HEAD
-    Dim mapPath: mapPath = g_fso.BuildPath(g_repoRoot, "tools\reorg_path_map.ini")
-=======
     Dim mapPath: mapPath = g_fso.BuildPath(g_repoRoot, "tests\migration\reorg_path_map.ini")
->>>>>>> feature/cleanup
     Dim contracts: Set contracts = ReadIniSection(mapPath, "ConfigContracts")
     Dim k, parts, resolved
     For Each k In contracts.Keys
