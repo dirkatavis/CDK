@@ -297,6 +297,29 @@ Function HasOperationCodeDefault(screenText)
     End If
 End Function
 
+'-----------------------------------------------------------
+' HasNumberDefault: Checks if screen content contains
+' a default numeric value in parentheses.
+' Used for prompts like SOLD HOURS (8)?, ACTUAL HOURS (5)?
+' Returns: True if default found, False otherwise
+'-----------------------------------------------------------
+Function HasNumberDefault(screenText)
+    HasNumberDefault = False
+    
+    ' Look for patterns like SOLD HOURS (8)? or ACTUAL HOURS (5)?
+    ' Pattern: any text with number in parentheses followed by ?
+    If InStr(screenText, "HOURS") > 0 Or InStr(screenText, "LABOR") > 0 Then
+        Dim regEx: Set regEx = CreateObject("VBScript.RegExp")
+        regEx.Pattern = "(SOLD HOURS|ACTUAL HOURS|LABOR).*\((-?[0-9]+)\)\?"
+        regEx.IgnoreCase = True
+        regEx.Global = False
+        
+        If regEx.Test(screenText) Then
+            HasNumberDefault = True
+        End If
+    End If
+End Function
+
 Sub WaitForTextAtBottom(targetText)
     Dim elapsed, screenContentBuffer, screenLength, found, col
     elapsed = 0
@@ -470,10 +493,28 @@ Sub AddStory(bzhao, storyCode)
             End If
         ElseIf InStr(screenContent, "ACTUAL HOURS") > 0 Then
             currentMatched = "ACTUAL HOURS"
-            EnterText bzhao, ""
+            ' Check if there's a default hours value
+            If HasNumberDefault(screenContent) Then
+                ' Accept the default by sending just Enter
+                EnterText bzhao, ""
+                LogResult "DEBUG", "Actual hours prompt has default - accepting it"
+            Else
+                ' No default, send fallback value '0'
+                EnterText bzhao, "0"
+                LogResult "DEBUG", "Actual hours prompt has no default - using fallback 0"
+            End If
         ElseIf InStr(screenContent, "SOLD HOURS") > 0 Then
             currentMatched = "SOLD HOURS"
-            EnterText bzhao, ""
+            ' Check if there's a default hours value
+            If HasNumberDefault(screenContent) Then
+                ' Accept the default by sending just Enter
+                EnterText bzhao, ""
+                LogResult "DEBUG", "Sold hours prompt has default - accepting it"
+            Else
+                ' No default, send fallback value '0'
+                EnterText bzhao, "0"
+                LogResult "DEBUG", "Sold hours prompt has no default - using fallback 0"
+            End If
         ElseIf InStr(screenContent, "ADD A LABOR OPERATION") > 0 Then
             currentMatched = "ADD A LABOR OPERATION"
             EnterText bzhao, ""
