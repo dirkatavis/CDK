@@ -120,6 +120,7 @@ Sub RunAppSuite(suiteName, relPath)
     If Not g_fso.FileExists(scriptPath) Then
         WScript.Echo "    " & String(47, ".") & " [FAIL] Not found"
         g_grandFail = g_grandFail + 1
+        suitePassed = False
         Exit Sub
     End If
     
@@ -204,7 +205,15 @@ Sub RunAppSuite(suiteName, relPath)
         If suitePassed Then
             WScript.Echo "    " & String(48, "!") & " [FAIL] Exit Code " & exec.ExitCode
             g_grandFail = g_grandFail + 1
+            suitePassed = False
         End If
+    End If
+    
+    ' If the suite reported ANY failures but didn't trigger a g_grandFail yet
+    ' (e.g. if the sub-script has its own reporting structure), ensure we flag it.
+    If Not suitePassed And InStr(suiteName, "Grand Validation Suite") = 0 Then
+        ' Mark the suite itself as a failure if any sub-tests failed
+        g_suiteFailures = g_suiteFailures + 1
     End If
     
     g_shell.CurrentDirectory = oldCwd

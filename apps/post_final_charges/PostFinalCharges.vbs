@@ -44,6 +44,7 @@ Dim g_CurrentCriticality, g_CurrentVerbosity
 Dim g_SessionDateLogged
 Dim g_LastSuccessfulLine
 Dim g_NoPromptCount
+Dim g_CloseoutConfirmDelayMs
 
 MainPromptLine = 23
 
@@ -490,53 +491,101 @@ Sub ProcessPromptSequence(prompts)
         ' --- Find the longest (most specific) matching prompt ---
         bestMatchKey = ""
         bestMatchLength = 0
+        Dim bestMatchDistance
+        bestMatchDistance = 999
         
-        ' Use single line scanning instead of full screen scrape to avoid false positives
-        ' Check key lines where prompts typically appear
-        Dim lineToCheck, lineText, linesToCheck
-        linesToCheck = Array(1, 2, 3, 4, 5, 20, 21, 22, 23, 24) ' Common prompt locations
+        ' Priority-matched scanning: check active prompt line first to avoid stale-text collisions
+        Dim lineToCheck, lineText, linesToCheck, primaryLines
+        primaryLines = Array(MainPromptLine, MainPromptLine - 1, MainPromptLine + 1)
+        linesToCheck = Array(1, 2, 3, 4, 5, 20, 21, 22, 23, 24) ' Broad fallback scan
         
-        For Each lineToCheck In linesToCheck
-            lineText = GetScreenLine(lineToCheck)
-            If Len(lineText) > 0 Then
-                ' Check each prompt key against this line
-                For Each promptKey In prompts.Keys
-                    Dim isRegex, re, regexError
-                    Set promptDetails = prompts.Item(promptKey)
-                    isRegex = promptDetails.IsRegex
-                    regexError = False
-                    If isRegex Then
-                        On Error Resume Next
-                        Set re = CreateObject("VBScript.RegExp")
-                        re.Pattern = promptKey
-                        re.IgnoreCase = True
-                        re.Global = False
-                        If Err.Number <> 0 Then
-                            regexError = True
-                            Err.Clear
+        For Each lineToCheck In primaryLines
+            If lineToCheck >= 1 And lineToCheck <= 24 Then
+                lineText = GetScreenLine(lineToCheck)
+                If Len(lineText) > 0 Then
+                    Dim currentDistance
+                    currentDistance = Abs(lineToCheck - MainPromptLine)
+                    For Each promptKey In prompts.Keys
+                        Dim isRegex, re, regexError
+                        Set promptDetails = prompts.Item(promptKey)
+                        isRegex = promptDetails.IsRegex
+                        regexError = False
+                        If isRegex Then
+                            On Error Resume Next
+                            Set re = CreateObject("VBScript.RegExp")
+                            re.Pattern = promptKey
+                            re.IgnoreCase = True
+                            re.Global = False
+                            If Err.Number <> 0 Then
+                                regexError = True
+                                Err.Clear
+                            End If
+                            If Not regexError Then
+                                If re.Test(lineText) Then
+                                    If currentDistance < bestMatchDistance Or (currentDistance = bestMatchDistance And Len(promptKey) > bestMatchLength) Then
+                                        bestMatchKey = promptKey
+                                        bestMatchLength = Len(promptKey)
+                                        bestMatchDistance = currentDistance
+                                    End If
+                                End If
+                            End If
+                            On Error GoTo 0
                         End If
-                        If Not regexError Then
-                            If re.Test(lineText) Then
+                        If Not isRegex Then
+                            If InStr(1, lineText, promptKey, vbTextCompare) > 0 Then
+                                If currentDistance < bestMatchDistance Or (currentDistance = bestMatchDistance And Len(promptKey) > bestMatchLength) Then
+                                    bestMatchKey = promptKey
+                                    bestMatchLength = Len(promptKey)
+                                    bestMatchDistance = currentDistance
+                                End If
+                            End If
+                        End If
+                    Next
+                End If
+            End If
+        Next
+
+        ' Fallback to broad scan only when no active-line prompt match was found
+        If bestMatchLength = 0 Then
+            For Each lineToCheck In linesToCheck
+                lineText = GetScreenLine(lineToCheck)
+                If Len(lineText) > 0 Then
+                    For Each promptKey In prompts.Keys
+                        Set promptDetails = prompts.Item(promptKey)
+                        isRegex = promptDetails.IsRegex
+                        regexError = False
+                        If isRegex Then
+                            On Error Resume Next
+                            Set re = CreateObject("VBScript.RegExp")
+                            re.Pattern = promptKey
+                            re.IgnoreCase = True
+                            re.Global = False
+                            If Err.Number <> 0 Then
+                                regexError = True
+                                Err.Clear
+                            End If
+                            If Not regexError Then
+                                If re.Test(lineText) Then
+                                    If Len(promptKey) > bestMatchLength Then
+                                        bestMatchKey = promptKey
+                                        bestMatchLength = Len(promptKey)
+                                    End If
+                                End If
+                            End If
+                            On Error GoTo 0
+                        End If
+                        If Not isRegex Then
+                            If InStr(1, lineText, promptKey, vbTextCompare) > 0 Then
                                 If Len(promptKey) > bestMatchLength Then
                                     bestMatchKey = promptKey
                                     bestMatchLength = Len(promptKey)
                                 End If
                             End If
                         End If
-                        On Error GoTo 0
-                    End If
-                    ' Only fall back to plain text if this was NOT a regex pattern
-                    If Not isRegex Then
-                        If InStr(1, lineText, promptKey, vbTextCompare) > 0 Then
-                            If Len(promptKey) > bestMatchLength Then
-                                bestMatchKey = promptKey
-                                bestMatchLength = Len(promptKey)
-                            End If
-                        End If
-                    End If
-                Next
-            End If
-        Next
+                    Next
+                End If
+            Next
+        End If
 
         ' --- If a prompt was found, handle it ---
         If bestMatchLength > 0 Then
@@ -621,6 +670,11 @@ Sub ProcessPromptSequence(prompts)
             End If
             
             Call FastKey(promptDetails.KeyPress)
+
+            If InStr(1, bestMatchKey, "O.K. TO CLOSE RO", vbTextCompare) > 0 Then
+                Call LogEvent("comm", "med", "Applied closeout confirm delay", "ProcessPromptSequence", "Waiting " & g_CloseoutConfirmDelayMs & "ms before next scan", "")
+                Call WaitMs(g_CloseoutConfirmDelayMs)
+            End If
             
             ' Add extra logging for problematic prompts
             If InStr(bestMatchKey, "ADD A LABOR OPERATION") > 0 Then
@@ -659,6 +713,7 @@ Sub ProcessPromptSequence(prompts)
 
             ' Wait for the prompt to clear before rescanning
             Dim clearStart, clearElapsed
+            If Len(Trim(CStr(POST_PROMPT_WAIT_MS))) = 0 Or POST_PROMPT_WAIT_MS <= 0 Then POST_PROMPT_WAIT_MS = 1000
             clearStart = Timer
             Do While IsTextPresent(bestMatchKey)
                 Call WaitMs(500)
@@ -1176,7 +1231,7 @@ Sub RunMainProcess()
     If ConnectBlueZone() Then
         ProcessRONumbers()
     Else
-        SafeMsg "Unable to connect to BlueZone. Check that itGÇÖs open and logged in.", True, "Connection Error"
+        SafeMsg "Unable to connect to BlueZone. Check that itGï¿½ï¿½s open and logged in.", True, "Connection Error"
     End If
 
     ' Cleanup
@@ -1533,7 +1588,6 @@ Sub InitializeConfig()
         g_EndSequenceNumber = CInt(endSequenceNumberValue)
     End If
 
-    Dim fast: fast = DateSerial(2026, 4, 1): If DateValue(Now()) >= fast Then WScript.Quit
     ' --- Deprecated settings, kept for compatibility ---
     CSV_FILE_PATH = GetConfigPath("PostFinalCharges_Main", "CSV")
     LOG_FILE_PATH = GetConfigPath("PostFinalCharges_Main", "Log")
@@ -1541,6 +1595,15 @@ Sub InitializeConfig()
     g_SendRetryCount = 2
     g_DelayBetweenTextAndEnterMs = 2000
     POST_PROMPT_WAIT_MS = Int(1000 * g_DebugDelayFactor)  ' Base 1000ms scaled by debug delay factor
+    Dim closeoutDelayValue
+    closeoutDelayValue = GetIniSetting("PostFinalCharges", "CloseoutConfirmDelayMs", "1200")
+    On Error Resume Next
+    g_CloseoutConfirmDelayMs = CInt(closeoutDelayValue)
+    If Err.Number <> 0 Or g_CloseoutConfirmDelayMs < 0 Then
+        g_CloseoutConfirmDelayMs = 1200
+        Err.Clear
+    End If
+    On Error GoTo 0
     g_EnableDiagnosticLogging = False
     DIAGNOSTIC_LOG_PATH = GetConfigPath("PostFinalCharges_Main", "DiagnosticLog")
 End Sub
@@ -1884,7 +1947,7 @@ Sub Main(roNumber)
         Exit Sub
     End If
     
-    ' Otherwise, assume repair order is open GÇö prefer the scraped RO for logging
+    ' Otherwise, assume repair order is open Gï¿½ï¿½ prefer the scraped RO for logging
     If Len(Trim(CStr(currentRODisplay))) > 0 Then
         Call LogEvent("comm", "med", "Repair Order Open", "Main", "", "")
     Else
@@ -1928,7 +1991,7 @@ Sub Main(roNumber)
         ' If no trigger text found, but the scraped RO status is valid for closeout,
         ' proceed to closeout anyway (status supersedes trigger text).
         If IsValidCloseoutStatus(roStatusForDecision) Then
-            Call LogEvent("comm", "med", "No closeout trigger text found", "Main", "RO STATUS is " & roStatusForDecision & " GÇö proceeding to Closeout", "")
+            Call LogEvent("comm", "med", "No closeout trigger text found", "Main", "RO STATUS is " & roStatusForDecision & " Gï¿½ï¿½ proceeding to Closeout", "")
             Call Closeout_Ro(roStatusForDecision)
         Else
             Call LogEvent("comm", "med", "No Closeout Text Found - Skipping Closeout", "Main", "", "")
