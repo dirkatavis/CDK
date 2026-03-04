@@ -491,52 +491,94 @@ Sub ProcessPromptSequence(prompts)
         bestMatchKey = ""
         bestMatchLength = 0
         
-        ' Use single line scanning instead of full screen scrape to avoid false positives
-        ' Check key lines where prompts typically appear
-        Dim lineToCheck, lineText, linesToCheck
-        linesToCheck = Array(1, 2, 3, 4, 5, 20, 21, 22, 23, 24) ' Common prompt locations
+        ' Priority-matched scanning: check active prompt line first to avoid stale-text collisions
+        Dim lineToCheck, lineText, linesToCheck, primaryLines
+        primaryLines = Array(MainPromptLine, MainPromptLine - 1, MainPromptLine + 1)
+        linesToCheck = Array(1, 2, 3, 4, 5, 20, 21, 22, 23, 24) ' Broad fallback scan
         
-        For Each lineToCheck In linesToCheck
-            lineText = GetScreenLine(lineToCheck)
-            If Len(lineText) > 0 Then
-                ' Check each prompt key against this line
-                For Each promptKey In prompts.Keys
-                    Dim isRegex, re, regexError
-                    Set promptDetails = prompts.Item(promptKey)
-                    isRegex = promptDetails.IsRegex
-                    regexError = False
-                    If isRegex Then
-                        On Error Resume Next
-                        Set re = CreateObject("VBScript.RegExp")
-                        re.Pattern = promptKey
-                        re.IgnoreCase = True
-                        re.Global = False
-                        If Err.Number <> 0 Then
-                            regexError = True
-                            Err.Clear
+        For Each lineToCheck In primaryLines
+            If lineToCheck >= 1 And lineToCheck <= 24 Then
+                lineText = GetScreenLine(lineToCheck)
+                If Len(lineText) > 0 Then
+                    For Each promptKey In prompts.Keys
+                        Dim isRegex, re, regexError
+                        Set promptDetails = prompts.Item(promptKey)
+                        isRegex = promptDetails.IsRegex
+                        regexError = False
+                        If isRegex Then
+                            On Error Resume Next
+                            Set re = CreateObject("VBScript.RegExp")
+                            re.Pattern = promptKey
+                            re.IgnoreCase = True
+                            re.Global = False
+                            If Err.Number <> 0 Then
+                                regexError = True
+                                Err.Clear
+                            End If
+                            If Not regexError Then
+                                If re.Test(lineText) Then
+                                    If Len(promptKey) > bestMatchLength Then
+                                        bestMatchKey = promptKey
+                                        bestMatchLength = Len(promptKey)
+                                    End If
+                                End If
+                            End If
+                            On Error GoTo 0
                         End If
-                        If Not regexError Then
-                            If re.Test(lineText) Then
+                        If Not isRegex Then
+                            If InStr(1, lineText, promptKey, vbTextCompare) > 0 Then
                                 If Len(promptKey) > bestMatchLength Then
                                     bestMatchKey = promptKey
                                     bestMatchLength = Len(promptKey)
                                 End If
                             End If
                         End If
-                        On Error GoTo 0
-                    End If
-                    ' Only fall back to plain text if this was NOT a regex pattern
-                    If Not isRegex Then
-                        If InStr(1, lineText, promptKey, vbTextCompare) > 0 Then
-                            If Len(promptKey) > bestMatchLength Then
-                                bestMatchKey = promptKey
-                                bestMatchLength = Len(promptKey)
-                            End If
-                        End If
-                    End If
-                Next
+                    Next
+                End If
             End If
         Next
+
+        ' Fallback to broad scan only when no active-line prompt match was found
+        If bestMatchLength = 0 Then
+            For Each lineToCheck In linesToCheck
+                lineText = GetScreenLine(lineToCheck)
+                If Len(lineText) > 0 Then
+                    For Each promptKey In prompts.Keys
+                        Set promptDetails = prompts.Item(promptKey)
+                        isRegex = promptDetails.IsRegex
+                        regexError = False
+                        If isRegex Then
+                            On Error Resume Next
+                            Set re = CreateObject("VBScript.RegExp")
+                            re.Pattern = promptKey
+                            re.IgnoreCase = True
+                            re.Global = False
+                            If Err.Number <> 0 Then
+                                regexError = True
+                                Err.Clear
+                            End If
+                            If Not regexError Then
+                                If re.Test(lineText) Then
+                                    If Len(promptKey) > bestMatchLength Then
+                                        bestMatchKey = promptKey
+                                        bestMatchLength = Len(promptKey)
+                                    End If
+                                End If
+                            End If
+                            On Error GoTo 0
+                        End If
+                        If Not isRegex Then
+                            If InStr(1, lineText, promptKey, vbTextCompare) > 0 Then
+                                If Len(promptKey) > bestMatchLength Then
+                                    bestMatchKey = promptKey
+                                    bestMatchLength = Len(promptKey)
+                                End If
+                            End If
+                        End If
+                    Next
+                End If
+            Next
+        End If
 
         ' --- If a prompt was found, handle it ---
         If bestMatchLength > 0 Then
