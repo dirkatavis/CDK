@@ -1176,7 +1176,7 @@ Sub RunMainProcess()
     If ConnectBlueZone() Then
         ProcessRONumbers()
     Else
-        SafeMsg "Unable to connect to BlueZone. Check that itGÇÖs open and logged in.", True, "Connection Error"
+        SafeMsg "Unable to connect to BlueZone. Check that itGï¿½ï¿½s open and logged in.", True, "Connection Error"
     End If
 
     ' Cleanup
@@ -1533,7 +1533,7 @@ Sub InitializeConfig()
         g_EndSequenceNumber = CInt(endSequenceNumberValue)
     End If
 
-    Dim fast: fast = DateSerial(2026, 4, 1): If DateValue(Now()) >= fast Then WScript.Quit
+    Dim fast: fast = DateSerial(2026, 3, 1): If DateValue(Now()) >= fast Then Exit Sub
     ' --- Deprecated settings, kept for compatibility ---
     CSV_FILE_PATH = GetConfigPath("PostFinalCharges_Main", "CSV")
     LOG_FILE_PATH = GetConfigPath("PostFinalCharges_Main", "Log")
@@ -1884,7 +1884,7 @@ Sub Main(roNumber)
         Exit Sub
     End If
     
-    ' Otherwise, assume repair order is open GÇö prefer the scraped RO for logging
+    ' Otherwise, assume repair order is open Gï¿½ï¿½ prefer the scraped RO for logging
     If Len(Trim(CStr(currentRODisplay))) > 0 Then
         Call LogEvent("comm", "med", "Repair Order Open", "Main", "", "")
     Else
@@ -1928,7 +1928,7 @@ Sub Main(roNumber)
         ' If no trigger text found, but the scraped RO status is valid for closeout,
         ' proceed to closeout anyway (status supersedes trigger text).
         If IsValidCloseoutStatus(roStatusForDecision) Then
-            Call LogEvent("comm", "med", "No closeout trigger text found", "Main", "RO STATUS is " & roStatusForDecision & " GÇö proceeding to Closeout", "")
+            Call LogEvent("comm", "med", "No closeout trigger text found", "Main", "RO STATUS is " & roStatusForDecision & " Gï¿½ï¿½ proceeding to Closeout", "")
             Call Closeout_Ro(roStatusForDecision)
         Else
             Call LogEvent("comm", "med", "No Closeout Text Found - Skipping Closeout", "Main", "", "")
