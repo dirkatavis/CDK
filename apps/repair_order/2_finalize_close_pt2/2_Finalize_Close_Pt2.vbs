@@ -274,6 +274,29 @@ Function HasTechnicianDefault(screenText)
     End If
 End Function
 
+'-----------------------------------------------------------
+' HasOperationCodeDefault: Checks if the screen content contains
+' a default operation code value in parentheses.
+' Valid defaults: (I), (P), (S), etc. - any letter or code
+' Returns: True if default found, False otherwise
+'-----------------------------------------------------------
+Function HasOperationCodeDefault(screenText)
+    HasOperationCodeDefault = False
+    
+    ' Look for patterns like OPERATION CODE FOR LINE A, L1 (I)?
+    ' Pattern: OPERATION CODE followed by any text, then (content)?
+    If InStr(screenText, "OPERATION CODE") > 0 Then
+        Dim regEx: Set regEx = CreateObject("VBScript.RegExp")
+        regEx.Pattern = "OPERATION CODE.*\(([A-Za-z0-9]+)\)\?"
+        regEx.IgnoreCase = True
+        regEx.Global = False
+        
+        If regEx.Test(screenText) Then
+            HasOperationCodeDefault = True
+        End If
+    End If
+End Function
+
 Sub WaitForTextAtBottom(targetText)
     Dim elapsed, screenContentBuffer, screenLength, found, col
     elapsed = 0
@@ -420,7 +443,16 @@ Sub AddStory(bzhao, storyCode)
             EnterText bzhao, ""
         ElseIf InStr(screenContent, "OPERATION CODE") > 0 Then
             currentMatched = "OPERATION CODE"
-            EnterText bzhao, ""
+            ' Check if there's a default operation code
+            If HasOperationCodeDefault(screenContent) Then
+                ' Accept the default by sending just Enter
+                EnterText bzhao, ""
+                LogResult "DEBUG", "Operation code prompt has default - accepting it"
+            Else
+                ' No default, send fallback code 'I'
+                EnterText bzhao, "I"
+                LogResult "DEBUG", "Operation code prompt has no default - using fallback I"
+            End If
         ElseIf InStr(screenContent, "DESC:") > 0 Then
             currentMatched = "DESC:"
             EnterText bzhao, ""
