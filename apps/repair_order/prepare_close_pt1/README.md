@@ -10,8 +10,8 @@ Automates the pre-manual processing steps required before closing Repair Orders 
 - `Prepare_Close_Pt1.csv` - List of ROs to prepare for closing with required context
 
 ## Output/Logs
-- Logs written to `runtime/logs/prepare_close_pt1/Prepare_Close_Pt1.log`
-- Debug mode: Create `Prepare_Close_Pt1.debug` file in runtime log folder for slow-mode execution
+- Input/output/log locations are defined in `config/config.ini` (`[Prepare_Close_Pt1]` section).
+- Debug marker location is defined in `config/config.ini`.
 
 ## Usage
 ```cmd

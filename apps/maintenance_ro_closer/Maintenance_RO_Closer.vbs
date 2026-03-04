@@ -84,7 +84,9 @@ Sub RunAutomation()
 
     LogResult "INFO", "Starting Maintenance RO Auto-Closer using list: " & RO_LIST_PATH
     
-    ' Footprint matching is disabled; criteria load is intentionally skipped
+    ' Load PM match criteria (required gate before closing)
+    LoadMatchCriteria
+    LogResult "INFO", "PM match criteria loaded from: " & CRITERIA_FILE
     
     ' Connect to terminal only after configuration and file existence are verified
     On Error Resume Next
@@ -146,16 +148,21 @@ Sub ProcessRoList(fso, ByRef successfulCount)
                 
                 ' Check for errors or closed status
                 If IsRoProcessable(currentRo) Then
-                    LogResult "INFO", "RO " & currentRo & " is processable. Proceeding without footprint check."
-                    If ProcessRoReview() Then
-                        If CloseRoFinal() Then
-                            LogResult "INFO", "SUCCESS: RO " & currentRo & " finalized and closed."
-                            successfulCount = successfulCount + 1
+                    LogResult "INFO", "RO " & currentRo & " is processable. Checking PM footprint criteria."
+                    If CheckPickyMatch() Then
+                        LogResult "INFO", "RO " & currentRo & " matches PM footprint. Proceeding with close flow."
+                        If ProcessRoReview() Then
+                            If CloseRoFinal() Then
+                                LogResult "INFO", "SUCCESS: RO " & currentRo & " finalized and closed."
+                                successfulCount = successfulCount + 1
+                            Else
+                                LogResult "ERROR", "Failed to close RO: " & currentRo & " during Phase II."
+                            End If
                         Else
-                            LogResult "ERROR", "Failed to close RO: " & currentRo & " during Phase II."
+                            LogResult "ERROR", "Failed to complete review for RO: " & currentRo & " during Phase I."
                         End If
                     Else
-                        LogResult "ERROR", "Failed to complete review for RO: " & currentRo & " during Phase I."
+                        LogResult "INFO", "RO " & currentRo & " does not match PM footprint. Skipping."
                     End If
                 End If
 

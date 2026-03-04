@@ -196,7 +196,7 @@ End Sub
 Sub TestPathHelperResolution_BuildsAbsolutePath()
     ' Mock test: Verify PathHelper correctly combines repo root + relative path
     ' Mock: GetRepoRoot() returns "C:\dev\github.com\Avis\CDK"
-    ' Mock: GetConfigPath("Initialize_RO", "CSV") returns absolute path
+    ' Mock: GetConfigPath("Open_RO", "CSV") returns absolute path
     
     Dim mockRepoRoot: mockRepoRoot = "C:\dev\github.com\Avis\CDK"
     Dim mockRelativePath: mockRelativePath = "workflows\repair_order\initialize_ro\Initialize_RO.csv"

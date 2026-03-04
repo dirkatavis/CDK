@@ -72,7 +72,7 @@ WScript.Echo ""
 WScript.Echo "---------------------------------------------------------------------------"
 WScript.Echo "SECTION: External Application Suites"
 WScript.Echo "---------------------------------------------------------------------------"
-RunAppSuite "Migration Progress Tracker", "tests\run_migration_tracker.vbs"
+RunAppSuite "Migration Progress Tracker", "tests\run_migration_target_tests.vbs"
 RunAppSuite "App Test: Post Final Charges", "apps\post_final_charges\tests\run_all_tests.vbs"
 RunAppSuite "App Test: PFC Scrapper", "apps\pfc_scrapper\tests\test_pfc_scrapper.vbs"
 RunAppSuite "App Test: Validate RO List", "apps\validate_ro_list\tests\test_validate_ro_logic.vbs"
@@ -259,7 +259,7 @@ End Sub
 
 Sub Sub_ConfigExhaustion()
     ' Run the dedicated exhaustion script
-    Dim exec: Set exec = g_shell.Exec("cscript.exe //nologo " & Chr(34) & g_fso.BuildPath(g_repoRoot, "tests\internal\test_config_exhaustion.vbs") & Chr(34))
+    Dim exec: Set exec = g_shell.Exec("cscript.exe //nologo " & Chr(34) & g_fso.BuildPath(g_repoRoot, "tests\infrastructure\test_config_exhaustion.vbs") & Chr(34))
     
     ' Capture stdout to parse coverage number
     Dim output: output = ""
@@ -289,11 +289,7 @@ End Sub
 ' ============================================================================
 
 Sub Sub_ContractEntrypoints()
-<<<<<<< HEAD
-    Dim mapPath: mapPath = g_fso.BuildPath(g_repoRoot, "tools\reorg_path_map.ini")
-=======
     Dim mapPath: mapPath = g_fso.BuildPath(g_repoRoot, "tests\migration\reorg_path_map.ini")
->>>>>>> feature/cleanup
     Dim entrypoints: Set entrypoints = ReadIniSection(mapPath, "TargetEntrypoints")
     Dim k
     For Each k In entrypoints.Keys
@@ -308,11 +304,7 @@ Sub Sub_ContractConfigPaths()
     Dim helper: helper = g_fso.BuildPath(g_repoRoot, "framework\PathHelper.vbs")
     ExecuteGlobal g_fso.OpenTextFile(helper).ReadAll
     
-<<<<<<< HEAD
-    Dim mapPath: mapPath = g_fso.BuildPath(g_repoRoot, "tools\reorg_path_map.ini")
-=======
     Dim mapPath: mapPath = g_fso.BuildPath(g_repoRoot, "tests\migration\reorg_path_map.ini")
->>>>>>> feature/cleanup
     Dim contracts: Set contracts = ReadIniSection(mapPath, "ConfigContracts")
     Dim k, parts, resolved
     For Each k In contracts.Keys

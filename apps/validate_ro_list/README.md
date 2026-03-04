@@ -10,10 +10,7 @@ Validates Repair Order lists against CDK system data to ensure accuracy before p
 - `ValidateRoList_IN.csv` - List of ROs to validate
 
 ## Output/Logs
-- Logs written to `runtime/logs/validate_ro_list/ValidateRoList.log`
-- Screen mapping data: `ro_screen_map_pfc.txt`, `sample_map_pfc.txt`
-- Validation results: `ValidateRoList_OUT.txt`
-- Mock test artifacts: `ValidateRoList_mock_log.txt`, `ValidateRoList_mock_out.txt`
+- Input/output/log locations are defined in `config/config.ini` (`[ValidateRoList]` section).
 
 ## Usage
 ```cmd

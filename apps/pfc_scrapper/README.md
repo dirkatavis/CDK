@@ -10,8 +10,7 @@ Scrapes and extracts Post Final Charges (PFC) data from CDK screens for analysis
 - Reads from active BlueZone terminal session
 
 ## Output/Logs
-- Logs written to `runtime/logs/pfc_scrapper/PFC_Scrapper.log`
-- Scraped data written to `runtime/data/out/PFC_Scraped_Data.csv`
+- Input/output/log locations are defined in `config/config.ini` (`[PFC_Scrapper]` section).
 
 ## Usage
 ```cmd

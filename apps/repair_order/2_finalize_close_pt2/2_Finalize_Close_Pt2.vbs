@@ -250,6 +250,76 @@ End Sub
 ' pollInterval: ms between checks
 ' timeout: ms before giving up
 '-----------------------------------------------------------
+
+'-----------------------------------------------------------
+' HasTechnicianDefault: Checks if the screen content contains
+' a default technician value in parentheses.
+' Valid defaults: (numeric ID) or (Multi)
+' Returns: True if default found, False otherwise
+'-----------------------------------------------------------
+Function HasTechnicianDefault(screenText)
+    HasTechnicianDefault = False
+    
+    ' Look for patterns like TECHNICIAN (71012)? or TECHNICIAN (Multi)?
+    ' Pattern: TECHNICIAN followed by optional space, then (content)?
+    If InStr(screenText, "TECHNICIAN") > 0 Then
+        Dim regEx: Set regEx = CreateObject("VBScript.RegExp")
+        regEx.Pattern = "TECHNICIAN\s*\(([0-9]+|MULTI)\)"
+        regEx.IgnoreCase = True
+        regEx.Global = False
+        
+        If regEx.Test(screenText) Then
+            HasTechnicianDefault = True
+        End If
+    End If
+End Function
+
+'-----------------------------------------------------------
+' HasOperationCodeDefault: Checks if the screen content contains
+' a default operation code value in parentheses.
+' Valid defaults: (I), (P), (S), etc. - any letter or code
+' Returns: True if default found, False otherwise
+'-----------------------------------------------------------
+Function HasOperationCodeDefault(screenText)
+    HasOperationCodeDefault = False
+    
+    ' Look for patterns like OPERATION CODE FOR LINE A, L1 (I)?
+    ' Pattern: OPERATION CODE followed by any text, then (content)?
+    If InStr(screenText, "OPERATION CODE") > 0 Then
+        Dim regEx: Set regEx = CreateObject("VBScript.RegExp")
+        regEx.Pattern = "OPERATION CODE.*\(([A-Za-z0-9]+)\)\?"
+        regEx.IgnoreCase = True
+        regEx.Global = False
+        
+        If regEx.Test(screenText) Then
+            HasOperationCodeDefault = True
+        End If
+    End If
+End Function
+
+'-----------------------------------------------------------
+' HasNumberDefault: Checks if screen content contains
+' a default numeric value in parentheses.
+' Used for prompts like SOLD HOURS (8)?, ACTUAL HOURS (5)?
+' Returns: True if default found, False otherwise
+'-----------------------------------------------------------
+Function HasNumberDefault(screenText)
+    HasNumberDefault = False
+    
+    ' Look for patterns like SOLD HOURS (8)? or ACTUAL HOURS (5)?
+    ' Pattern: any text with number in parentheses followed by ?
+    If InStr(screenText, "HOURS") > 0 Or InStr(screenText, "LABOR") > 0 Then
+        Dim regEx: Set regEx = CreateObject("VBScript.RegExp")
+        regEx.Pattern = "(SOLD HOURS|ACTUAL HOURS|LABOR).*\((-?[0-9]+)\)\?"
+        regEx.IgnoreCase = True
+        regEx.Global = False
+        
+        If regEx.Test(screenText) Then
+            HasNumberDefault = True
+        End If
+    End If
+End Function
+
 Sub WaitForTextAtBottom(targetText)
     Dim elapsed, screenContentBuffer, screenLength, found, col
     elapsed = 0
@@ -396,19 +466,55 @@ Sub AddStory(bzhao, storyCode)
             EnterText bzhao, ""
         ElseIf InStr(screenContent, "OPERATION CODE") > 0 Then
             currentMatched = "OPERATION CODE"
-            EnterText bzhao, ""
+            ' Check if there's a default operation code
+            If HasOperationCodeDefault(screenContent) Then
+                ' Accept the default by sending just Enter
+                EnterText bzhao, ""
+                LogResult "DEBUG", "Operation code prompt has default - accepting it"
+            Else
+                ' No default, send fallback code 'I'
+                EnterText bzhao, "I"
+                LogResult "DEBUG", "Operation code prompt has no default - using fallback I"
+            End If
         ElseIf InStr(screenContent, "DESC:") > 0 Then
             currentMatched = "DESC:"
             EnterText bzhao, ""
         ElseIf InStr(screenContent, "TECHNICIAN") > 0 Or InStr(screenContent, "TECH...") > 0 Then
             currentMatched = "TECHNICIAN"
-            EnterText bzhao, "99"
+            ' Check if there's a default value (numeric ID or Multi)
+            If HasTechnicianDefault(screenContent) Then
+                ' Accept the default by sending just Enter
+                EnterText bzhao, ""
+                LogResult "DEBUG", "Technician prompt has default - accepting it"
+            Else
+                ' No default, send fallback ID 99
+                EnterText bzhao, "99"
+                LogResult "DEBUG", "Technician prompt has no default - using fallback 99"
+            End If
         ElseIf InStr(screenContent, "ACTUAL HOURS") > 0 Then
             currentMatched = "ACTUAL HOURS"
-            EnterText bzhao, ""
+            ' Check if there's a default hours value
+            If HasNumberDefault(screenContent) Then
+                ' Accept the default by sending just Enter
+                EnterText bzhao, ""
+                LogResult "DEBUG", "Actual hours prompt has default - accepting it"
+            Else
+                ' No default, send fallback value '0'
+                EnterText bzhao, "0"
+                LogResult "DEBUG", "Actual hours prompt has no default - using fallback 0"
+            End If
         ElseIf InStr(screenContent, "SOLD HOURS") > 0 Then
             currentMatched = "SOLD HOURS"
-            EnterText bzhao, ""
+            ' Check if there's a default hours value
+            If HasNumberDefault(screenContent) Then
+                ' Accept the default by sending just Enter
+                EnterText bzhao, ""
+                LogResult "DEBUG", "Sold hours prompt has default - accepting it"
+            Else
+                ' No default, send fallback value '0'
+                EnterText bzhao, "0"
+                LogResult "DEBUG", "Sold hours prompt has no default - using fallback 0"
+            End If
         ElseIf InStr(screenContent, "ADD A LABOR OPERATION") > 0 Then
             currentMatched = "ADD A LABOR OPERATION"
             EnterText bzhao, ""
