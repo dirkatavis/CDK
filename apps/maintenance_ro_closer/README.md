@@ -11,9 +11,7 @@ Automated closure of maintenance-type Repair Orders based on pattern matching cr
 - `PM_Match_Criteria.txt` - Pattern matching rules for maintenance RO identification
 
 ## Output/Logs
-- Logs written to `runtime/logs/maintenance_ro_closer/Maintenance_RO_Closer.log`
-- Output data written to `runtime/data/out/RO_Status_Report.csv`
-- Exception list updated in `exception_list.csv`
+- Input/output/log locations are defined in `config/config.ini` (`[Maintenance_RO_Closer]` section).
 
 ## Usage
 ```cmd
