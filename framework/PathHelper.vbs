@@ -8,7 +8,7 @@ Option Explicit
 ' Usage in your script:
 '   1. Include this file: ExecuteGlobal fso.OpenTextFile("path\to\PathHelper.vbs").ReadAll
 '   2. Get the repo root: root = GetRepoRoot()
-'   3. Get a configured path: csvPath = GetConfigPath("Initialize_RO", "CSV")
+'   3. Get a configured path: csvPath = GetConfigPath("Open_RO", "CSV")
 ' ==============================================================================
 
 Dim g_fso
