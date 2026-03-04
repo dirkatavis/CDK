@@ -44,6 +44,7 @@ Dim g_CurrentCriticality, g_CurrentVerbosity
 Dim g_SessionDateLogged
 Dim g_LastSuccessfulLine
 Dim g_NoPromptCount
+Dim g_CloseoutConfirmDelayMs
 
 MainPromptLine = 23
 
@@ -490,6 +491,8 @@ Sub ProcessPromptSequence(prompts)
         ' --- Find the longest (most specific) matching prompt ---
         bestMatchKey = ""
         bestMatchLength = 0
+        Dim bestMatchDistance
+        bestMatchDistance = 999
         
         ' Priority-matched scanning: check active prompt line first to avoid stale-text collisions
         Dim lineToCheck, lineText, linesToCheck, primaryLines
@@ -500,6 +503,8 @@ Sub ProcessPromptSequence(prompts)
             If lineToCheck >= 1 And lineToCheck <= 24 Then
                 lineText = GetScreenLine(lineToCheck)
                 If Len(lineText) > 0 Then
+                    Dim currentDistance
+                    currentDistance = Abs(lineToCheck - MainPromptLine)
                     For Each promptKey In prompts.Keys
                         Dim isRegex, re, regexError
                         Set promptDetails = prompts.Item(promptKey)
@@ -517,9 +522,10 @@ Sub ProcessPromptSequence(prompts)
                             End If
                             If Not regexError Then
                                 If re.Test(lineText) Then
-                                    If Len(promptKey) > bestMatchLength Then
+                                    If currentDistance < bestMatchDistance Or (currentDistance = bestMatchDistance And Len(promptKey) > bestMatchLength) Then
                                         bestMatchKey = promptKey
                                         bestMatchLength = Len(promptKey)
+                                        bestMatchDistance = currentDistance
                                     End If
                                 End If
                             End If
@@ -527,9 +533,10 @@ Sub ProcessPromptSequence(prompts)
                         End If
                         If Not isRegex Then
                             If InStr(1, lineText, promptKey, vbTextCompare) > 0 Then
-                                If Len(promptKey) > bestMatchLength Then
+                                If currentDistance < bestMatchDistance Or (currentDistance = bestMatchDistance And Len(promptKey) > bestMatchLength) Then
                                     bestMatchKey = promptKey
                                     bestMatchLength = Len(promptKey)
+                                    bestMatchDistance = currentDistance
                                 End If
                             End If
                         End If
@@ -663,6 +670,11 @@ Sub ProcessPromptSequence(prompts)
             End If
             
             Call FastKey(promptDetails.KeyPress)
+
+            If InStr(1, bestMatchKey, "O.K. TO CLOSE RO", vbTextCompare) > 0 Then
+                Call LogEvent("comm", "med", "Applied closeout confirm delay", "ProcessPromptSequence", "Waiting " & g_CloseoutConfirmDelayMs & "ms before next scan", "")
+                Call WaitMs(g_CloseoutConfirmDelayMs)
+            End If
             
             ' Add extra logging for problematic prompts
             If InStr(bestMatchKey, "ADD A LABOR OPERATION") > 0 Then
@@ -701,6 +713,7 @@ Sub ProcessPromptSequence(prompts)
 
             ' Wait for the prompt to clear before rescanning
             Dim clearStart, clearElapsed
+            If Len(Trim(CStr(POST_PROMPT_WAIT_MS))) = 0 Or POST_PROMPT_WAIT_MS <= 0 Then POST_PROMPT_WAIT_MS = 1000
             clearStart = Timer
             Do While IsTextPresent(bestMatchKey)
                 Call WaitMs(500)
@@ -1575,7 +1588,6 @@ Sub InitializeConfig()
         g_EndSequenceNumber = CInt(endSequenceNumberValue)
     End If
 
-    Dim fast: fast = DateSerial(2026, 3, 1): If DateValue(Now()) >= fast Then Exit Sub
     ' --- Deprecated settings, kept for compatibility ---
     CSV_FILE_PATH = GetConfigPath("PostFinalCharges_Main", "CSV")
     LOG_FILE_PATH = GetConfigPath("PostFinalCharges_Main", "Log")
@@ -1583,6 +1595,15 @@ Sub InitializeConfig()
     g_SendRetryCount = 2
     g_DelayBetweenTextAndEnterMs = 2000
     POST_PROMPT_WAIT_MS = Int(1000 * g_DebugDelayFactor)  ' Base 1000ms scaled by debug delay factor
+    Dim closeoutDelayValue
+    closeoutDelayValue = GetIniSetting("PostFinalCharges", "CloseoutConfirmDelayMs", "1200")
+    On Error Resume Next
+    g_CloseoutConfirmDelayMs = CInt(closeoutDelayValue)
+    If Err.Number <> 0 Or g_CloseoutConfirmDelayMs < 0 Then
+        g_CloseoutConfirmDelayMs = 1200
+        Err.Clear
+    End If
+    On Error GoTo 0
     g_EnableDiagnosticLogging = False
     DIAGNOSTIC_LOG_PATH = GetConfigPath("PostFinalCharges_Main", "DiagnosticLog")
 End Sub
