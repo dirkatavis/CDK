@@ -250,6 +250,30 @@ End Sub
 ' pollInterval: ms between checks
 ' timeout: ms before giving up
 '-----------------------------------------------------------
+
+'-----------------------------------------------------------
+' HasTechnicianDefault: Checks if the screen content contains
+' a default technician value in parentheses.
+' Valid defaults: (numeric ID) or (Multi)
+' Returns: True if default found, False otherwise
+'-----------------------------------------------------------
+Function HasTechnicianDefault(screenText)
+    HasTechnicianDefault = False
+    
+    ' Look for patterns like TECHNICIAN (71012)? or TECHNICIAN (Multi)?
+    ' Pattern: TECHNICIAN followed by optional space, then (content)?
+    If InStr(screenText, "TECHNICIAN") > 0 Then
+        Dim regEx: Set regEx = CreateObject("VBScript.RegExp")
+        regEx.Pattern = "TECHNICIAN\s*\(([0-9]+|MULTI)\)"
+        regEx.IgnoreCase = True
+        regEx.Global = False
+        
+        If regEx.Test(screenText) Then
+            HasTechnicianDefault = True
+        End If
+    End If
+End Function
+
 Sub WaitForTextAtBottom(targetText)
     Dim elapsed, screenContentBuffer, screenLength, found, col
     elapsed = 0
@@ -402,7 +426,16 @@ Sub AddStory(bzhao, storyCode)
             EnterText bzhao, ""
         ElseIf InStr(screenContent, "TECHNICIAN") > 0 Or InStr(screenContent, "TECH...") > 0 Then
             currentMatched = "TECHNICIAN"
-            EnterText bzhao, "99"
+            ' Check if there's a default value (numeric ID or Multi)
+            If HasTechnicianDefault(screenContent) Then
+                ' Accept the default by sending just Enter
+                EnterText bzhao, ""
+                LogResult "DEBUG", "Technician prompt has default - accepting it"
+            Else
+                ' No default, send fallback ID 99
+                EnterText bzhao, "99"
+                LogResult "DEBUG", "Technician prompt has no default - using fallback 99"
+            End If
         ElseIf InStr(screenContent, "ACTUAL HOURS") > 0 Then
             currentMatched = "ACTUAL HOURS"
             EnterText bzhao, ""
