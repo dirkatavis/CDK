@@ -33,6 +33,8 @@ ExecuteGlobal g_fso.OpenTextFile(helperPath).ReadAll
 
 ' --- Configuration ---
 Dim CSV_FILE: CSV_FILE = GetConfigPath("Prepare_Close_Pt1", "CSV")
+Dim RO_SCREEN_LOAD_TIMEOUT_MS: RO_SCREEN_LOAD_TIMEOUT_MS = GetConfigInt("Prepare_Close_Pt1", "RoScreenLoadTimeoutMs", 25000)
+Dim RO_SCREEN_POLL_MS: RO_SCREEN_POLL_MS = GetConfigInt("Prepare_Close_Pt1", "RoScreenPollMs", 1000)
 Const NUM_COLUMN = 0 ' Kept for clarity
 
 ' --- VBScript Objects ---
@@ -81,6 +83,83 @@ Set fso = Nothing
 Set bzhao = Nothing
 
 ' --- Subroutines ---
+
+Function GetConfigInt(sectionName, keyName, defaultValue)
+    Dim valueText
+    On Error Resume Next
+    valueText = GetConfigPath(sectionName, keyName)
+    If Err.Number <> 0 Then
+        Err.Clear
+        GetConfigInt = defaultValue
+        Exit Function
+    End If
+    On Error GoTo 0
+
+    If IsNumeric(valueText) Then
+        GetConfigInt = CLng(valueText)
+    Else
+        GetConfigInt = defaultValue
+    End If
+End Function
+
+Function HasAnyLineLettersOnScreen()
+    Dim i, row, capturedLetter, nextColChar, screenContentBuffer
+    HasAnyLineLettersOnScreen = False
+
+    For i = 0 To 12
+        row = 10 + i
+
+        On Error Resume Next
+        bzhao.ReadScreen screenContentBuffer, 1, row, 1
+        If Err.Number <> 0 Then
+            Err.Clear
+            Exit For
+        End If
+        On Error GoTo 0
+
+        capturedLetter = Trim(screenContentBuffer)
+        If Len(capturedLetter) = 1 Then
+            If Asc(UCase(capturedLetter)) >= Asc("A") And Asc(UCase(capturedLetter)) <= Asc("Z") Then
+                nextColChar = ""
+                On Error Resume Next
+                bzhao.ReadScreen nextColChar, 1, row, 2
+                If Err.Number <> 0 Then
+                    Err.Clear
+                    nextColChar = ""
+                End If
+                On Error GoTo 0
+
+                If Len(nextColChar) > 0 And Asc(nextColChar) = 32 Then
+                    HasAnyLineLettersOnScreen = True
+                    Exit Function
+                End If
+            End If
+        End If
+    Next
+End Function
+
+Function WaitForRoDetailScreen(ro)
+    Dim elapsedMs, foundError
+    elapsedMs = 0
+
+    Do While elapsedMs < RO_SCREEN_LOAD_TIMEOUT_MS
+        foundError = CheckForROError()
+        If foundError = "NOT ON FILE" Or InStr(foundError, "closed") > 0 Then
+            WaitForRoDetailScreen = foundError
+            Exit Function
+        End If
+
+        If HasAnyLineLettersOnScreen() Then
+            WaitForRoDetailScreen = "READY"
+            Exit Function
+        End If
+
+        bzhao.Pause RO_SCREEN_POLL_MS
+        elapsedMs = elapsedMs + RO_SCREEN_POLL_MS
+    Loop
+
+    WaitForRoDetailScreen = "TIMEOUT"
+End Function
 
 ' DiscoverLineLetters: Detects which line letters (A, B, C, etc.) are present
 Function DiscoverLineLetters()
@@ -152,18 +231,23 @@ End Function
 
 ' Subroutine to perform BlueZone automation steps for a single RO
 Sub ProcessRo(RoNumber)
-    Dim commands, i
+    Dim commands, i, screenState
     bzhao.SendKey RoNumber
     bzhao.SendKey "<NumpadEnter>"
-    Dim foundError
-    foundError = CheckForROError()
-    If foundError = "NOT ON FILE" Then
+
+    screenState = WaitForRoDetailScreen(RoNumber)
+
+    If screenState = "NOT ON FILE" Then
         LogResult RoNumber, "RO NOT ON FILE - Skipping to next."
         Exit Sub
-    ElseIf InStr(foundError, "closed") > 0 Then
+    ElseIf InStr(screenState, "closed") > 0 Then
         LogResult RoNumber, "RO IS CLOSED - Skipping to next."
         Exit Sub
+    ElseIf screenState = "TIMEOUT" Then
+        LogResult RoNumber, "TIMEOUT waiting for RO detail screen to load - Skipping to next."
+        Exit Sub
     End If
+
     commands = DiscoverLineLetters()
     If IsEmpty(commands) Or UBound(commands) = -1 Then
         LogResult RoNumber, "ERROR: No line letters discovered - Skipping to next."
