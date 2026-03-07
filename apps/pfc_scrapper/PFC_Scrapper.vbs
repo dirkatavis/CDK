@@ -152,6 +152,7 @@ Function ScrapeCurrentRO()
     
     ' Scrape Tech ID (specifically for Line A)
     techId = GetTechId()
+    If techId = "" Then techId = "<empty>"
 
     ' Clean commas for CSV safety
     roNum = Replace(roNum, ",", " ")
