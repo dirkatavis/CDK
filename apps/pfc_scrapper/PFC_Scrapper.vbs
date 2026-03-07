@@ -283,8 +283,8 @@ Function GetLineDescription(letter)
             bzhao.ReadScreen nextColChar, 1, row, 2
             If Asc(nextColChar) = 32 Then
                 ' Found the line letter anchor in Col 1
-                ' Based on previous working state, description starts around Col 7
-                bzhao.ReadScreen foundText, 50, row, 7
+                ' Based on previous working state, description starts around Col 4
+                bzhao.ReadScreen foundText, 50, row, 4
                 GetLineDescription = Left(Trim(foundText), 25)
                 Exit Function
             End If

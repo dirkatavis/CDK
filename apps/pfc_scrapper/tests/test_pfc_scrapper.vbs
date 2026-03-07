@@ -70,11 +70,11 @@ End Function
 Function GetLineDescription(letter)
     Dim row, buf
     GetLineDescription = ""
-    For row = 7 To 22
+    For row = 10 To 22
         bzhao.ReadScreen buf, 1, row, 1
         If UCase(Trim(buf)) = UCase(letter) Then
-            bzhao.ReadScreen buf, 25, row, 7
-            GetLineDescription = Trim(buf)
+            bzhao.ReadScreen buf, 50, row, 4
+            GetLineDescription = Left(Trim(buf), 25)
             Exit Function
         End If
     Next
