@@ -464,6 +464,10 @@ Sub AddStory(bzhao, storyCode)
         If InStr(screenContent, "LABOR TYPE") > 0 Then
             currentMatched = "LABOR TYPE"
             EnterText bzhao, ""
+        ElseIf InStr(screenContent, "IS THIS A COMEBACK") > 0 Then
+            currentMatched = "IS THIS A COMEBACK"
+            EnterText bzhao, "Y"
+            LogResult "INFO", "Comeback prompt detected for story " & storyCode & " - responding Y"
         ElseIf InStr(screenContent, "OPERATION CODE") > 0 Then
             currentMatched = "OPERATION CODE"
             ' Check if there's a default operation code
