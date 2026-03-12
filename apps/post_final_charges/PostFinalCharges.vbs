@@ -45,6 +45,8 @@ Dim g_SessionDateLogged
 Dim g_LastSuccessfulLine
 Dim g_NoPromptCount
 Dim g_CloseoutConfirmDelayMs
+Dim g_ReviewedROCount
+Dim g_FiledROCount
 
 MainPromptLine = 23
 
@@ -1230,6 +1232,9 @@ Sub RunMainProcess()
     End If
     If ConnectBlueZone() Then
         ProcessRONumbers()
+        If Not g_IsTestMode Then
+            MsgBox "DONE" & vbCrLf & "ROs Reviewed: " & g_ReviewedROCount & vbCrLf & "ROs Closed: " & g_FiledROCount & vbCrLf & "ROs Skipped: " & (g_ReviewedROCount - g_FiledROCount), vbInformation, "PostFinalCharges"
+        End If
     Else
         SafeMsg "Unable to connect to BlueZone. Check that itG��s open and logged in.", True, "Connection Error"
     End If
@@ -1744,6 +1749,8 @@ Sub ProcessRONumbers()
     Dim lineCount
     Dim sequenceLabel
     lineCount = 0
+    g_ReviewedROCount = 0
+    g_FiledROCount = 0
     
     ' In test mode, only process one RO
     If g_IsTestMode Then
@@ -1754,6 +1761,10 @@ Sub ProcessRONumbers()
         
         lastRoResult = ""
         Call Main(roNumber)
+        g_ReviewedROCount = 1
+        If InStr(1, lastRoResult, "Successfully filed", vbTextCompare) > 0 Then
+            g_FiledROCount = g_FiledROCount + 1
+        End If
         
         Call LogEvent("comm", "med", sequenceLabel & " - Result: " & lastRoResult, "ProcessRONumbers", "", "")
         Call LogEvent("comm", "med", "Test mode: Processed single RO " & roNumber, "ProcessRONumbers", "", "")
@@ -1762,6 +1773,7 @@ Sub ProcessRONumbers()
 
     For roNumber = g_StartSequenceNumber To g_EndSequenceNumber
         lineCount = lineCount + 1
+        g_ReviewedROCount = lineCount
         'WaitMs(2000)
         Call LogROHeader(roNumber)
         sequenceLabel = "Sequence " & roNumber
@@ -1773,6 +1785,9 @@ Sub ProcessRONumbers()
 
         lastRoResult = ""
         Call Main(roNumber)
+        If InStr(1, lastRoResult, "Successfully filed", vbTextCompare) > 0 Then
+            g_FiledROCount = g_FiledROCount + 1
+        End If
 
         ' Check for end-of-sequence error
         If IsTextPresent("SEQUENCE NUMBER " & roNumber & " DOES NOT EXIST") Then
@@ -3822,3 +3837,4 @@ Sub StartScript()
 End Sub
 
 StartScript
+
