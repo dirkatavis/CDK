@@ -47,6 +47,7 @@ Dim g_NoPromptCount
 Dim g_CloseoutConfirmDelayMs
 Dim g_ReviewedROCount
 Dim g_FiledROCount
+Dim g_BlacklistTermsRaw
 
 MainPromptLine = 23
 
@@ -937,6 +938,34 @@ Function IsTextPresent(searchText)
 End Function
 
 '-----------------------------------------------------------------------------------
+' **FUNCTION NAME:** GetMatchedBlacklistTerm
+' **DATE CREATED:** 2026-03-12
+' **AUTHOR:** GitHub Copilot
+' 
+' **FUNCTIONALITY:**
+' Checks configured blacklist terms against the current screen and returns
+' the first matched term, or empty string if no match is found.
+'-----------------------------------------------------------------------------------
+Function GetMatchedBlacklistTerm(blacklistTermsCsv)
+    Dim terms, i, term
+    GetMatchedBlacklistTerm = ""
+
+    blacklistTermsCsv = Trim(CStr(blacklistTermsCsv))
+    If Len(blacklistTermsCsv) = 0 Then Exit Function
+
+    terms = Split(blacklistTermsCsv, ",")
+    For i = LBound(terms) To UBound(terms)
+        term = Trim(CStr(terms(i)))
+        If Len(term) > 0 Then
+            If IsTextPresent(term) Then
+                GetMatchedBlacklistTerm = term
+                Exit Function
+            End If
+        End If
+    Next
+End Function
+
+'-----------------------------------------------------------------------------------
 ' **FUNCTION NAME:** WaitMs
 ' **DATE CREATED:** 2026-02-13
 ' **AUTHOR:** GitHub Copilot
@@ -1609,6 +1638,9 @@ Sub InitializeConfig()
         Err.Clear
     End If
     On Error GoTo 0
+
+    g_BlacklistTermsRaw = GetIniSetting("PostFinalCharges", "blacklist_terms", "")
+
     g_EnableDiagnosticLogging = False
     DIAGNOSTIC_LOG_PATH = GetConfigPath("PostFinalCharges_Main", "DiagnosticLog")
 End Sub
@@ -1991,6 +2023,17 @@ Sub Main(roNumber)
         Dim currentStatus
         currentStatus = Trim(CStr(g_LastScrapedStatus))
         Call LogEvent("comm", "med", "RO STATUS: " & currentStatus & " (Ready for processing)", "Main", "", "")
+    End If
+
+    Dim matchedBlacklistTerm
+    matchedBlacklistTerm = GetMatchedBlacklistTerm(g_BlacklistTermsRaw)
+    If Len(Trim(CStr(matchedBlacklistTerm))) > 0 Then
+        Call LogEvent("comm", "med", "Blacklisted term found - skipping closeout", "Main", matchedBlacklistTerm, "")
+        Call FastText("E")
+        Call FastKey("<NumpadEnter>")
+        Call WaitForPrompt("COMMAND:", "", False, 5000, "")
+        lastRoResult = "Skipped - Blacklisted term: " & matchedBlacklistTerm
+        Exit Sub
     End If
     
     ' Snapshot the scraped status now to avoid timing races, then detect triggers.
