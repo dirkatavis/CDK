@@ -341,6 +341,15 @@ Sub WaitForTextAtBottom(targetText)
         bzhao.ReadScreen buffer24, screenLength, 24, col
         screenContentBuffer = UCase(buffer23 & " " & buffer24)
 
+        ' Handle intermittent posting message prompts that require Enter to continue
+        If InStr(screenContentBuffer, "POSTING MESSAGES") > 0 _
+            Or InStr(screenContentBuffer, "POST MESSAGE") > 0 _
+            Or InStr(screenContentBuffer, "PRESS RETURN TO CONTINUE") > 0 Then
+            LogResult "INFO", "Post message prompt detected while waiting - sending Enter"
+            EnterText bzhao, ""
+            bzhao.Pause 500
+        End If
+
         found = False
         For i = 0 To UBound(targets)
             If InStr(screenContentBuffer, UCase(targets(i))) > 0 Then
@@ -464,6 +473,12 @@ Sub AddStory(bzhao, storyCode)
         If InStr(screenContent, "LABOR TYPE") > 0 Then
             currentMatched = "LABOR TYPE"
             EnterText bzhao, ""
+        ElseIf InStr(screenContent, "POSTING MESSAGES") > 0 _
+            Or InStr(screenContent, "POST MESSAGE") > 0 _
+            Or InStr(screenContent, "PRESS RETURN TO CONTINUE") > 0 Then
+            currentMatched = "POST MESSAGE"
+            EnterText bzhao, ""
+            LogResult "INFO", "Post message prompt detected for story " & storyCode & " - sending Enter"
         ElseIf InStr(screenContent, "IS THIS A COMEBACK") > 0 Then
             currentMatched = "IS THIS A COMEBACK"
             EnterText bzhao, "Y"
