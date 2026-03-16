@@ -48,6 +48,11 @@ Dim g_CloseoutConfirmDelayMs
 Dim g_ReviewedROCount
 Dim g_FiledROCount
 Dim g_BlacklistTermsRaw
+Dim g_SkipBlacklistCount
+Dim g_SkipStatusOpenCount
+Dim g_SkipStatusPreassignedCount
+Dim g_SkipStatusOtherCount
+Dim g_SkipOtherStates
 
 MainPromptLine = 23
 
@@ -1262,7 +1267,17 @@ Sub RunMainProcess()
     If ConnectBlueZone() Then
         ProcessRONumbers()
         If Not g_IsTestMode Then
-            MsgBox "DONE" & vbCrLf & "ROs Reviewed: " & g_ReviewedROCount & vbCrLf & "ROs Closed: " & g_FiledROCount & vbCrLf & "ROs Skipped: " & (g_ReviewedROCount - g_FiledROCount), vbInformation, "PostFinalCharges"
+            Dim summaryMsg
+
+            summaryMsg = "DONE" & vbCrLf & _
+                "ROs Reviewed: " & g_ReviewedROCount & vbCrLf & _
+                "ROs Posted: " & g_FiledROCount & vbCrLf & _
+                "Skips - Other Terms: " & g_SkipBlacklistCount & vbCrLf & _
+                "Skips - Open/Opened: " & g_SkipStatusOpenCount & vbCrLf & _
+                "Skips - Pre-Assigned: " & g_SkipStatusPreassignedCount & vbCrLf & _
+                "Skips - Other Statuses: " & g_SkipStatusOtherCount
+
+            Call SafeMsg(summaryMsg, False, "PostFinalCharges")
         End If
     Else
         SafeMsg "Unable to connect to BlueZone. Check that itG��s open and logged in.", True, "Connection Error"
@@ -1783,6 +1798,11 @@ Sub ProcessRONumbers()
     lineCount = 0
     g_ReviewedROCount = 0
     g_FiledROCount = 0
+    g_SkipBlacklistCount = 0
+    g_SkipStatusOpenCount = 0
+    g_SkipStatusPreassignedCount = 0
+    g_SkipStatusOtherCount = 0
+    Set g_SkipOtherStates = CreateObject("Scripting.Dictionary")
     
     ' In test mode, only process one RO
     If g_IsTestMode Then
@@ -2008,7 +2028,25 @@ Sub Main(roNumber)
         g_ShouldAbort = True
         Exit Sub
     End If
+
+    ' Additional render gate: ensure key RO detail sections are present before blacklist scan.
+    ' This helps avoid scanning too early when COMMAND is visible but details are still painting.
+    If Not WaitForRODetailReady(3000) Then
+        Call LogEvent("min", "med", "RO detail markers not fully detected before blacklist scan", "Main", "Proceeding with current screen", "Timeout waiting for REPAIR ORDER/LC DESCRIPTION markers")
+    End If
     
+    Dim matchedBlacklistTerm
+    matchedBlacklistTerm = GetMatchedBlacklistTerm(g_BlacklistTermsRaw)
+    If Len(Trim(CStr(matchedBlacklistTerm))) > 0 Then
+        g_SkipBlacklistCount = g_SkipBlacklistCount + 1
+        Call LogEvent("comm", "med", "Blacklisted term found - skipping closeout", "Main", matchedBlacklistTerm, "")
+        Call FastText("E")
+        Call FastKey("<NumpadEnter>")
+        Call WaitForPrompt("COMMAND:", "", False, 5000, "")
+        lastRoResult = "Skipped - Blacklisted term: " & matchedBlacklistTerm
+        Exit Sub
+    End If
+
     ' After opening an RO, ensure it has the expected READY TO POST status.
     If Not IsStatusReady() Then
         ' Call LogCore("RO STATUS not READY TO POST - exiting (E) and moving to next", "Main") ' Redundant, removed
@@ -2023,17 +2061,6 @@ Sub Main(roNumber)
         Dim currentStatus
         currentStatus = Trim(CStr(g_LastScrapedStatus))
         Call LogEvent("comm", "med", "RO STATUS: " & currentStatus & " (Ready for processing)", "Main", "", "")
-    End If
-
-    Dim matchedBlacklistTerm
-    matchedBlacklistTerm = GetMatchedBlacklistTerm(g_BlacklistTermsRaw)
-    If Len(Trim(CStr(matchedBlacklistTerm))) > 0 Then
-        Call LogEvent("comm", "med", "Blacklisted term found - skipping closeout", "Main", matchedBlacklistTerm, "")
-        Call FastText("E")
-        Call FastKey("<NumpadEnter>")
-        Call WaitForPrompt("COMMAND:", "", False, 5000, "")
-        lastRoResult = "Skipped - Blacklisted term: " & matchedBlacklistTerm
-        Exit Sub
     End If
     
     ' Snapshot the scraped status now to avoid timing races, then detect triggers.
@@ -2061,6 +2088,35 @@ Sub Main(roNumber)
         End If
     End If
 End Sub
+
+'-----------------------------------------------------------------------------------
+' **FUNCTION NAME:** WaitForRODetailReady
+' **DATE CREATED:** 2026-03-16
+' **AUTHOR:** GitHub Copilot
+' 
+' **FUNCTIONALITY:**
+' Waits for key RO detail markers to appear after entering sequence number.
+' Requires COMMAND prompt plus detail headers to reduce early-screen scan races.
+'-----------------------------------------------------------------------------------
+Function WaitForRODetailReady(timeoutMs)
+    If timeoutMs <= 0 Then timeoutMs = 3000
+
+    Dim waitStart, waitElapsed
+    waitStart = Timer
+
+    Do
+        If IsTextPresent("COMMAND:") And IsTextPresent("REPAIR ORDER #") And IsTextPresent("LC DESCRIPTION") Then
+            WaitForRODetailReady = True
+            Exit Function
+        End If
+
+        Call WaitMs(50)
+        waitElapsed = (Timer - waitStart) * 1000
+        If waitElapsed > timeoutMs Then Exit Do
+    Loop
+
+    WaitForRODetailReady = False
+End Function
 
 
 
@@ -2729,6 +2785,31 @@ Function IsStatusReady()
             Exit Function
         End If
     Next
+
+    Dim normalizedStatus
+    normalizedStatus = UCase(trimmedStatus)
+
+    Select Case normalizedStatus
+        Case "OPEN", "OPENED"
+            g_SkipStatusOpenCount = g_SkipStatusOpenCount + 1
+        Case "PREASSIGNED", "PRE-ASSIGNED"
+            g_SkipStatusPreassignedCount = g_SkipStatusPreassignedCount + 1
+        Case Else
+            If normalizedStatus <> "READY TO POST" Then
+                g_SkipStatusOtherCount = g_SkipStatusOtherCount + 1
+
+                If normalizedStatus = "" Then normalizedStatus = "(BLANK)"
+                If Not IsObject(g_SkipOtherStates) Then
+                    Set g_SkipOtherStates = CreateObject("Scripting.Dictionary")
+                End If
+
+                If g_SkipOtherStates.Exists(normalizedStatus) Then
+                    g_SkipOtherStates.Item(normalizedStatus) = g_SkipOtherStates.Item(normalizedStatus) + 1
+                Else
+                    g_SkipOtherStates.Add normalizedStatus, 1
+                End If
+            End If
+    End Select
     
     IsStatusReady = False
 End Function
