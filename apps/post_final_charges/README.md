@@ -10,7 +10,7 @@ Advanced automation for posting final charges to Repair Orders using a state mac
 - `CashoutRoList.csv` - List of ROs to process with charge details
 
 ## Output/Logs
-- Input/output/log locations are defined in `config/config.ini` (`[PostFinalCharges_Main]` and `[PostFinalCharges]` sections).
+- Input/output/log locations are defined in `config/config.ini` (`[PostFinalCharges]` section).
 - Debug mode marker location is defined in `config/config.ini`.
 - Criticality levels: CRIT_COMMON (0) to CRIT_CRITICAL (3)
 - Verbosity levels: VERB_LOW (0) to VERB_MAX (3)

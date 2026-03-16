@@ -74,10 +74,10 @@ g_SessionDateLogged = False
 
 
 LEGACY_BASE_PATH = g_fso.BuildPath(GetRepoRoot(), "apps\post_final_charges")
-LEGACY_CSV_PATH = GetConfigPath("PostFinalCharges_Main", "CSV")
-LEGACY_LOG_PATH = GetConfigPath("PostFinalCharges_Main", "Log")
-LEGACY_DIAG_LOG_PATH = GetConfigPath("PostFinalCharges_Main", "DiagnosticLog")
-LEGACY_COMMONLIB_PATH = GetConfigPath("PostFinalCharges_Main", "CommonLib")
+LEGACY_CSV_PATH = GetConfigPath("PostFinalCharges", "CSV")
+LEGACY_LOG_PATH = GetConfigPath("PostFinalCharges", "Log")
+LEGACY_DIAG_LOG_PATH = GetConfigPath("PostFinalCharges", "DiagnosticLog")
+LEGACY_COMMONLIB_PATH = GetConfigPath("PostFinalCharges", "CommonLib")
 
 
 
@@ -1609,8 +1609,8 @@ Sub InitializeConfig()
     g_DebugDelayFactor = GetIniSetting("Settings", "DebugDelayFactor", 1.0)
     
     Dim startSequenceNumberValue, endSequenceNumberValue
-    startSequenceNumberValue = GetIniSetting("Processing", "StartSequenceNumber", "")
-    endSequenceNumberValue = GetIniSetting("Processing", "EndSequenceNumber", "")
+    startSequenceNumberValue = GetIniSetting("PostFinalCharges", "StartSequenceNumber", "")
+    endSequenceNumberValue = GetIniSetting("PostFinalCharges", "EndSequenceNumber", "")
 
     If startSequenceNumberValue = "" Or endSequenceNumberValue = "" Then
         Call LogEvent("crit", "low", "Critical config missing: 'StartSequenceNumber' and/or 'EndSequenceNumber' not found in config.ini", "InitializeConfig", "Script cannot continue without sequence range", "")
@@ -1623,8 +1623,8 @@ Sub InitializeConfig()
     End If
 
     ' --- Deprecated settings, kept for compatibility ---
-    CSV_FILE_PATH = GetConfigPath("PostFinalCharges_Main", "CSV")
-    LOG_FILE_PATH = GetConfigPath("PostFinalCharges_Main", "Log")
+    CSV_FILE_PATH = GetConfigPath("PostFinalCharges", "CSV")
+    LOG_FILE_PATH = GetConfigPath("PostFinalCharges", "Log")
     g_LongWait = 2000
     g_SendRetryCount = 2
     g_DelayBetweenTextAndEnterMs = 2000
@@ -1642,7 +1642,7 @@ Sub InitializeConfig()
     g_BlacklistTermsRaw = GetIniSetting("PostFinalCharges", "blacklist_terms", "")
 
     g_EnableDiagnosticLogging = False
-    DIAGNOSTIC_LOG_PATH = GetConfigPath("PostFinalCharges_Main", "DiagnosticLog")
+    DIAGNOSTIC_LOG_PATH = GetConfigPath("PostFinalCharges", "DiagnosticLog")
 End Sub
 
 
@@ -2644,7 +2644,7 @@ End Function
 ' 
 ' **FUNCTIONALITY:**
 ' Returns an array of RO statuses that are valid for proceeding with closeout.
-' Reads from config.ini [Processing] ValidCloseoutStatuses setting.
+' Reads from config.ini [PostFinalCharges] ValidCloseoutStatuses setting.
 ' Falls back to default statuses if not configured.
 ' 
 ' **RETURN VALUE:**
@@ -2654,7 +2654,7 @@ Function GetValidCloseoutStatuses()
     Dim configStatuses, statusArray, i
     
     ' Read from config.ini with fallback to defaults
-    configStatuses = GetIniSetting("Processing", "ValidCloseoutStatuses", "READY TO POST")
+    configStatuses = GetIniSetting("PostFinalCharges", "ValidCloseoutStatuses", "READY TO POST")
     
     ' Parse comma-separated values and trim whitespace
     statusArray = Split(configStatuses, ",")
@@ -3006,7 +3006,7 @@ Sub Closeout_Ro(roStatus)
     
     ' Check if status-specific closeout is enabled
     Dim useStatusSpecific
-    useStatusSpecific = GetIniSetting("Processing", "UseStatusSpecificCloseout", "true")
+    useStatusSpecific = GetIniSetting("PostFinalCharges", "UseStatusSpecificCloseout", "true")
     
     If LCase(Trim(useStatusSpecific)) = "true" Then
         ' Route to status-specific closeout logic
@@ -3867,7 +3867,7 @@ Sub StartScript()
     Call LogInfo("PostFinalCharges script bootstrap starting", "Bootstrap")
     ' === Include CommonLib.vbs (optional - script has built-in functions) ===
     Dim commonLibPath
-    commonLibPath = GetConfigPath("PostFinalCharges_Main", "CommonLib")
+    commonLibPath = GetConfigPath("PostFinalCharges", "CommonLib")
     If IncludeFile(commonLibPath) Then
         commonLibLoaded = True
         Call LogInfo("CommonLib.vbs loaded successfully", "Bootstrap")

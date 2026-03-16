@@ -61,6 +61,7 @@ End Function
 Dim STABILITY_PAUSE: STABILITY_PAUSE = GetConfigSetting("Maintenance_RO_Closer", "StabilityPause", 2000)
 Dim LOOP_PAUSE: LOOP_PAUSE = GetConfigSetting("Maintenance_RO_Closer", "LoopPause", 1000)
 Dim REVIEW_PAUSE: REVIEW_PAUSE = GetConfigSetting("Maintenance_RO_Closer", "ReviewPause", 500)
+Dim BLACKLIST_TERMS: BLACKLIST_TERMS = GetConfigSetting("Maintenance_RO_Closer", "blacklist_terms", "")
 
 ' --- Picky Match State ---
 Dim CriteriaA, CriteriaB, CriteriaC
@@ -185,7 +186,7 @@ End Sub
 ' --- Helper Subroutines & Functions ---
 
 Function IsRoProcessable(roNumber)
-    Dim screenContent
+    Dim screenContent, matchedBlacklistTerm
     bzhao.Pause STABILITY_PAUSE
     ' Read screen starting from Row 2 down to Row 6 to catch status (Row 5) and RO info
     ' We also read more to catch system errors (Pick/BASIC errors)
@@ -213,6 +214,13 @@ Function IsRoProcessable(roNumber)
         IsRoProcessable = False
         Exit Function
     End If
+
+    matchedBlacklistTerm = GetMatchedBlacklistTerm(BLACKLIST_TERMS, screenContent)
+    If matchedBlacklistTerm <> "" Then
+        LogResult "INFO", "RO " & roNumber & " contains blacklisted term '" & matchedBlacklistTerm & "'. Skipping."
+        IsRoProcessable = False
+        Exit Function
+    End If
     
     IsRoProcessable = True
 End Function
@@ -225,6 +233,29 @@ Function GetStatusSnip(screenContent)
     Else
         GetStatusSnip = "(Status line not found in read buffer)"
     End If
+End Function
+
+Function GetMatchedBlacklistTerm(blacklistTermsCsv, screenContent)
+    Dim terms, i, term
+
+    If Trim(blacklistTermsCsv) = "" Then
+        GetMatchedBlacklistTerm = ""
+        Exit Function
+    End If
+
+    terms = Split(blacklistTermsCsv, ",")
+
+    For i = 0 To UBound(terms)
+        term = Trim(terms(i))
+        If term <> "" Then
+            If InStr(1, screenContent, term, vbTextCompare) > 0 Then
+                GetMatchedBlacklistTerm = term
+                Exit Function
+            End If
+        End If
+    Next
+
+    GetMatchedBlacklistTerm = ""
 End Function
 
 Function DiscoverLineLetters()
