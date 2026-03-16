@@ -15,6 +15,18 @@ Advanced automation for posting final charges to Repair Orders using a state mac
 - Criticality levels: CRIT_COMMON (0) to CRIT_CRITICAL (3)
 - Verbosity levels: VERB_LOW (0) to VERB_MAX (3)
 
+### Verbosity Strategy
+- `log_verbosity=low` (default): startup/shutdown lifecycle, per-RO processing/result outcomes, and major/critical errors.
+- `log_verbosity=med`: everything in low, plus warnings/timeouts and decision detail (why an RO was processed or skipped).
+- `log_verbosity=high`: everything in med, plus action trace (commands sent, prompt handling, and screen-transition checkpoints).
+- `log_verbosity=max`: deep diagnostics/loop tracing for troubleshooting only.
+
+Recommended usage:
+- Production runs: `low`
+- Operational troubleshooting: `med`
+- Flow debugging in BlueZone: `high`
+- Deep developer diagnostics: `max` or `PFC_DEBUG=1`
+
 ## Supporting Files
 - `CommonLib.vbs` - Shared helper functions and prompt detection logic
 
