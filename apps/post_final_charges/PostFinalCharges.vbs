@@ -1598,7 +1598,7 @@ Sub InitializeConfig()
     ' --- Initialize Logging Configuration from INI file ---
     Dim criticalityValue, verbosityValue
     criticalityValue = LCase(GetIniSetting("Settings", "LogCriticality", "comm"))
-    verbosityValue = LCase(GetIniSetting("Settings", "UserVerbosity", "med"))
+    verbosityValue = LCase(GetIniSetting("PostFinalCharges", "log_verbosity", "low"))
     
     ' Set criticality threshold
     Select Case criticalityValue
