@@ -603,10 +603,10 @@ Sub ProcessPromptSequence(prompts)
             ' CRITICAL FIX: Reset timer for each individual prompt
             ' Each prompt gets its own 30-second timeout window
             sequenceStartTime = Now()
-            Call LogEvent("comm", "med", "TIMER RESET for new prompt", "ProcessPromptSequence", "Individual prompt timeout starts now", "sequenceStartTime=" & sequenceStartTime)
+            Call LogEvent("comm", "high", "TIMER RESET for new prompt", "ProcessPromptSequence", "Individual prompt timeout starts now", "sequenceStartTime=" & sequenceStartTime)
             
             Set promptDetails = prompts.Item(bestMatchKey)
-            Call LogEvent("comm", "med", "Matched prompt: '" & bestMatchKey & "'", "ProcessPromptSequence", "Found most specific match", "match length=" & bestMatchLength)
+            Call LogEvent("comm", "high", "Matched prompt: '" & bestMatchKey & "'", "ProcessPromptSequence", "Found most specific match", "match length=" & bestMatchLength)
             Call LogEvent("comm", "max", "Prompt details: '" & bestMatchKey & "'", "ProcessPromptSequence", "", "ResponseText='" & promptDetails.ResponseText & "' KeyPress='" & promptDetails.KeyPress & "' AcceptDefault=" & promptDetails.AcceptDefault & " IsSuccess=" & promptDetails.IsSuccess)
 
             ' Log the screen before responding
@@ -662,7 +662,7 @@ Sub ProcessPromptSequence(prompts)
                 
                 shouldAcceptDefault = HasDefaultValueInPrompt(bestMatchKey, matchedLineContent)
                 If shouldAcceptDefault Then
-                    Call LogEvent("comm", "med", "Default value detected in prompt", "ProcessPromptSequence", "Accepting by sending only key press", "")
+                    Call LogEvent("comm", "high", "Default value detected in prompt", "ProcessPromptSequence", "Accepting by sending only key press", "")
                 Else
                     Call LogEvent("comm", "high", "No valid default value detected", "ProcessPromptSequence", "Will send ResponseText", "")
                 End If
@@ -672,27 +672,27 @@ Sub ProcessPromptSequence(prompts)
 
             If promptDetails.ResponseText <> "" And Not shouldAcceptDefault Then
                 Call FastText(promptDetails.ResponseText)
-                Call LogEvent("comm", "med", "Sent ResponseText", "ProcessPromptSequence", "'" & promptDetails.ResponseText & "'", "")
+                Call LogEvent("comm", "high", "Sent ResponseText", "ProcessPromptSequence", "'" & promptDetails.ResponseText & "'", "")
             Else
-                Call LogEvent("comm", "med", "No ResponseText to send", "ProcessPromptSequence", "Empty or accepting default", "")
+                Call LogEvent("comm", "high", "No ResponseText to send", "ProcessPromptSequence", "Empty or accepting default", "")
             End If
             
             Call FastKey(promptDetails.KeyPress)
 
             If InStr(1, bestMatchKey, "O.K. TO CLOSE RO", vbTextCompare) > 0 Then
-                Call LogEvent("comm", "med", "Applied closeout confirm delay", "ProcessPromptSequence", "Waiting " & g_CloseoutConfirmDelayMs & "ms before next scan", "")
+                Call LogEvent("comm", "high", "Applied closeout confirm delay", "ProcessPromptSequence", "Waiting " & g_CloseoutConfirmDelayMs & "ms before next scan", "")
                 Call WaitMs(g_CloseoutConfirmDelayMs)
             End If
             
             ' Add extra logging for problematic prompts
             If InStr(bestMatchKey, "ADD A LABOR OPERATION") > 0 Then
-                Call LogEvent("comm", "med", "Responded to ADD A LABOR OPERATION prompt", "ProcessPromptSequence", "Waiting for screen to stabilize", "")
+                Call LogEvent("comm", "high", "Responded to ADD A LABOR OPERATION prompt", "ProcessPromptSequence", "Waiting for screen to stabilize", "")
                 Call WaitMs(2000) ' Extra wait for this specific prompt
                 Call LogEvent("comm", "high", "Screen after ADD A LABOR OPERATION response", "ProcessPromptSequence", "", GetScreenSnapshot(5))
                 
                 ' Check if we're back at COMMAND prompt
                 If IsTextPresent("COMMAND:") Then
-                    Call LogEvent("comm", "med", "Successfully returned to COMMAND prompt", "ProcessPromptSequence", "After ADD A LABOR OPERATION", "")
+                    Call LogEvent("comm", "high", "Successfully returned to COMMAND prompt", "ProcessPromptSequence", "After ADD A LABOR OPERATION", "")
                     finished = True
                 Else
                     Call LogEvent("min", "med", "Not at COMMAND prompt after ADD A LABOR OPERATION", "ProcessPromptSequence", "Continuing to wait", "")
@@ -706,14 +706,14 @@ Sub ProcessPromptSequence(prompts)
             Call LogEvent("comm", "max", "Screen lines 22-24 after response", "ProcessPromptSequence", "", "[22]='" & GetScreenLine(22) & "' [23]='" & GetScreenLine(23) & "' [24]='" & GetScreenLine(24) & "'")
             
             If InStr(bestMatchKey, "SOLD HOURS") > 0 Then
-                Call LogEvent("comm", "med", "Responded to SOLD HOURS prompt", "ProcessPromptSequence", "Waiting for screen to stabilize", "")
+                Call LogEvent("comm", "high", "Responded to SOLD HOURS prompt", "ProcessPromptSequence", "Waiting for screen to stabilize", "")
                 Call WaitMs(1500) ' Extra wait for this specific prompt
                 Call LogEvent("comm", "high", "Screen after SOLD HOURS response", "ProcessPromptSequence", "", GetScreenSnapshot(5))
             End If
 
             If promptDetails.IsSuccess Then
                 finished = True
-                Call LogEvent("comm", "med", "Success prompt reached", "ProcessPromptSequence", bestMatchKey, "")
+                Call LogEvent("comm", "high", "Success prompt reached", "ProcessPromptSequence", bestMatchKey, "")
             End If
 
             ' TRACE: Log screen snapshot after key send
@@ -745,7 +745,7 @@ Sub ProcessPromptSequence(prompts)
             ' Check if we're back at the COMMAND prompt by examining MainPromptLine specifically
             ' This prevents false positives when "COMMAND" appears elsewhere on screen
             If InStr(1, mainPromptText, "COMMAND:", vbTextCompare) > 0 Then
-                Call LogEvent("comm", "med", "Detected return to COMMAND prompt on MainPromptLine", "ProcessPromptSequence", "Line processing complete", "")
+                Call LogEvent("comm", "high", "Detected return to COMMAND prompt on MainPromptLine", "ProcessPromptSequence", "Line processing complete", "")
                 finished = True
             Else
                 ' Track consecutive "no prompt" iterations to prevent infinite loops
@@ -1086,14 +1086,14 @@ Sub FastKey(keyValue)
         Exit Sub
     End If
     
-    Call LogEvent("comm", "med", "FastKey: Sending '" & keyValue & "'", "FastKey", "", "")
+    Call LogEvent("comm", "high", "FastKey: Sending '" & keyValue & "'", "FastKey", "", "")
     bzhao.SendKey keyValue
     
     If Err.Number <> 0 Then
         Call LogEvent("maj", "med", "FastKey: Failed to send '" & keyValue & "'", "FastKey", "Error: " & Err.Description, "")
         Err.Clear
     Else
-        Call LogEvent("comm", "med", "FastKey: Sent '" & keyValue & "' successfully", "FastKey", "", "")
+        Call LogEvent("comm", "high", "FastKey: Sent '" & keyValue & "' successfully", "FastKey", "", "")
     End If
     On Error GoTo 0
 End Sub
@@ -1107,14 +1107,14 @@ Sub FastText(textValue)
         Exit Sub
     End If
     
-    Call LogEvent("comm", "med", "FastText: Sending '" & textValue & "'", "FastText", "", "")
+    Call LogEvent("comm", "high", "FastText: Sending '" & textValue & "'", "FastText", "", "")
     bzhao.SendKey textValue
     
     If Err.Number <> 0 Then
         Call LogEvent("maj", "med", "FastText: Failed to send '" & textValue & "'", "FastText", "Error: " & Err.Description, "")
         Err.Clear
     Else
-        Call LogEvent("comm", "med", "FastText: Sent '" & textValue & "' successfully", "FastText", "", "")
+        Call LogEvent("comm", "high", "FastText: Sent '" & textValue & "' successfully", "FastText", "", "")
     End If
     On Error GoTo 0
 End Sub
@@ -2035,8 +2035,16 @@ Sub Main(roNumber)
         Call LogEvent("min", "med", "RO detail markers not fully detected before blacklist scan", "Main", "Proceeding with current screen", "Timeout waiting for REPAIR ORDER/LC DESCRIPTION markers")
     End If
     
+    ' Give detail lines a brief settle window; some RO lines render slightly after headers.
+    Call WaitForScreenStable(1200, 150)
+
     Dim matchedBlacklistTerm
     matchedBlacklistTerm = GetMatchedBlacklistTerm(g_BlacklistTermsRaw)
+    If Len(Trim(CStr(matchedBlacklistTerm))) = 0 And Len(Trim(CStr(g_BlacklistTermsRaw))) > 0 Then
+        ' Retry once after an additional short stabilization window to catch late-painted lines.
+        Call WaitForScreenStable(1000, 150)
+        matchedBlacklistTerm = GetMatchedBlacklistTerm(g_BlacklistTermsRaw)
+    End If
     If Len(Trim(CStr(matchedBlacklistTerm))) > 0 Then
         g_SkipBlacklistCount = g_SkipBlacklistCount + 1
         Call LogEvent("comm", "med", "Blacklisted term found - skipping closeout", "Main", matchedBlacklistTerm, "")
@@ -2969,10 +2977,10 @@ Sub ProcessLineItems()
     g_LastSuccessfulLine = ""
 
     ' Phase 1: Run FNL commands for all lines (A through Z)
-    Call LogEvent("comm", "med", "Phase 1: Running FNL commands for all lines", "ProcessLineItems", "", "")
+    Call LogEvent("comm", "high", "Phase 1: Running FNL commands for all lines", "ProcessLineItems", "", "")
     For i = 65 To 90 ' ASCII for A to Z
         lineLetterChar = Chr(i)
-        Call LogEvent("comm", "med", "Running FNL " & lineLetterChar & " command", "ProcessLineItems", "", "")
+        Call LogEvent("comm", "high", "Running FNL " & lineLetterChar & " command", "ProcessLineItems", "", "")
         
         ' Send the FNL command and let ProcessPromptSequence handle any prompts that appear
         Call FastText("FNL " & lineLetterChar)
@@ -3005,10 +3013,10 @@ Sub ProcessLineItems()
     Call LogEvent("comm", "low", "Phase 1 completed - All lines finalized", "ProcessLineItems", "", "")
 
     ' Phase 2: Run R commands and process prompts for all lines
-    Call LogEvent("comm", "med", "Phase 2: Processing line prompts with R commands", "ProcessLineItems", "", "")
+    Call LogEvent("comm", "high", "Phase 2: Processing line prompts with R commands", "ProcessLineItems", "", "")
     For i = 65 To 90 ' ASCII for A to Z
         lineLetterChar = Chr(i)
-        Call LogEvent("comm", "med", "Running R " & lineLetterChar & " command", "ProcessLineItems", "", "")
+        Call LogEvent("comm", "high", "Running R " & lineLetterChar & " command", "ProcessLineItems", "", "")
         
         ' Wait for the COMMAND prompt and then enter "R" + the current line letter.
         Call WaitForPrompt("COMMAND:", "R " & lineLetterChar, True, g_PromptWait, "")
@@ -3200,14 +3208,14 @@ Sub ProcessLinesSequentially()
 
     For i = 65 To 90 ' ASCII for A to Z
         lineLetterChar = Chr(i)
-        Call LogEvent("comm", "med", "Processing line " & lineLetterChar & " - Finish then Review", "ProcessLinesSequentially", "", "")
+        Call LogEvent("comm", "high", "Processing line " & lineLetterChar & " - Finish then Review", "ProcessLinesSequentially", "", "")
         
         ' Step 1: Finish the line with FNL command FIRST (to ensure it's complete before reviewing)
-        Call LogEvent("comm", "med", "Running FNL " & lineLetterChar & " command", "ProcessLinesSequentially", "", "")
+        Call LogEvent("comm", "high", "Running FNL " & lineLetterChar & " command", "ProcessLinesSequentially", "", "")
         Call WaitForPrompt("COMMAND:", "FNL " & lineLetterChar, True, g_PromptWait, "")
         
         ' Wait for the FNL response
-        Call LogEvent("comm", "med", "Waiting for FNL " & lineLetterChar & " response", "ProcessLinesSequentially", "", "")
+        Call LogEvent("comm", "high", "Waiting for FNL " & lineLetterChar & " response", "ProcessLinesSequentially", "", "")
         Call WaitForScreenStable(2000, 300)  ' Wait up to 2 sec for screen to stabilize
         
         ' Check if the line exists FIRST
@@ -3233,11 +3241,11 @@ Sub ProcessLinesSequentially()
         End If
         
         ' Step 2: Review the line with R command (now that it's finished)
-        Call LogEvent("comm", "med", "Running R " & lineLetterChar & " command", "ProcessLinesSequentially", "", "")
+        Call LogEvent("comm", "high", "Running R " & lineLetterChar & " command", "ProcessLinesSequentially", "", "")
         Call WaitForPrompt("COMMAND:", "R " & lineLetterChar, True, g_PromptWait, "")
         
         ' Wait for the first prompt to appear (2 second timeout for response to be ready)
-        Call LogEvent("comm", "med", "Waiting for R " & lineLetterChar & " response prompts", "ProcessLinesSequentially", "", "")
+        Call LogEvent("comm", "high", "Waiting for R " & lineLetterChar & " response prompts", "ProcessLinesSequentially", "", "")
         Call WaitForScreenStable(2000, 300)  ' Wait up to 2 sec for screen to stabilize
         
         ' Process review prompts for this line (R command produces prompts immediately, not a screen)
@@ -3273,10 +3281,10 @@ Sub ProcessReviewLines()
     g_LastSuccessfulLine = ""
 
     ' Process R commands and prompts for all lines
-    Call LogEvent("comm", "med", "Processing line prompts with R commands", "ProcessReviewLines", "", "")
+    Call LogEvent("comm", "high", "Processing line prompts with R commands", "ProcessReviewLines", "", "")
     For i = 65 To 90 ' ASCII for A to Z
         lineLetterChar = Chr(i)
-        Call LogEvent("comm", "med", "Running R " & lineLetterChar & " command", "ProcessReviewLines", "", "")
+        Call LogEvent("comm", "high", "Running R " & lineLetterChar & " command", "ProcessReviewLines", "", "")
         
         ' Wait for the COMMAND prompt and then enter "R" + the current line letter.
         Call WaitForPrompt("COMMAND:", "R " & lineLetterChar, True, g_PromptWait, "")
