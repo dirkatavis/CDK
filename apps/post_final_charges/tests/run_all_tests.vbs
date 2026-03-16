@@ -89,6 +89,12 @@ Sub Main()
     ' Test 10: All InStr Fixes Verification
     RunTest "All InStr Fixes Verification", "cscript.exe test_verify_all_instr_fixes.vbs"
 
+    ' Test 11: Blacklist precedence over READY TO POST
+    RunTest "Blacklist READY Status Precedence", "cscript.exe test_blacklist_ready_status_precedence.vbs"
+
+    ' Test 12: Blacklist runtime detection gap scenarios
+    RunTest "Blacklist Runtime Detection Gap", "cscript.exe test_blacklist_runtime_detection_gap.vbs"
+
     ' Summary
     WScript.Echo ""
     WScript.Echo "=== Test Results Summary ==="
