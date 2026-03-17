@@ -536,7 +536,10 @@ Function HandleReviewPrompts(lineLetter)
             EnterReviewPrompt "I"
         ElseIf TestPrompt(regEx, screenContent, "DESC:") Then
             EnterReviewPrompt ""
-        ElseIf TestPrompt(regEx, screenContent, "TECHNICIAN.*(\([A-Za-z0-9]*\))?\?") Then
+        ' TECHNICIAN: accept valid default when present; otherwise force fallback 99
+        ElseIf TestPrompt(regEx, screenContent, "TECHNICIAN.*\([A-Za-z0-9]+\)\?") Then
+            EnterReviewPrompt ""
+        ElseIf TestPrompt(regEx, screenContent, "TECHNICIAN.*\?") Then
             EnterReviewPrompt "99"
         ElseIf TestPrompt(regEx, screenContent, "ACTUAL HOURS") Then
             EnterReviewPrompt ""
