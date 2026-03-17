@@ -1375,9 +1375,9 @@ Sub RunMainProcess()
             summaryMsg = "DONE" & vbCrLf & _
                 "ROs Reviewed: " & g_ReviewedROCount & vbCrLf & _
                 "ROs Posted: " & g_FiledROCount & vbCrLf & _
-                "Skips - Configured RO List: " & g_SkipConfiguredCount & vbCrLf & _
+                "Skips - Specific ROs: " & g_SkipConfiguredCount & vbCrLf & _
                 "Skips - Other Terms: " & g_SkipBlacklistCount & vbCrLf & _
-                "Skips - Open/Opened: " & g_SkipStatusOpenCount & vbCrLf & _
+                "Skips - Open: " & g_SkipStatusOpenCount & vbCrLf & _
                 "Skips - Pre-Assigned: " & g_SkipStatusPreassignedCount & vbCrLf & _
                 "Skips - Other Statuses: " & g_SkipStatusOtherCount
 
