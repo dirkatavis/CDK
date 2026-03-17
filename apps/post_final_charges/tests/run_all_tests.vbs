@@ -95,6 +95,9 @@ Sub Main()
     ' Test 12: Blacklist runtime detection gap scenarios
     RunTest "Blacklist Runtime Detection Gap", "cscript.exe test_blacklist_runtime_detection_gap.vbs"
 
+    ' Test 13: SkipRoList runtime wiring regression
+    RunTest "SkipRoList Runtime Regression", "cscript.exe test_skip_ro_list_runtime_regression.vbs"
+
     ' Summary
     WScript.Echo ""
     WScript.Echo "=== Test Results Summary ==="
