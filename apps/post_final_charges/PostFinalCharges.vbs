@@ -53,6 +53,9 @@ Dim g_SkipStatusOpenCount
 Dim g_SkipStatusPreassignedCount
 Dim g_SkipStatusOtherCount
 Dim g_SkipOtherStates
+Dim g_SkipRoListRaw
+Dim g_SkipRoLookup
+Dim g_SkipConfiguredCount
 
 MainPromptLine = 23
 
@@ -971,6 +974,106 @@ Function GetMatchedBlacklistTerm(blacklistTermsCsv)
 End Function
 
 '-----------------------------------------------------------------------------------
+' **FUNCTION NAME:** NormalizeRoIdentifier
+' **FUNCTIONALITY:**
+' Extracts numeric RO characters from mixed text and returns normalized RO ID.
+' Returns empty string when no numeric content exists.
+'-----------------------------------------------------------------------------------
+Function NormalizeRoIdentifier(rawValue)
+    Dim textValue, i, ch, normalized
+    textValue = Trim(CStr(rawValue))
+    normalized = ""
+
+    For i = 1 To Len(textValue)
+        ch = Mid(textValue, i, 1)
+        If ch >= "0" And ch <= "9" Then
+            normalized = normalized & ch
+        End If
+    Next
+
+    NormalizeRoIdentifier = normalized
+End Function
+
+'-----------------------------------------------------------------------------------
+' **FUNCTION NAME:** LoadSkipRoLookup
+' **FUNCTIONALITY:**
+' Loads RO numbers from one or more configured CSV files into a dictionary.
+' Config value is a comma-separated list of file paths (relative to repo root or absolute).
+' Fails fast if any configured file is missing.
+'-----------------------------------------------------------------------------------
+Function LoadSkipRoLookup(skipRoListCsvPaths, ByRef lookupDict)
+    Dim pathEntries, i, configuredPath, fullPath
+    Dim fileHandle, lineText, normalizedRo
+
+    LoadSkipRoLookup = True
+
+    If Not IsObject(lookupDict) Then
+        Set lookupDict = CreateObject("Scripting.Dictionary")
+    End If
+
+    skipRoListCsvPaths = Trim(CStr(skipRoListCsvPaths))
+    If Len(skipRoListCsvPaths) = 0 Then Exit Function
+
+    pathEntries = Split(skipRoListCsvPaths, ",")
+    For i = LBound(pathEntries) To UBound(pathEntries)
+        configuredPath = Trim(CStr(pathEntries(i)))
+        If Len(configuredPath) > 0 Then
+            If IsAbsolutePath(configuredPath) Then
+                fullPath = configuredPath
+            Else
+                fullPath = g_fso.BuildPath(GetRepoRoot(), configuredPath)
+            End If
+
+            If Not g_fso.FileExists(fullPath) Then
+                Call LogEvent("crit", "low", "Configured SkipRoList file not found", "LoadSkipRoLookup", fullPath, "Check PostFinalCharges.SkipRoList in config.ini")
+                LoadSkipRoLookup = False
+                Exit Function
+            End If
+
+            Set fileHandle = g_fso.OpenTextFile(fullPath, 1)
+            Do While Not fileHandle.AtEndOfStream
+                lineText = Trim(CStr(fileHandle.ReadLine))
+
+                If Len(lineText) = 0 Then
+                    ' ignore blank lines
+                ElseIf Left(lineText, 1) = "#" Or Left(lineText, 1) = ";" Then
+                    ' ignore comment lines
+                Else
+                    normalizedRo = NormalizeRoIdentifier(lineText)
+                    If Len(normalizedRo) > 0 Then
+                        If Not lookupDict.Exists(normalizedRo) Then
+                            lookupDict.Add normalizedRo, True
+                        End If
+                    End If
+                End If
+            Loop
+            fileHandle.Close
+        End If
+    Next
+
+    Call LogEvent("comm", "med", "Loaded SkipRoList entries", "LoadSkipRoLookup", "Count: " & lookupDict.Count, "Sources: " & skipRoListCsvPaths)
+End Function
+
+'-----------------------------------------------------------------------------------
+' **FUNCTION NAME:** ShouldSkipRo
+' **FUNCTIONALITY:**
+' Returns True when current RO identifier exists in configured SkipRoList.
+'-----------------------------------------------------------------------------------
+Function ShouldSkipRo(roValue)
+    Dim normalized
+    ShouldSkipRo = False
+
+    normalized = NormalizeRoIdentifier(roValue)
+    If Len(normalized) = 0 Then Exit Function
+
+    If IsObject(g_SkipRoLookup) Then
+        If g_SkipRoLookup.Exists(normalized) Then
+            ShouldSkipRo = True
+        End If
+    End If
+End Function
+
+'-----------------------------------------------------------------------------------
 ' **FUNCTION NAME:** WaitMs
 ' **DATE CREATED:** 2026-02-13
 ' **AUTHOR:** GitHub Copilot
@@ -1272,6 +1375,7 @@ Sub RunMainProcess()
             summaryMsg = "DONE" & vbCrLf & _
                 "ROs Reviewed: " & g_ReviewedROCount & vbCrLf & _
                 "ROs Posted: " & g_FiledROCount & vbCrLf & _
+                "Skips - Configured RO List: " & g_SkipConfiguredCount & vbCrLf & _
                 "Skips - Other Terms: " & g_SkipBlacklistCount & vbCrLf & _
                 "Skips - Open/Opened: " & g_SkipStatusOpenCount & vbCrLf & _
                 "Skips - Pre-Assigned: " & g_SkipStatusPreassignedCount & vbCrLf & _
@@ -1655,6 +1759,11 @@ Sub InitializeConfig()
     On Error GoTo 0
 
     g_BlacklistTermsRaw = GetIniSetting("PostFinalCharges", "blacklist_terms", "")
+    g_SkipRoListRaw = GetIniSetting("PostFinalCharges", "SkipRoList", "")
+    Set g_SkipRoLookup = CreateObject("Scripting.Dictionary")
+    If Not LoadSkipRoLookup(g_SkipRoListRaw, g_SkipRoLookup) Then
+        g_ShouldAbort = True
+    End If
 
     g_EnableDiagnosticLogging = False
     DIAGNOSTIC_LOG_PATH = GetConfigPath("PostFinalCharges", "DiagnosticLog")
@@ -1802,6 +1911,7 @@ Sub ProcessRONumbers()
     g_SkipStatusOpenCount = 0
     g_SkipStatusPreassignedCount = 0
     g_SkipStatusOtherCount = 0
+    g_SkipConfiguredCount = 0
     Set g_SkipOtherStates = CreateObject("Scripting.Dictionary")
     
     ' In test mode, only process one RO
@@ -1999,7 +2109,7 @@ Sub Main(roNumber)
         ' No scraped RO available; log against the sequence number and note unknown RO
         Call LogEvent("comm", "med", roNumber & " - Sent RO to BlueZone", "Main", "RO: (unknown) - will use sequence number for checks", "")
     End If
-    
+
     ' Check for "closed" response
     If IsTextPresent("Repair Order " & currentRODisplay & " is closed.") Then
         Call LogEvent("comm", "med", "Repair Order Closed", "Main", "", "")
@@ -2026,6 +2136,16 @@ Sub Main(roNumber)
     If Not WaitForPrompt("COMMAND:", "", False, 5000, "RO Screen Ready") Then
         Call LogEvent("crit", "low", "COMMAND prompt did not appear on RO screen. Manual intervention required.", "Main", "", "Stopping script - fail fast requested")
         g_ShouldAbort = True
+        Exit Sub
+    End If
+
+    If ShouldSkipRo(currentRODisplay) Then
+        g_SkipConfiguredCount = g_SkipConfiguredCount + 1
+        Call LogEvent("comm", "med", "Configured SkipRoList match - skipping RO", "Main", "RO: " & currentRODisplay, "")
+        Call FastText("E")
+        Call FastKey("<NumpadEnter>")
+        Call WaitForPrompt("COMMAND:", "", False, 5000, "")
+        lastRoResult = "Skipped - Configured RO skip list"
         Exit Sub
     End If
 
