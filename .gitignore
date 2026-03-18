@@ -2,6 +2,7 @@
 *.tmp
 *.log
 *.txt
+*.csv
 *.bak
 *.old
 *~
