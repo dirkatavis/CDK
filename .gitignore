@@ -2,7 +2,6 @@
 *.tmp
 *.log
 *.txt
-*.csv
 *.bak
 *.old
 *~
@@ -42,6 +41,7 @@ tools/ValidateRoList/ValidateRoList_IN.csv
 # Local app outputs/logs
 apps/**/*.log
 apps/**/*_out.csv
+apps/post_final_charges/Pfc_Summary_output.csv
 apps/**/*_OUT.txt
 apps/**/FALLBACK_ERROR.txt
 
