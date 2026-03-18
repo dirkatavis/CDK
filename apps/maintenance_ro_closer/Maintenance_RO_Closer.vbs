@@ -666,6 +666,12 @@ Function CloseRoFinal()
             CloseRoFinal = True
             Exit Function
 
+        ' Optional prompt: Is this a comeback (Y/N)
+        ElseIf InStr(screenContent, "IS THIS A COMEBACK") > 0 Then
+            LogResult "INFO", "Detected comeback prompt during close flow. Sending Y."
+            EnterTextWithStability "Y"
+            startTime = Timer
+
         ' Stage 1: MILEAGE OUT
         ElseIf stage = 1 And (InStr(screenContent, "MILES OUT") > 0 Or InStr(screenContent, "MILEAGE OUT") > 0) Then
             EnterTextWithStability mileage
