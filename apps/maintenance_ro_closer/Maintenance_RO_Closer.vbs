@@ -540,6 +540,7 @@ Function HandleReviewPrompts(lineLetter)
         ElseIf TestPrompt(regEx, screenContent, "TECHNICIAN.*\([A-Za-z0-9]+\)\?") Then
             EnterReviewPrompt ""
         ElseIf TestPrompt(regEx, screenContent, "TECHNICIAN.*\?") Then
+            LogResult "WARN", "TECHNICIAN prompt has no default for Line " & lineLetter & " — sending 99"
             EnterReviewPrompt "99"
         ElseIf TestPrompt(regEx, screenContent, "ACTUAL HOURS") Then
             EnterReviewPrompt ""
