@@ -526,12 +526,8 @@ Function HandleReviewPrompts(lineLetter)
         
         ' Match Prompts using robust patterns
         ' For field-level prompts in review, we use EnterReviewPrompt for speed
-        ' Require trailing ? so column headers like LTYPE on the RO detail screen
-        ' do not trigger these branches when the active prompt is something else (e.g. TECHNICIAN?)
-        If TestPrompt(regEx, screenContent, "LABOR TYPE.*\?|LTYPE.*\?") Then
-            EnterReviewPrompt ""
         ' Prefer pattern that explicitly contains a parenthesized default (accept default)
-        ElseIf TestPrompt(regEx, screenContent, "OP CODE.*\([A-Za-z0-9]+\)\?|OPERATION CODE.*\([A-Za-z0-9]+\)\?") Then
+        If TestPrompt(regEx, screenContent, "OP CODE.*\([A-Za-z0-9]+\)\?|OPERATION CODE.*\([A-Za-z0-9]+\)\?") Then
             EnterReviewPrompt ""
         ' Fallback: no-parenthesis variant (e.g. "OPERATION CODE FOR LINE A, L1?")
         ElseIf TestPrompt(regEx, screenContent, "OP CODE.*\?|OPERATION CODE.*\?") Then
