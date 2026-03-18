@@ -1,0 +1,4 @@
+# One RO per line (6-digit), optional trailing columns allowed
+# Lines starting with # or ; are ignored
+# Example:
+# 835900

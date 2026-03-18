@@ -41,6 +41,7 @@ Dim LOG_FILE_PATH: LOG_FILE_PATH = GetConfigPath("Maintenance_RO_Closer", "Log")
 Dim CRITERIA_FILE: CRITERIA_FILE = GetConfigPath("Maintenance_RO_Closer", "Criteria")
 Dim DEBUG_LEVEL: DEBUG_LEVEL = 2 ' 1=Error, 2=Info
 Dim RO_LIST_PATH: RO_LIST_PATH = GetConfigPath("Maintenance_RO_Closer", "ROList")
+Dim SKIP_RO_LIST_PATH: SKIP_RO_LIST_PATH = GetConfigPath("Maintenance_RO_Closer", "SkipRoList")
 
 ' --- Configurable Pauses ---
 Function GetConfigSetting(section, key, defaultValue)
@@ -65,6 +66,7 @@ Dim BLACKLIST_TERMS: BLACKLIST_TERMS = GetConfigSetting("Maintenance_RO_Closer",
 
 ' --- Picky Match State ---
 Dim CriteriaA, CriteriaB, CriteriaC
+Dim g_SkipRoLookup
 
 ' --- CDK Objects ---
 Dim bzhao: Set bzhao = CreateObject("BZWhll.WhllObj")
@@ -88,6 +90,10 @@ Sub RunAutomation()
     ' Load PM match criteria (required gate before closing)
     LoadMatchCriteria
     LogResult "INFO", "PM match criteria loaded from: " & CRITERIA_FILE
+
+    ' Load SkipRoList (required configuration for deterministic skip behavior)
+    LoadSkipRoLookup SKIP_RO_LIST_PATH
+    LogResult "INFO", "SkipRoList loaded from: " & SKIP_RO_LIST_PATH & " (entries=" & g_SkipRoLookup.Count & ")"
     
     ' Connect to terminal only after configuration and file existence are verified
     On Error Resume Next
@@ -139,6 +145,9 @@ Sub ProcessRoList(fso, ByRef successfulCount)
             
             ' Validate 6-digit RO
             If Len(currentRo) = 6 And IsNumeric(currentRo) Then
+                If ShouldSkipRo(currentRo) Then
+                    LogResult "INFO", "RO " & currentRo & " found in SkipRoList. Skipping before entry."
+                Else
                 LogResult "INFO", "Processing RO: " & currentRo
                 
                 ' Ensure we are at the main prompt
@@ -169,6 +178,7 @@ Sub ProcessRoList(fso, ByRef successfulCount)
 
                 ' Always return to main prompt for safety
                 ReturnToMainPrompt()
+                End If
             ElseIf Len(currentRo) > 0 Then
                 LogResult "INFO", "Skipping invalid format row: '" & currentRo & "'"
                 ReturnToMainPrompt()
@@ -182,6 +192,46 @@ Sub ProcessRoList(fso, ByRef successfulCount)
     End If
     On Error GoTo 0
 End Sub
+
+Sub LoadSkipRoLookup(skipListPath)
+    Dim ts, lineText, normalizedRo, fso
+    Set g_SkipRoLookup = CreateObject("Scripting.Dictionary")
+    Set fso = CreateObject("Scripting.FileSystemObject")
+
+    If Not fso.FileExists(skipListPath) Then
+        TerminateScript "Configured SkipRoList file not found: " & skipListPath
+        Exit Sub
+    End If
+
+    Set ts = fso.OpenTextFile(skipListPath, 1)
+    Do While Not ts.AtEndOfStream
+        lineText = Trim(ts.ReadLine)
+        If lineText <> "" Then
+            If Left(lineText, 1) <> "#" And Left(lineText, 1) <> ";" Then
+                normalizedRo = Trim(Split(lineText, ",")(0))
+                If normalizedRo <> "" Then
+                    If Not g_SkipRoLookup.Exists(normalizedRo) Then
+                        g_SkipRoLookup.Add normalizedRo, True
+                    End If
+                End If
+            End If
+        End If
+    Loop
+
+    ts.Close
+    Set ts = Nothing
+    Set fso = Nothing
+End Sub
+
+Function ShouldSkipRo(roNumber)
+    ShouldSkipRo = False
+
+    If IsObject(g_SkipRoLookup) Then
+        If g_SkipRoLookup.Exists(Trim(CStr(roNumber))) Then
+            ShouldSkipRo = True
+        End If
+    End If
+End Function
 
 ' --- Helper Subroutines & Functions ---
 
