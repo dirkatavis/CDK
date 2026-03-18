@@ -610,8 +610,14 @@ Function CloseRoFinal()
         bzhao.ReadScreen screenContent, 1920, 1, 1
         screenContent = UCase(screenContent)
         
+        ' Success fallback: some flows can return directly to command/main without showing all closeout prompts
+        If InStr(screenContent, "COMMAND:") > 0 Or InStr(screenContent, UCase(MAIN_PROMPT)) > 0 Then
+            LogResult "INFO", "Close flow returned to command/main prompt at Stage " & stage & ". Treating as successful close."
+            CloseRoFinal = True
+            Exit Function
+
         ' Stage 1: MILEAGE OUT
-        If stage = 1 And (InStr(screenContent, "MILES OUT") > 0 Or InStr(screenContent, "MILEAGE OUT") > 0) Then
+        ElseIf stage = 1 And (InStr(screenContent, "MILES OUT") > 0 Or InStr(screenContent, "MILEAGE OUT") > 0) Then
             EnterTextWithStability mileage
             stage = 2
             startTime = Timer ' Reset timer for next expected prompt due to 5-10s delay
@@ -622,14 +628,14 @@ Function CloseRoFinal()
             stage = 3
             startTime = Timer
             
-        ' Stage 3: OK TO CLOSE (Sometimes Miles In doesn't appear, or OK appears immediately)
-        ElseIf stage >= 2 And stage <= 3 And InStr(screenContent, "O.K. TO CLOSE RO") > 0 Then
+        ' Stage 3: OK TO CLOSE (sometimes mileage prompts are skipped and OK appears immediately)
+        ElseIf stage <= 3 And InStr(screenContent, "O.K. TO CLOSE RO") > 0 Then
             EnterTextWithStability "Y"
             stage = 4
             startTime = Timer
             
         ' Stage 4: INVOICE PRINTER
-        ElseIf stage >= 3 And InStr(screenContent, "INVOICE PRINTER") > 0 Then
+        ElseIf InStr(screenContent, "INVOICE PRINTER") > 0 Then
             EnterTextWithStability "2"
             CloseRoFinal = True
             Exit Function
