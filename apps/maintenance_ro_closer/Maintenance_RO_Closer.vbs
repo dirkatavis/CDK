@@ -41,6 +41,7 @@ Dim LOG_FILE_PATH: LOG_FILE_PATH = GetConfigPath("Maintenance_RO_Closer", "Log")
 Dim CRITERIA_FILE: CRITERIA_FILE = GetConfigPath("Maintenance_RO_Closer", "Criteria")
 Dim DEBUG_LEVEL: DEBUG_LEVEL = 2 ' 1=Error, 2=Info
 Dim RO_LIST_PATH: RO_LIST_PATH = GetConfigPath("Maintenance_RO_Closer", "ROList")
+Dim SKIP_RO_LIST_PATH: SKIP_RO_LIST_PATH = GetConfigPath("Maintenance_RO_Closer", "SkipRoList")
 
 ' --- Configurable Pauses ---
 Function GetConfigSetting(section, key, defaultValue)
@@ -65,6 +66,7 @@ Dim BLACKLIST_TERMS: BLACKLIST_TERMS = GetConfigSetting("Maintenance_RO_Closer",
 
 ' --- Picky Match State ---
 Dim CriteriaA, CriteriaB, CriteriaC
+Dim g_SkipRoLookup
 
 ' --- CDK Objects ---
 Dim bzhao: Set bzhao = CreateObject("BZWhll.WhllObj")
@@ -88,6 +90,10 @@ Sub RunAutomation()
     ' Load PM match criteria (required gate before closing)
     LoadMatchCriteria
     LogResult "INFO", "PM match criteria loaded from: " & CRITERIA_FILE
+
+    ' Load SkipRoList (required configuration for deterministic skip behavior)
+    LoadSkipRoLookup SKIP_RO_LIST_PATH
+    LogResult "INFO", "SkipRoList loaded from: " & SKIP_RO_LIST_PATH & " (entries=" & g_SkipRoLookup.Count & ")"
     
     ' Connect to terminal only after configuration and file existence are verified
     On Error Resume Next
@@ -139,6 +145,9 @@ Sub ProcessRoList(fso, ByRef successfulCount)
             
             ' Validate 6-digit RO
             If Len(currentRo) = 6 And IsNumeric(currentRo) Then
+                If ShouldSkipRo(currentRo) Then
+                    LogResult "INFO", "RO " & currentRo & " found in SkipRoList. Skipping before entry."
+                Else
                 LogResult "INFO", "Processing RO: " & currentRo
                 
                 ' Ensure we are at the main prompt
@@ -169,6 +178,7 @@ Sub ProcessRoList(fso, ByRef successfulCount)
 
                 ' Always return to main prompt for safety
                 ReturnToMainPrompt()
+                End If
             ElseIf Len(currentRo) > 0 Then
                 LogResult "INFO", "Skipping invalid format row: '" & currentRo & "'"
                 ReturnToMainPrompt()
@@ -182,6 +192,46 @@ Sub ProcessRoList(fso, ByRef successfulCount)
     End If
     On Error GoTo 0
 End Sub
+
+Sub LoadSkipRoLookup(skipListPath)
+    Dim ts, lineText, normalizedRo, fso
+    Set g_SkipRoLookup = CreateObject("Scripting.Dictionary")
+    Set fso = CreateObject("Scripting.FileSystemObject")
+
+    If Not fso.FileExists(skipListPath) Then
+        TerminateScript "Configured SkipRoList file not found: " & skipListPath
+        Exit Sub
+    End If
+
+    Set ts = fso.OpenTextFile(skipListPath, 1)
+    Do While Not ts.AtEndOfStream
+        lineText = Trim(ts.ReadLine)
+        If lineText <> "" Then
+            If Left(lineText, 1) <> "#" And Left(lineText, 1) <> ";" Then
+                normalizedRo = Trim(Split(lineText, ",")(0))
+                If normalizedRo <> "" Then
+                    If Not g_SkipRoLookup.Exists(normalizedRo) Then
+                        g_SkipRoLookup.Add normalizedRo, True
+                    End If
+                End If
+            End If
+        End If
+    Loop
+
+    ts.Close
+    Set ts = Nothing
+    Set fso = Nothing
+End Sub
+
+Function ShouldSkipRo(roNumber)
+    ShouldSkipRo = False
+
+    If IsObject(g_SkipRoLookup) Then
+        If g_SkipRoLookup.Exists(Trim(CStr(roNumber))) Then
+            ShouldSkipRo = True
+        End If
+    End If
+End Function
 
 ' --- Helper Subroutines & Functions ---
 
@@ -526,13 +576,13 @@ Function HandleReviewPrompts(lineLetter)
         
         ' Match Prompts using robust patterns
         ' For field-level prompts in review, we use EnterReviewPrompt for speed
-        If TestPrompt(regEx, screenContent, "LABOR TYPE|LTYPE") Then
+        If TestPrompt(regEx, screenContent, "LABOR TYPE") Then
             EnterReviewPrompt ""
         ' Prefer pattern that explicitly contains a parenthesized default (accept default)
-        ElseIf TestPrompt(regEx, screenContent, "OP CODE|OPERATION CODE.*\([A-Za-z0-9]+\)\?") Then
+        ElseIf TestPrompt(regEx, screenContent, "OP CODE.*\([A-Za-z0-9]+\)\?|OPERATION CODE.*\([A-Za-z0-9]+\)\?") Then
             EnterReviewPrompt ""
         ' Fallback: no-parenthesis variant (e.g. "OPERATION CODE FOR LINE A, L1?")
-        ElseIf TestPrompt(regEx, screenContent, "OP CODE|OPERATION CODE.*\?") Then
+        ElseIf TestPrompt(regEx, screenContent, "OP CODE.*\?|OPERATION CODE.*\?") Then
             EnterReviewPrompt "I"
         ElseIf TestPrompt(regEx, screenContent, "DESC:") Then
             EnterReviewPrompt ""
@@ -540,6 +590,7 @@ Function HandleReviewPrompts(lineLetter)
         ElseIf TestPrompt(regEx, screenContent, "TECHNICIAN.*\([A-Za-z0-9]+\)\?") Then
             EnterReviewPrompt ""
         ElseIf TestPrompt(regEx, screenContent, "TECHNICIAN.*\?") Then
+            LogResult "WARN", "TECHNICIAN prompt has no default for Line " & lineLetter & " — sending 99"
             EnterReviewPrompt "99"
         ElseIf TestPrompt(regEx, screenContent, "ACTUAL HOURS") Then
             EnterReviewPrompt ""
@@ -609,8 +660,14 @@ Function CloseRoFinal()
         bzhao.ReadScreen screenContent, 1920, 1, 1
         screenContent = UCase(screenContent)
         
+        ' Success fallback: some flows can return directly to command/main without showing all closeout prompts
+        If InStr(screenContent, "COMMAND:") > 0 Or InStr(screenContent, UCase(MAIN_PROMPT)) > 0 Then
+            LogResult "INFO", "Close flow returned to command/main prompt at Stage " & stage & ". Treating as successful close."
+            CloseRoFinal = True
+            Exit Function
+
         ' Stage 1: MILEAGE OUT
-        If stage = 1 And (InStr(screenContent, "MILES OUT") > 0 Or InStr(screenContent, "MILEAGE OUT") > 0) Then
+        ElseIf stage = 1 And (InStr(screenContent, "MILES OUT") > 0 Or InStr(screenContent, "MILEAGE OUT") > 0) Then
             EnterTextWithStability mileage
             stage = 2
             startTime = Timer ' Reset timer for next expected prompt due to 5-10s delay
@@ -621,14 +678,14 @@ Function CloseRoFinal()
             stage = 3
             startTime = Timer
             
-        ' Stage 3: OK TO CLOSE (Sometimes Miles In doesn't appear, or OK appears immediately)
-        ElseIf stage >= 2 And stage <= 3 And InStr(screenContent, "O.K. TO CLOSE RO") > 0 Then
+        ' Stage 3: OK TO CLOSE (sometimes mileage prompts are skipped and OK appears immediately)
+        ElseIf stage <= 3 And InStr(screenContent, "O.K. TO CLOSE RO") > 0 Then
             EnterTextWithStability "Y"
             stage = 4
             startTime = Timer
             
         ' Stage 4: INVOICE PRINTER
-        ElseIf stage >= 3 And InStr(screenContent, "INVOICE PRINTER") > 0 Then
+        ElseIf InStr(screenContent, "INVOICE PRINTER") > 0 Then
             EnterTextWithStability "2"
             CloseRoFinal = True
             Exit Function
