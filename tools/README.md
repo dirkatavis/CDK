@@ -59,6 +59,12 @@ Ad-hoc utilities for development and troubleshooting.
 
 **`close_single_ro.vbs`** - Manual single-RO closure
 **`create_upstream_pr.vbs`** - Automates PR creation workflow
+**`mark_ini_assume_unchanged.ps1`** - Re-applies `assume-unchanged` to all tracked `.ini` files
+
+Run it from repo root:
+```powershell
+powershell -ExecutionPolicy Bypass -File .\tools\mark_ini_assume_unchanged.ps1
+```
 
 ## Design Principles
 - **One-Time or Rare Use:** Tooling is for setup/diagnostics, not daily operations

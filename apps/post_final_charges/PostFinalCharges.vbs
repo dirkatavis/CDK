@@ -56,6 +56,7 @@ Dim g_SkipOtherStates
 Dim g_SkipRoListRaw
 Dim g_SkipRoLookup
 Dim g_SkipConfiguredCount
+Dim g_OverwriteLogOnStart
 
 MainPromptLine = 23
 
@@ -1744,6 +1745,15 @@ Sub InitializeConfig()
     ' --- Deprecated settings, kept for compatibility ---
     CSV_FILE_PATH = GetConfigPath("PostFinalCharges", "CSV")
     LOG_FILE_PATH = GetConfigPath("PostFinalCharges", "Log")
+
+    Dim overwriteLogOnStartValue
+    overwriteLogOnStartValue = LCase(Trim(GetIniSetting("PostFinalCharges", "OverwriteLogOnStart", "false")))
+    g_OverwriteLogOnStart = False
+    If overwriteLogOnStartValue = "1" Or overwriteLogOnStartValue = "true" Or overwriteLogOnStartValue = "yes" Then
+        g_OverwriteLogOnStart = True
+    End If
+    Call ApplyLogStartupMode()
+
     g_LongWait = 2000
     g_SendRetryCount = 2
     g_DelayBetweenTextAndEnterMs = 2000
@@ -1767,6 +1777,47 @@ Sub InitializeConfig()
 
     g_EnableDiagnosticLogging = False
     DIAGNOSTIC_LOG_PATH = GetConfigPath("PostFinalCharges", "DiagnosticLog")
+End Sub
+
+Sub ApplyLogStartupMode()
+    If Not g_OverwriteLogOnStart Then Exit Sub
+
+    Dim logFSO, logFile, logFolder
+    Set logFSO = CreateObject("Scripting.FileSystemObject")
+    logFolder = logFSO.GetParentFolderName(LOG_FILE_PATH)
+    If Len(logFolder) > 0 Then
+        Call EnsureFolderExists(logFSO, logFolder)
+    End If
+
+    On Error Resume Next
+    Set logFile = logFSO.OpenTextFile(LOG_FILE_PATH, 2, True)
+    If Err.Number <> 0 Then
+        Err.Clear
+        If LOG_FILE_PATH <> LEGACY_LOG_PATH Then
+            LOG_FILE_PATH = LEGACY_LOG_PATH
+            logFolder = logFSO.GetParentFolderName(LOG_FILE_PATH)
+            If Len(logFolder) > 0 Then
+                Call EnsureFolderExists(logFSO, logFolder)
+            End If
+            Set logFile = logFSO.OpenTextFile(LOG_FILE_PATH, 2, True)
+        End If
+    End If
+
+    If Err.Number <> 0 Then
+        Err.Clear
+        On Error GoTo 0
+        Call LogEvent("maj", "low", "Failed to overwrite log file at startup", "ApplyLogStartupMode", LOG_FILE_PATH, "")
+        Exit Sub
+    End If
+
+    logFile.Close
+    Set logFile = Nothing
+    Set logFSO = Nothing
+    On Error GoTo 0
+
+    g_SessionDateLogged = False
+    Call WriteSessionHeader()
+    Call LogEvent("comm", "low", "Log file overwritten at startup per config toggle", "ApplyLogStartupMode", "", "")
 End Sub
 
 
@@ -1919,7 +1970,6 @@ Sub ProcessRONumbers()
         roNumber = 900
         Call LogROHeader(roNumber)
         sequenceLabel = "Sequence " & roNumber
-        Call LogEvent("comm", "low", sequenceLabel & " - Processing", "ProcessRONumbers", "", "")
         
         lastRoResult = ""
         Call Main(roNumber)
@@ -1939,7 +1989,6 @@ Sub ProcessRONumbers()
         'WaitMs(2000)
         Call LogROHeader(roNumber)
         sequenceLabel = "Sequence " & roNumber
-        Call LogEvent("comm", "low", sequenceLabel & " - Processing", "ProcessRONumbers", "", "")
 
         ' Start performance timing for this RO
         Dim roStartTime
@@ -1985,18 +2034,8 @@ Sub ProcessRONumbers()
 
         ' Ensure there's always a final result logged for the RO
         If Len(Trim(CStr(lastRoResult))) = 0 Then lastRoResult = "No result recorded"
-        Dim finalDisplay
-        If Len(Trim(CStr(currentRODisplay))) > 0 Then
-            finalDisplay = currentRODisplay
-        Else
-            finalDisplay = roNumber
-        End If
         Dim finalMessage
-        finalMessage = sequenceLabel
-        If Len(Trim(CStr(finalDisplay))) > 0 And CStr(finalDisplay) <> CStr(roNumber) Then
-            finalMessage = finalMessage & " (RO " & finalDisplay & ")"
-        End If
-        finalMessage = finalMessage & " - Result: " & lastRoResult
+        finalMessage = sequenceLabel & " - Result: " & lastRoResult
         Call LogEvent("comm", "low", finalMessage, "ProcessRONumbers", "", "")
         ' Always write the scraped RO status to the core log for troubleshooting
         Dim statusForLog
@@ -2109,6 +2148,7 @@ Sub Main(roNumber)
         ' No scraped RO available; log against the sequence number and note unknown RO
         Call LogEvent("comm", "med", roNumber & " - Sent RO to BlueZone", "Main", "RO: (unknown) - will use sequence number for checks", "")
     End If
+    Call LogEvent("comm", "low", "Sequence " & roNumber & " (RO " & currentRODisplay & ") - Processing", "ProcessRONumbers", "", "")
 
     ' Check for "closed" response
     If IsTextPresent("Repair Order " & currentRODisplay & " is closed.") Then
