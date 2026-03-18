@@ -57,6 +57,8 @@ Dim g_SkipRoListRaw
 Dim g_SkipRoLookup
 Dim g_SkipConfiguredCount
 Dim g_OverwriteLogOnStart
+Dim g_PreviousNormalizedRo
+Dim g_PreviousSequenceNumber
 
 MainPromptLine = 23
 
@@ -1964,6 +1966,8 @@ Sub ProcessRONumbers()
     g_SkipStatusOtherCount = 0
     g_SkipConfiguredCount = 0
     Set g_SkipOtherStates = CreateObject("Scripting.Dictionary")
+    g_PreviousNormalizedRo = ""
+    g_PreviousSequenceNumber = ""
     
     ' In test mode, only process one RO
     If g_IsTestMode Then
@@ -2148,6 +2152,42 @@ Sub Main(roNumber)
         ' No scraped RO available; log against the sequence number and note unknown RO
         Call LogEvent("comm", "med", roNumber & " - Sent RO to BlueZone", "Main", "RO: (unknown) - will use sequence number for checks", "")
     End If
+
+    ' Integrity guard: current RO must not match previous RO from prior sequence.
+    ' To avoid false positives from transient UI lag, confirm with a second scrape before aborting.
+    Dim normalizedCurrentRo, refreshedRo, refreshedNormalizedRo
+    normalizedCurrentRo = NormalizeRoIdentifier(currentRODisplay)
+    If Len(normalizedCurrentRo) > 0 Then
+        If Len(g_PreviousNormalizedRo) > 0 Then
+            If normalizedCurrentRo = g_PreviousNormalizedRo And CStr(roNumber) <> CStr(g_PreviousSequenceNumber) Then
+                Call LogEvent("maj", "med", "Current RO matched previous sequence RO on initial read; rechecking after refresh wait", "Main", "RO " & normalizedCurrentRo & " at sequences " & g_PreviousSequenceNumber & ", " & roNumber, "")
+
+                Call WaitForScreenStable(500, 100)
+                refreshedRo = GetROFromScreen()
+                refreshedNormalizedRo = NormalizeRoIdentifier(refreshedRo)
+
+                If Len(refreshedNormalizedRo) > 0 Then
+                    currentRODisplay = refreshedRo
+                    normalizedCurrentRo = refreshedNormalizedRo
+                End If
+
+                If normalizedCurrentRo = g_PreviousNormalizedRo And CStr(roNumber) <> CStr(g_PreviousSequenceNumber) Then
+                    lastRoResult = "Error - Current RO matched previous sequence RO"
+                    g_ShouldAbort = True
+                    g_AbortReason = "RO/Sequence integrity violation: previous sequence " & g_PreviousSequenceNumber & " and current sequence " & roNumber & " both mapped to RO " & normalizedCurrentRo
+                    Call LogEvent("crit", "low", "RO/Sequence integrity violation - current RO matched previous RO", "Main", "RO " & normalizedCurrentRo & " -> sequences " & g_PreviousSequenceNumber & ", " & roNumber, "Manual review required")
+                    Call SafeMsg("Integrity check failed: sequence " & roNumber & " resolved to the same RO as previous sequence " & g_PreviousSequenceNumber & " (RO " & normalizedCurrentRo & ")." & vbCrLf & "Automation stopped for manual review.", True, "RO Mapping Error")
+                    Exit Sub
+                Else
+                    Call LogEvent("comm", "med", "RO refresh re-check resolved mismatch; continuing", "Main", "Sequence " & roNumber & " now maps to RO " & currentRODisplay, "")
+                End If
+            End If
+        End If
+
+        g_PreviousNormalizedRo = normalizedCurrentRo
+        g_PreviousSequenceNumber = CStr(roNumber)
+    End If
+
     Call LogEvent("comm", "low", "Sequence " & roNumber & " (RO " & currentRODisplay & ") - Processing", "ProcessRONumbers", "", "")
 
     ' Check for "closed" response
@@ -2833,27 +2873,72 @@ Function GetROFromScreen()
         Exit Function
     End If
 
-    Dim screenContentBuffer, screenLength, re, matches
-    screenLength = 3 * 80 ' top three lines
-    On Error Resume Next
-    bzhao.ReadScreen screenContentBuffer, screenLength, 1, 1
-    If Err.Number <> 0 Then
-        Call LogEvent("maj", "med", "GetROFromScreen ReadScreen failed", "GetROFromScreen", Err.Description, "")
-        Err.Clear
-        GetROFromScreen = ""
-        On Error GoTo 0
-        Exit Function
-    End If
-    On Error GoTo 0
-    
+    Dim re
     Set re = CreateObject("VBScript.RegExp")
     re.Pattern = "RO:\s*(\d{4,})"
     re.IgnoreCase = True
-    re.Global = False
-    
-    If re.Test(screenContentBuffer) Then
-        Set matches = re.Execute(screenContentBuffer)
-        GetROFromScreen = matches(0).SubMatches(0)
+    re.Global = True
+
+    Dim screenContentBuffer, screenLength, matches
+    Dim attempt, maxAttempts, waitBeforeNextReadMs
+    Dim candidateRo, lastObservedRo, stableCount
+
+    screenLength = 5 * 80 ' Read beyond header to tolerate partial screen repaints
+    maxAttempts = 5
+    candidateRo = ""
+    lastObservedRo = ""
+    stableCount = 0
+
+    For attempt = 1 To maxAttempts
+        On Error Resume Next
+        bzhao.ReadScreen screenContentBuffer, screenLength, 1, 1
+        If Err.Number <> 0 Then
+            Call LogEvent("maj", "med", "GetROFromScreen ReadScreen failed", "GetROFromScreen", Err.Description, "")
+            Err.Clear
+            On Error GoTo 0
+            Exit For
+        End If
+        On Error GoTo 0
+
+        candidateRo = ""
+        If re.Test(screenContentBuffer) Then
+            Set matches = re.Execute(screenContentBuffer)
+            candidateRo = matches(matches.Count - 1).SubMatches(0)
+        End If
+
+        If Len(candidateRo) > 0 Then
+            If candidateRo = lastObservedRo Then
+                stableCount = stableCount + 1
+            Else
+                stableCount = 1
+                lastObservedRo = candidateRo
+            End If
+
+            If stableCount >= 2 Then
+                GetROFromScreen = candidateRo
+                Exit Function
+            End If
+        End If
+
+        If attempt < maxAttempts Then
+            ' Keep the common case fast (stable UI), only adding delay when repaint lag is detected.
+            Select Case attempt
+                Case 1
+                    waitBeforeNextReadMs = 40
+                Case 2
+                    waitBeforeNextReadMs = 80
+                Case 3
+                    waitBeforeNextReadMs = 120
+                Case Else
+                    waitBeforeNextReadMs = 160
+            End Select
+            Call WaitMs(waitBeforeNextReadMs)
+        End If
+    Next
+
+    If Len(lastObservedRo) > 0 Then
+        GetROFromScreen = lastObservedRo
+        Call LogEvent("min", "med", "RO read did not stabilize before timeout; using last observed value", "GetROFromScreen", "RO: " & lastObservedRo, "")
     Else
         GetROFromScreen = ""
         Call LogEvent("crit", "low", "RO not found on screen", "GetROFromScreen", "", "")
