@@ -60,10 +60,27 @@ Ad-hoc utilities for development and troubleshooting.
 **`close_single_ro.vbs`** - Manual single-RO closure
 **`create_upstream_pr.vbs`** - Automates PR creation workflow
 **`mark_ini_assume_unchanged.ps1`** - Re-applies `assume-unchanged` to all tracked `.ini` files
+**`upsert_pr_with_body.ps1`** - Creates or updates a PR and always applies body from file
 
 Run it from repo root:
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\tools\mark_ini_assume_unchanged.ps1
+```
+
+Create or update a PR with guaranteed body text:
+```powershell
+# If PR exists for current branch, updates body (and title if provided)
+powershell -ExecutionPolicy Bypass -File .\tools\upsert_pr_with_body.ps1 `
+	-BodyFile .\Temp\pr_body.md `
+	-Title "fix(post-final-charges): log RO at sequence start and add log overwrite toggle"
+
+# Explicit target repo/branches
+powershell -ExecutionPolicy Bypass -File .\tools\upsert_pr_with_body.ps1 `
+	-Repo dirkatavis/CDK `
+	-Head bugfix/pfc-log-ro-at-start `
+	-Base main `
+	-BodyFile .\Temp\pr_body.md `
+	-Title "fix(post-final-charges): log RO at sequence start and add log overwrite toggle"
 ```
 
 ## Design Principles
