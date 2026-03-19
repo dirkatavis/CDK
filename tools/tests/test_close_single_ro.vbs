@@ -1,29 +1,16 @@
 '==============================================================================
 ' test_close_single_ro.vbs
-' Tests the review-phase logic added to tools\close_single_ro.vbs:
-'   - DiscoverLineLetters           : dynamic line-letter detection
-'   - IsCommandPromptVisible        : COMMAND: visibility check
-'   - WaitForReviewCommandCompletion: single R <letter> dispatch + verify
-'   - ExecuteReviewSequence         : full R A, R B, R C sequence
-'
-' Run: cscript.exe //nologo test_close_single_ro.vbs
+' Tests the prompt-driven review phase in tools\close_single_ro.vbs.
 '==============================================================================
 
 Option Explicit
 
-' ---------------------------------------------------------------------------
-' Test harness globals
-' ---------------------------------------------------------------------------
 Dim g_pass, g_fail
 g_pass = 0
 g_fail = 0
 
-' ---------------------------------------------------------------------------
-' Load AdvancedMock to drive bzhao without BlueZone
-' ---------------------------------------------------------------------------
 Dim g_fso: Set g_fso = CreateObject("Scripting.FileSystemObject")
-Dim g_repoRoot: g_repoRoot = g_fso.GetAbsolutePathName( _
-    g_fso.BuildPath(g_fso.GetParentFolderName(WScript.ScriptFullName), "..\.."))
+Dim g_repoRoot: g_repoRoot = g_fso.GetAbsolutePathName(g_fso.BuildPath(g_fso.GetParentFolderName(WScript.ScriptFullName), "..\.."))
 
 Dim mockPath: mockPath = g_fso.BuildPath(g_repoRoot, "framework\AdvancedMock.vbs")
 If Not g_fso.FileExists(mockPath) Then
@@ -32,22 +19,69 @@ If Not g_fso.FileExists(mockPath) Then
 End If
 ExecuteGlobal g_fso.OpenTextFile(mockPath).ReadAll
 
-' bzhao is the global consumed by all functions under test (same name as production).
 Dim bzhao
 
-' ---------------------------------------------------------------------------
-' Functions under test  (identical implementations to close_single_ro.vbs)
-'
-' They are defined inline here because close_single_ro.vbs is not an include-
-' able library — it executes Call Main() at module level, making ExecuteGlobal
-' unsafe in a test context.
-' ---------------------------------------------------------------------------
+Class Prompt
+    Public TriggerText
+    Public ResponseText
+    Public KeyPress
+    Public IsSuccess
+    Public AcceptDefault
+    Public IsRegex
+End Class
 
-Function IsCommandPromptVisible()
-    Dim buf23, buf24
-    bzhao.ReadScreen buf23, 80, 23, 1
-    bzhao.ReadScreen buf24, 80, 24, 1
-    IsCommandPromptVisible = (InStr(UCase(buf23 & " " & buf24), "COMMAND:") > 0)
+Function InferRegexPattern(pattern)
+    InferRegexPattern = False
+    If Left(pattern, 1) = "^" Or InStr(pattern, "(") > 0 Or InStr(pattern, "[") > 0 Or InStr(pattern, ".*") > 0 Or InStr(pattern, "\") > 0 Then
+        InferRegexPattern = True
+    End If
+End Function
+
+Sub AddPromptToDict(dict, trigger, response, key, isSuccess)
+    Dim prompt
+    Set prompt = New Prompt
+    prompt.TriggerText = trigger
+    prompt.ResponseText = response
+    prompt.KeyPress = key
+    prompt.IsSuccess = isSuccess
+    prompt.AcceptDefault = False
+    prompt.IsRegex = InferRegexPattern(trigger)
+    dict.Add trigger, prompt
+End Sub
+
+Sub AddPromptToDictEx(dict, trigger, response, key, isSuccess, acceptDefault)
+    Dim prompt
+    Set prompt = New Prompt
+    prompt.TriggerText = trigger
+    prompt.ResponseText = response
+    prompt.KeyPress = key
+    prompt.IsSuccess = isSuccess
+    prompt.AcceptDefault = acceptDefault
+    prompt.IsRegex = InferRegexPattern(trigger)
+    dict.Add trigger, prompt
+End Sub
+
+Function CreateReviewPromptDictionary()
+    Dim dict
+    Set dict = CreateObject("Scripting.Dictionary")
+    Call AddPromptToDict(dict, "COMMAND:", "", "", True)
+    Call AddPromptToDictEx(dict, "OPERATION CODE FOR LINE.*(\(.*\))?\?", "I", "<NumpadEnter>", False, True)
+    Call AddPromptToDict(dict, "OPERATION CODE FOR LINE[^\(]*\?", "I", "<NumpadEnter>", False)
+    Call AddPromptToDict(dict, "LABOR TYPE FOR LINE", "", "<NumpadEnter>", False)
+    Call AddPromptToDict(dict, "DESC:", "", "<NumpadEnter>", False)
+    Call AddPromptToDict(dict, "Enter a technician number", "", "<F3>", False)
+    Call AddPromptToDictEx(dict, "TECHNICIAN \([A-Za-z0-9]+\)\?", "99", "<NumpadEnter>", False, True)
+    Call AddPromptToDictEx(dict, "TECHNICIAN\?", "99", "<NumpadEnter>", False, True)
+    Call AddPromptToDictEx(dict, "TECHNICIAN\s*\?", "99", "<NumpadEnter>", False, True)
+    Call AddPromptToDict(dict, "TECHNICIAN FINISHING WORK", "99", "<NumpadEnter>", False)
+    Call AddPromptToDict(dict, "IS ASSIGNED TO LINE", "Y", "<NumpadEnter>", False)
+    Call AddPromptToDictEx(dict, "TECHNICIAN \(Y/N\)", "Y", "<NumpadEnter>", True, False)
+    Call AddPromptToDictEx(dict, "ACTUAL HOURS \(\d+\)", "0", "<NumpadEnter>", False, True)
+    Call AddPromptToDictEx(dict, "SOLD HOURS( \(\d+\))?\?", "0", "<NumpadEnter>", False, True)
+    Call AddPromptToDict(dict, "ADD A LABOR OPERATION( \(N\)\?)?", "N", "<NumpadEnter>", True)
+    Call AddPromptToDict(dict, "PRESS RETURN TO CONTINUE", "", "<Enter>", False)
+    Call AddPromptToDict(dict, "Press F3 to exit.", "", "<F3>", False)
+    Set CreateReviewPromptDictionary = dict
 End Function
 
 Function DiscoverLineLetters()
@@ -93,57 +127,89 @@ Function DiscoverLineLetters()
     DiscoverLineLetters = foundLetters
 End Function
 
-Function WaitForReviewCommandCompletion(reviewCommand)
-    Dim timeoutMs: timeoutMs = 500  ' Fast timeout for tests
-    Dim found: found = False
-    Dim waitStart, elapsed
-    
-    WaitForReviewCommandCompletion = False
-    waitStart = Timer
+Function ProcessPromptSequence(prompts, timeoutMs)
+    Dim startTime, elapsed, promptKey, lineToCheck, lineText
+    Dim bestMatchKey, bestMatchLength, promptDetails, mainPromptText, bestMatchLineText
 
-    ' Send the review command
-    bzhao.SendKey reviewCommand
-    bzhao.Pause 100
-    bzhao.SendKey "<NumpadEnter>"
-    bzhao.Pause 500
+    If timeoutMs <= 0 Then timeoutMs = 10000
 
-    ' Poll for COMMAND: prompt to return
+    ProcessPromptSequence = False
+    startTime = Timer
+
     Do
-        If IsCommandPromptVisible() Then
-            found = True
-            Exit Do
+        mainPromptText = GetScreenLine(23)
+        If Len(mainPromptText) > 0 Then
+            If Not IsPromptInConfig(mainPromptText, prompts) Then
+                Exit Function
+            End If
         End If
-        
-        bzhao.Pause 500
-        elapsed = (Timer - waitStart) * 1000
-        If elapsed < 0 Then elapsed = elapsed + 86400000
-        
-        If elapsed > timeoutMs Then
-            Exit Do
-        End If
-    Loop
 
-    WaitForReviewCommandCompletion = found
+        bestMatchKey = ""
+        bestMatchLength = 0
+        bestMatchLineText = ""
+
+        For Each lineToCheck In Array(23, 22, 24, 21, 20)
+            lineText = GetScreenLine(lineToCheck)
+            If Len(lineText) > 0 Then
+                For Each promptKey In prompts.Keys
+                    Set promptDetails = prompts.Item(promptKey)
+                    If IsPromptMatch(lineText, promptKey, promptDetails.IsRegex) Then
+                        If Len(promptKey) > bestMatchLength Then
+                            bestMatchKey = promptKey
+                            bestMatchLength = Len(promptKey)
+                            bestMatchLineText = lineText
+                        End If
+                    End If
+                Next
+            End If
+        Next
+
+        If bestMatchLength > 0 Then
+            Set promptDetails = prompts.Item(bestMatchKey)
+
+            If promptDetails.ResponseText <> "" And Not (HasDefaultValueInPrompt(bestMatchLineText) And Not IsYesNoPrompt(bestMatchLineText)) Then
+                bzhao.SendKey promptDetails.ResponseText
+                bzhao.Pause 100
+            End If
+
+            If promptDetails.KeyPress <> "" Then
+                bzhao.SendKey promptDetails.KeyPress
+                bzhao.Pause 500
+            End If
+
+            If promptDetails.IsSuccess Then
+                ProcessPromptSequence = True
+                Exit Function
+            End If
+        Else
+            If InStr(1, mainPromptText, "COMMAND:", vbTextCompare) = 1 Then
+                ProcessPromptSequence = True
+                Exit Function
+            End If
+            bzhao.Pause 250
+        End If
+
+        elapsed = (Timer - startTime) * 1000
+        If elapsed < 0 Then elapsed = elapsed + 86400000
+        If elapsed > timeoutMs Then Exit Do
+    Loop
 End Function
 
 Function ExecuteReviewSequence()
-    Dim letters, i, letter, reviewCommand
+    Dim letters, i, letter, reviewCommand, prompts
     ExecuteReviewSequence = False
 
-    ' Discover line letters on the current RO detail screen
     letters = DiscoverLineLetters()
     If UBound(letters) = -1 Then
-        ' No letters found; use fallback sequence
         letters = Array("A", "B", "C")
     End If
 
-    ' Execute R <letter> for each discovered line
     For i = 0 To UBound(letters)
         letter = letters(i)
         reviewCommand = "R " & letter
-        
-        ' Send command and wait for COMMAND: to return
-        If Not WaitForReviewCommandCompletion(reviewCommand) Then
+        Call EnterTextAndWait(reviewCommand)
+        Set prompts = CreateReviewPromptDictionary()
+        If Not ProcessPromptSequence(prompts, 1000) Then
             Exit Function
         End If
     Next
@@ -151,9 +217,88 @@ Function ExecuteReviewSequence()
     ExecuteReviewSequence = True
 End Function
 
-' ---------------------------------------------------------------------------
-' Helpers
-' ---------------------------------------------------------------------------
+Function IsPromptMatch(screenLine, triggerText, isRegex)
+    IsPromptMatch = False
+
+    If InStr(1, screenLine, "COMMAND:", vbTextCompare) = 1 And InStr(1, triggerText, "COMMAND:", vbTextCompare) = 1 Then
+        IsPromptMatch = True
+        Exit Function
+    End If
+
+    If isRegex Then
+        Dim re
+        On Error Resume Next
+        Set re = CreateObject("VBScript.RegExp")
+        re.Pattern = triggerText
+        re.IgnoreCase = True
+        re.Global = False
+        If Err.Number = 0 Then
+            IsPromptMatch = re.Test(screenLine)
+        Else
+            Err.Clear
+        End If
+        On Error GoTo 0
+    Else
+        IsPromptMatch = (InStr(1, screenLine, triggerText, vbTextCompare) > 0)
+    End If
+End Function
+
+Function IsPromptInConfig(promptText, promptsDict)
+    Dim key
+
+    If InStr(1, promptText, "COMMAND:", vbTextCompare) = 1 Then
+        For Each key In promptsDict.Keys
+            If InStr(1, key, "COMMAND:", vbTextCompare) = 1 Then
+                IsPromptInConfig = True
+                Exit Function
+            End If
+        Next
+    End If
+
+    For Each key In promptsDict.Keys
+        If IsPromptMatch(promptText, key, InferRegexPattern(key)) Then
+            IsPromptInConfig = True
+            Exit Function
+        End If
+    Next
+
+    IsPromptInConfig = False
+End Function
+
+Function GetScreenLine(rowNumber)
+    Dim buffer
+    buffer = ""
+    bzhao.ReadScreen buffer, 80, rowNumber, 1
+    GetScreenLine = Trim(buffer)
+End Function
+
+Function HasDefaultValueInPrompt(promptText)
+    Dim re
+    HasDefaultValueInPrompt = False
+
+    On Error Resume Next
+    Set re = CreateObject("VBScript.RegExp")
+    re.Pattern = "\([^\)]*\)\?"
+    re.IgnoreCase = True
+    re.Global = False
+    If Err.Number = 0 Then
+        HasDefaultValueInPrompt = re.Test(promptText)
+    Else
+        Err.Clear
+    End If
+    On Error GoTo 0
+End Function
+
+Function IsYesNoPrompt(promptText)
+    IsYesNoPrompt = (InStr(1, promptText, "(Y/N)", vbTextCompare) > 0)
+End Function
+
+Sub EnterTextAndWait(text)
+    If text <> "" Then bzhao.SendKey text
+    bzhao.Pause 100
+    bzhao.SendKey "<NumpadEnter>"
+    bzhao.Pause 500
+End Sub
 
 Sub Assert(testName, condition)
     If condition Then
@@ -165,7 +310,6 @@ Sub Assert(testName, condition)
     End If
 End Sub
 
-' Return a 24*80 blank screen with `text` placed at (row, col).
 Function MakeScreenBuffer(text, row, col)
     Dim buf: buf = String(24 * 80, " ")
     Dim pos: pos = ((row - 1) * 80) + (col - 1) + 1
@@ -173,53 +317,32 @@ Function MakeScreenBuffer(text, row, col)
     MakeScreenBuffer = buf
 End Function
 
-' Place line letter in an existing buffer string: letter at (row,1), space at (row,2).
 Function PlaceLineLetter(buf, letter, row)
     Dim pos: pos = ((row - 1) * 80) + 1
     PlaceLineLetter = Left(buf, pos - 1) & letter & " " & Mid(buf, pos + 2)
 End Function
 
-' ---------------------------------------------------------------------------
-' Tests
-' ---------------------------------------------------------------------------
-
 Sub RunAllTests()
     WScript.Echo "Running close_single_ro review-phase tests..."
     WScript.Echo String(60, "-")
 
-    Test_IsCommandPromptVisible_True()
-    Test_IsCommandPromptVisible_False()
     Test_DiscoverLineLetters_FindsABC()
-    Test_DiscoverLineLetters_EmptyScreen()
-    Test_DiscoverLineLetters_StopsAfterGap()
-    Test_WaitForReviewCommandCompletion_Success()
-    Test_WaitForReviewCommandCompletion_Timeout()
+    Test_ProcessPromptSequence_SucceedsOnCommandPrompt()
+    Test_ProcessPromptSequence_HandlesOperationCodePrompt()
+    Test_ProcessPromptSequence_HandlesLaborTypePrompt()
+    Test_ProcessPromptSequence_AcceptsTechnicianDefault()
+    Test_ProcessPromptSequence_Sends99WhenTechnicianHasNoDefault()
+    Test_ProcessPromptSequence_OverridesYesNoPrompt()
+    Test_ProcessPromptSequence_HandlesReturnPrompt()
+    Test_ProcessPromptSequence_FailsOnUnknownPrompt()
     Test_ExecuteReviewSequence_AllPass()
     Test_ExecuteReviewSequence_FallbackToABC()
-    Test_ExecuteReviewSequence_StopsOnFirstFailure()
+    Test_ExecuteReviewSequence_StopsOnUnknownPrompt()
 
     WScript.Echo String(60, "-")
     WScript.Echo "Results: " & g_pass & " passed, " & g_fail & " failed"
     If g_fail > 0 Then WScript.Quit 1
 End Sub
-
-' --- IsCommandPromptVisible ---
-
-Sub Test_IsCommandPromptVisible_True()
-    Set bzhao = New AdvancedMock
-    bzhao.Connect ""
-    bzhao.SetBuffer MakeScreenBuffer("COMMAND:", 23, 1)
-    Assert "IsCommandPromptVisible returns True when COMMAND: on row 23", IsCommandPromptVisible()
-End Sub
-
-Sub Test_IsCommandPromptVisible_False()
-    Set bzhao = New AdvancedMock
-    bzhao.Connect ""
-    bzhao.SetBuffer String(24 * 80, " ")
-    Assert "IsCommandPromptVisible returns False on blank screen", Not IsCommandPromptVisible()
-End Sub
-
-' --- DiscoverLineLetters ---
 
 Sub Test_DiscoverLineLetters_FindsABC()
     Set bzhao = New AdvancedMock
@@ -231,98 +354,111 @@ Sub Test_DiscoverLineLetters_FindsABC()
     bzhao.SetBuffer buf
 
     Dim letters: letters = DiscoverLineLetters()
-    Assert "DiscoverLineLetters finds A, B, C", _
-        UBound(letters) = 2 And letters(0) = "A" And letters(1) = "B" And letters(2) = "C"
+    Assert "DiscoverLineLetters finds A, B, C", UBound(letters) = 2 And letters(0) = "A" And letters(1) = "B" And letters(2) = "C"
 End Sub
 
-Sub Test_DiscoverLineLetters_EmptyScreen()
+Sub Test_ProcessPromptSequence_SucceedsOnCommandPrompt()
     Set bzhao = New AdvancedMock
     bzhao.Connect ""
-    bzhao.SetBuffer String(24 * 80, " ")
-    Dim letters: letters = DiscoverLineLetters()
-    Assert "DiscoverLineLetters returns empty array on blank screen", UBound(letters) = -1
+    bzhao.SetBuffer MakeScreenBuffer("COMMAND: R A", 23, 1)
+    Assert "ProcessPromptSequence accepts COMMAND-prefixed success prompt", ProcessPromptSequence(CreateReviewPromptDictionary(), 1000)
 End Sub
 
-Sub Test_DiscoverLineLetters_StopsAfterGap()
-    ' A at row 10, then 3 blank rows (11-13), then D at row 14 -> D should NOT be found.
+Sub Test_ProcessPromptSequence_HandlesOperationCodePrompt()
     Set bzhao = New AdvancedMock
     bzhao.Connect ""
-    Dim buf: buf = String(24 * 80, " ")
-    buf = PlaceLineLetter(buf, "A", 10)
-    buf = PlaceLineLetter(buf, "D", 14)
-    bzhao.SetBuffer buf
-
-    Dim letters: letters = DiscoverLineLetters()
-    Assert "DiscoverLineLetters stops after 3 consecutive blank rows", _
-        UBound(letters) = 0 And letters(0) = "A"
-End Sub
-
-' --- WaitForReviewCommandCompletion ---
-
-Sub Test_WaitForReviewCommandCompletion_Success()
-    Set bzhao = New AdvancedMock
-    bzhao.Connect ""
-    ' After the first Enter, SetPromptSequence advances to show COMMAND: on row 23.
-    bzhao.SetPromptSequence Array("COMMAND:")
-
-    Dim result: result = WaitForReviewCommandCompletion("R A")
+    bzhao.SetPromptSequence Array("OPERATION CODE FOR LINE A, L1 (PMSCRT)?", "COMMAND:")
+    Dim result: result = ProcessPromptSequence(CreateReviewPromptDictionary(), 1000)
     Dim keys: keys = bzhao.GetSentKeys()
-    Assert "WaitForReviewCommandCompletion sends 'R A' followed by Enter", _
-        InStr(keys, "R A") > 0 And InStr(keys, "<NumpadEnter>") > 0
-    Assert "WaitForReviewCommandCompletion returns True when COMMAND: appears", result
+    Assert "ProcessPromptSequence handles OPERATION CODE prompt", result
+    Assert "ProcessPromptSequence accepts OPERATION CODE default", InStr(keys, "I") = 0
 End Sub
 
-Sub Test_WaitForReviewCommandCompletion_Timeout()
-    ' Screen never shows COMMAND: -> hits timeout (500 ms in test mode).
+Sub Test_ProcessPromptSequence_HandlesLaborTypePrompt()
     Set bzhao = New AdvancedMock
     bzhao.Connect ""
-    bzhao.SetBuffer String(24 * 80, " ")
-
-    Dim result: result = WaitForReviewCommandCompletion("R B")
-    Assert "WaitForReviewCommandCompletion returns False on timeout", Not result
+    bzhao.SetPromptSequence Array("LABOR TYPE FOR LINE A, L1 (I)?", "COMMAND:")
+    Dim result: result = ProcessPromptSequence(CreateReviewPromptDictionary(), 1000)
+    Dim keys: keys = bzhao.GetSentKeys()
+    Assert "ProcessPromptSequence handles LABOR TYPE FOR LINE prompt", result
+    Assert "ProcessPromptSequence sends Enter for LABOR TYPE prompt", InStr(keys, "<NumpadEnter>") > 0
 End Sub
 
-' --- ExecuteReviewSequence ---
+Sub Test_ProcessPromptSequence_AcceptsTechnicianDefault()
+    Set bzhao = New AdvancedMock
+    bzhao.Connect ""
+    bzhao.SetPromptSequence Array("TECHNICIAN (72925)?", "COMMAND:")
+    Dim result: result = ProcessPromptSequence(CreateReviewPromptDictionary(), 1000)
+    Dim keys: keys = bzhao.GetSentKeys()
+    Assert "ProcessPromptSequence accepts technician default", result
+    Assert "ProcessPromptSequence does not send override when default exists", InStr(keys, "99") = 0
+End Sub
+
+Sub Test_ProcessPromptSequence_Sends99WhenTechnicianHasNoDefault()
+    Set bzhao = New AdvancedMock
+    bzhao.Connect ""
+    bzhao.SetPromptSequence Array("TECHNICIAN ?", "COMMAND:")
+    Dim result: result = ProcessPromptSequence(CreateReviewPromptDictionary(), 1000)
+    Dim keys: keys = bzhao.GetSentKeys()
+    Assert "ProcessPromptSequence handles TECHNICIAN no-default prompt", result
+    Assert "ProcessPromptSequence sends 99 when TECHNICIAN has no default", InStr(keys, "99") > 0
+End Sub
+
+Sub Test_ProcessPromptSequence_OverridesYesNoPrompt()
+    Set bzhao = New AdvancedMock
+    bzhao.Connect ""
+    bzhao.SetPromptSequence Array("TECHNICIAN (Y/N)", "COMMAND:")
+    Dim result: result = ProcessPromptSequence(CreateReviewPromptDictionary(), 1000)
+    Dim keys: keys = bzhao.GetSentKeys()
+    Assert "ProcessPromptSequence handles (Y/N) prompt", result
+    Assert "ProcessPromptSequence sends Y for (Y/N) prompt", InStr(keys, "Y") > 0
+End Sub
+
+Sub Test_ProcessPromptSequence_HandlesReturnPrompt()
+    Set bzhao = New AdvancedMock
+    bzhao.Connect ""
+    bzhao.SetPromptSequence Array("PRESS RETURN TO CONTINUE", "COMMAND:")
+    Assert "ProcessPromptSequence handles PRESS RETURN TO CONTINUE then COMMAND", ProcessPromptSequence(CreateReviewPromptDictionary(), 1000)
+End Sub
+
+Sub Test_ProcessPromptSequence_FailsOnUnknownPrompt()
+    Set bzhao = New AdvancedMock
+    bzhao.Connect ""
+    bzhao.SetBuffer MakeScreenBuffer("UNEXPECTED REVIEW PROMPT", 23, 1)
+    Assert "ProcessPromptSequence fails immediately on unknown prompt", Not ProcessPromptSequence(CreateReviewPromptDictionary(), 1000)
+End Sub
 
 Sub Test_ExecuteReviewSequence_AllPass()
-    ' Screen has A, B on rows 10-11; COMMAND: always on row 23.
     Set bzhao = New AdvancedMock
     bzhao.Connect ""
     Dim buf: buf = MakeScreenBuffer("COMMAND:", 23, 1)
     buf = PlaceLineLetter(buf, "A", 10)
     buf = PlaceLineLetter(buf, "B", 11)
     bzhao.SetBuffer buf
-
-    Assert "ExecuteReviewSequence returns True when all R commands succeed", ExecuteReviewSequence()
+    Assert "ExecuteReviewSequence returns True when COMMAND is already visible", ExecuteReviewSequence()
 End Sub
 
 Sub Test_ExecuteReviewSequence_FallbackToABC()
-    ' No line letters discovered -> falls back to A, B, C.
     Set bzhao = New AdvancedMock
     bzhao.Connect ""
     bzhao.SetBuffer MakeScreenBuffer("COMMAND:", 23, 1)
-
     Dim result: result = ExecuteReviewSequence()
     Dim keys: keys = bzhao.GetSentKeys()
-    Assert "ExecuteReviewSequence uses fallback A,B,C when no letters discovered", _
-        InStr(keys, "R A") > 0 And InStr(keys, "R B") > 0 And InStr(keys, "R C") > 0
+    Assert "ExecuteReviewSequence uses fallback A,B,C when no letters discovered", InStr(keys, "R A") > 0 And InStr(keys, "R B") > 0 And InStr(keys, "R C") > 0
     Assert "ExecuteReviewSequence returns True with fallback A,B,C", result
 End Sub
 
-Sub Test_ExecuteReviewSequence_StopsOnFirstFailure()
-    ' Screen has A, B, C but COMMAND: never appears -> A fails -> B never attempted.
+Sub Test_ExecuteReviewSequence_StopsOnUnknownPrompt()
     Set bzhao = New AdvancedMock
     bzhao.Connect ""
-    Dim buf: buf = String(24 * 80, " ")
+    Dim buf: buf = MakeScreenBuffer("UNEXPECTED REVIEW PROMPT", 23, 1)
     buf = PlaceLineLetter(buf, "A", 10)
     buf = PlaceLineLetter(buf, "B", 11)
-    buf = PlaceLineLetter(buf, "C", 12)
     bzhao.SetBuffer buf
-
     Dim result: result = ExecuteReviewSequence()
     Dim keys: keys = bzhao.GetSentKeys()
-    Assert "ExecuteReviewSequence returns False when first review fails", Not result
-    Assert "ExecuteReviewSequence stops after first failure (R B not sent)", InStr(keys, "R B") = 0
+    Assert "ExecuteReviewSequence returns False on unknown prompt", Not result
+    Assert "ExecuteReviewSequence stops after first failed review", InStr(keys, "R B") = 0
 End Sub
 
 RunAllTests()
