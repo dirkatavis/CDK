@@ -1,7 +1,6 @@
 Option Explicit
 
 Dim bzhao
-Dim g_ReviewTimeoutMs: g_ReviewTimeoutMs = 10000
 
 Call Main()
 
@@ -12,12 +11,13 @@ Sub Main()
     ' 1. Ensure at COMMAND: prompt on the RO detail screen
     WaitForTextAtBottom "COMMAND:"
 
-    ' 2. Review phase: review each line item before issuing Final Charge
-    If Not ReviewLineItems() Then
+    ' 2. Review phase: execute R A, R B, R C sequence before issuing Final Charge
+    If Not ExecuteReviewSequence() Then
+        bzhao.MsgBox "Review sequence failed. RO not closed.", 16
         Exit Sub
     End If
 
-    ' 3. FC command (Final Charge)
+    ' 3. FC command (Final Charge) — only after all reviews pass
     WaitForTextAtBottom "COMMAND:"
     EnterTextAndWait "FC"
     bzhao.Pause 1000
@@ -49,63 +49,84 @@ Sub Main()
 End Sub
 
 '-----------------------------------------------------------
-' Reviews each line item (R A, R B, ...) before Final Charge.
+' Executes the review sequence: R A, R B, R C in order.
 ' Uses DiscoverLineLetters for dynamic discovery; falls back
-' to A, B, C if no letters are found on screen.
-' Returns True if all reviews succeed; False on any failure.
+' to A, B, C if no letters found on screen.
+' Returns True if all reviews succeed, False on any failure.
 '-----------------------------------------------------------
-Function ReviewLineItems()
-    Dim letters, i, letter
-    ReviewLineItems = False
+Function ExecuteReviewSequence()
+    Dim letters, i, letter, reviewCommand
+    ExecuteReviewSequence = False
 
+    ' Discover line letters on the current RO detail screen
     letters = DiscoverLineLetters()
     If UBound(letters) = -1 Then
+        ' No letters found; use fallback sequence
         letters = Array("A", "B", "C")
     End If
 
+    ' Execute R <letter> for each discovered line
     For i = 0 To UBound(letters)
         letter = letters(i)
-        If Not SendReviewCommand(letter) Then
-            bzhao.MsgBox "ERROR: 'R " & letter & "' did not return COMMAND: prompt." & vbCrLf & "Script cancelled.", 16
+        reviewCommand = "R " & letter
+        
+        ' Send command and wait for COMMAND: to return
+        If Not WaitForReviewCommandCompletion(reviewCommand) Then
+            bzhao.MsgBox "ERROR: Review command '" & reviewCommand & "' failed." & vbCrLf & _
+                         "COMMAND: prompt did not return within timeout.", 16
             Exit Function
         End If
     Next
 
-    ReviewLineItems = True
+    ExecuteReviewSequence = True
 End Function
 
 '-----------------------------------------------------------
-' Sends "R <letter>" and waits up to 10 s for COMMAND: to return.
+' Sends a review command (e.g., "R A") and waits for
+' COMMAND: prompt to return, verifying normal return.
 ' Returns True on success, False on timeout/failure.
 '-----------------------------------------------------------
-Function SendReviewCommand(letter)
-    Dim elapsed
-    SendReviewCommand = False
-    elapsed = 0
+Function WaitForReviewCommandCompletion(reviewCommand)
+    Dim timeoutMs: timeoutMs = 10000
+    Dim found: found = False
+    Dim waitStart, elapsed
+    
+    WaitForReviewCommandCompletion = False
+    waitStart = Timer
 
-    bzhao.SendKey "R " & letter
+    ' Send the review command
+    bzhao.SendKey reviewCommand
     bzhao.Pause 100
     bzhao.SendKey "<NumpadEnter>"
+    bzhao.Pause 500
 
+    ' Poll for COMMAND: prompt to return
     Do
-        bzhao.Pause 500
-        elapsed = elapsed + 500
-        If IsAtCommandPrompt() Then
-            SendReviewCommand = True
+        If IsCommandPromptVisible() Then
+            found = True
             Exit Do
         End If
-        If elapsed >= g_ReviewTimeoutMs Then Exit Do
+        
+        bzhao.Pause 500
+        elapsed = (Timer - waitStart) * 1000
+        If elapsed < 0 Then elapsed = elapsed + 86400000 ' Handle midnight rollover
+        
+        If elapsed > timeoutMs Then
+            Exit Do
+        End If
     Loop
+
+    WaitForReviewCommandCompletion = found
 End Function
 
 '-----------------------------------------------------------
 ' Returns True if "COMMAND:" is visible on rows 23-24.
 '-----------------------------------------------------------
-Function IsAtCommandPrompt()
+Function IsCommandPromptVisible()
     Dim buf23, buf24
     bzhao.ReadScreen buf23, 80, 23, 1
     bzhao.ReadScreen buf24, 80, 24, 1
-    IsAtCommandPrompt = (InStr(UCase(buf23 & " " & buf24), "COMMAND:") > 0)
+    IsCommandPromptVisible = (InStr(UCase(buf23 & " " & buf24), "COMMAND:") > 0)
 End Function
 
 '-----------------------------------------------------------

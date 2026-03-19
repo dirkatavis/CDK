@@ -1,10 +1,10 @@
 '==============================================================================
 ' test_close_single_ro.vbs
 ' Tests the review-phase logic added to tools\close_single_ro.vbs:
-'   - DiscoverLineLetters  : dynamic line-letter detection
-'   - IsAtCommandPrompt    : COMMAND: visibility check
-'   - SendReviewCommand    : single R <letter> dispatch + verify
-'   - ReviewLineItems      : full review sequence with fallback
+'   - DiscoverLineLetters           : dynamic line-letter detection
+'   - IsCommandPromptVisible        : COMMAND: visibility check
+'   - WaitForReviewCommandCompletion: single R <letter> dispatch + verify
+'   - ExecuteReviewSequence         : full R A, R B, R C sequence
 '
 ' Run: cscript.exe //nologo test_close_single_ro.vbs
 '==============================================================================
@@ -35,10 +35,6 @@ ExecuteGlobal g_fso.OpenTextFile(mockPath).ReadAll
 ' bzhao is the global consumed by all functions under test (same name as production).
 Dim bzhao
 
-' g_ReviewTimeoutMs mirrors the production default; tests override to 500 ms to avoid
-' 10-second busy-waits during failure/timeout test cases.
-Dim g_ReviewTimeoutMs: g_ReviewTimeoutMs = 500
-
 ' ---------------------------------------------------------------------------
 ' Functions under test  (identical implementations to close_single_ro.vbs)
 '
@@ -47,11 +43,11 @@ Dim g_ReviewTimeoutMs: g_ReviewTimeoutMs = 500
 ' unsafe in a test context.
 ' ---------------------------------------------------------------------------
 
-Function IsAtCommandPrompt()
+Function IsCommandPromptVisible()
     Dim buf23, buf24
     bzhao.ReadScreen buf23, 80, 23, 1
     bzhao.ReadScreen buf24, 80, 24, 1
-    IsAtCommandPrompt = (InStr(UCase(buf23 & " " & buf24), "COMMAND:") > 0)
+    IsCommandPromptVisible = (InStr(UCase(buf23 & " " & buf24), "COMMAND:") > 0)
 End Function
 
 Function DiscoverLineLetters()
@@ -97,44 +93,62 @@ Function DiscoverLineLetters()
     DiscoverLineLetters = foundLetters
 End Function
 
-Function SendReviewCommand(letter)
-    Dim elapsed
-    SendReviewCommand = False
-    elapsed = 0
+Function WaitForReviewCommandCompletion(reviewCommand)
+    Dim timeoutMs: timeoutMs = 500  ' Fast timeout for tests
+    Dim found: found = False
+    Dim waitStart, elapsed
+    
+    WaitForReviewCommandCompletion = False
+    waitStart = Timer
 
-    bzhao.SendKey "R " & letter
+    ' Send the review command
+    bzhao.SendKey reviewCommand
     bzhao.Pause 100
     bzhao.SendKey "<NumpadEnter>"
+    bzhao.Pause 500
 
+    ' Poll for COMMAND: prompt to return
     Do
-        bzhao.Pause 500
-        elapsed = elapsed + 500
-        If IsAtCommandPrompt() Then
-            SendReviewCommand = True
+        If IsCommandPromptVisible() Then
+            found = True
             Exit Do
         End If
-        If elapsed >= g_ReviewTimeoutMs Then Exit Do
+        
+        bzhao.Pause 500
+        elapsed = (Timer - waitStart) * 1000
+        If elapsed < 0 Then elapsed = elapsed + 86400000
+        
+        If elapsed > timeoutMs Then
+            Exit Do
+        End If
     Loop
+
+    WaitForReviewCommandCompletion = found
 End Function
 
-Function ReviewLineItems()
-    Dim letters, i, letter
-    ReviewLineItems = False
+Function ExecuteReviewSequence()
+    Dim letters, i, letter, reviewCommand
+    ExecuteReviewSequence = False
 
+    ' Discover line letters on the current RO detail screen
     letters = DiscoverLineLetters()
     If UBound(letters) = -1 Then
+        ' No letters found; use fallback sequence
         letters = Array("A", "B", "C")
     End If
 
+    ' Execute R <letter> for each discovered line
     For i = 0 To UBound(letters)
         letter = letters(i)
-        If Not SendReviewCommand(letter) Then
-            ' In tests: do not call MsgBox; just return False.
+        reviewCommand = "R " & letter
+        
+        ' Send command and wait for COMMAND: to return
+        If Not WaitForReviewCommandCompletion(reviewCommand) Then
             Exit Function
         End If
     Next
 
-    ReviewLineItems = True
+    ExecuteReviewSequence = True
 End Function
 
 ' ---------------------------------------------------------------------------
@@ -173,36 +187,36 @@ Sub RunAllTests()
     WScript.Echo "Running close_single_ro review-phase tests..."
     WScript.Echo String(60, "-")
 
-    Test_IsAtCommandPrompt_True()
-    Test_IsAtCommandPrompt_False()
+    Test_IsCommandPromptVisible_True()
+    Test_IsCommandPromptVisible_False()
     Test_DiscoverLineLetters_FindsABC()
     Test_DiscoverLineLetters_EmptyScreen()
     Test_DiscoverLineLetters_StopsAfterGap()
-    Test_SendReviewCommand_Success()
-    Test_SendReviewCommand_Timeout()
-    Test_ReviewLineItems_AllPass()
-    Test_ReviewLineItems_FallbackToABC()
-    Test_ReviewLineItems_StopsOnFirstFailure()
+    Test_WaitForReviewCommandCompletion_Success()
+    Test_WaitForReviewCommandCompletion_Timeout()
+    Test_ExecuteReviewSequence_AllPass()
+    Test_ExecuteReviewSequence_FallbackToABC()
+    Test_ExecuteReviewSequence_StopsOnFirstFailure()
 
     WScript.Echo String(60, "-")
     WScript.Echo "Results: " & g_pass & " passed, " & g_fail & " failed"
     If g_fail > 0 Then WScript.Quit 1
 End Sub
 
-' --- IsAtCommandPrompt ---
+' --- IsCommandPromptVisible ---
 
-Sub Test_IsAtCommandPrompt_True()
+Sub Test_IsCommandPromptVisible_True()
     Set bzhao = New AdvancedMock
     bzhao.Connect ""
     bzhao.SetBuffer MakeScreenBuffer("COMMAND:", 23, 1)
-    Assert "IsAtCommandPrompt returns True when COMMAND: on row 23", IsAtCommandPrompt()
+    Assert "IsCommandPromptVisible returns True when COMMAND: on row 23", IsCommandPromptVisible()
 End Sub
 
-Sub Test_IsAtCommandPrompt_False()
+Sub Test_IsCommandPromptVisible_False()
     Set bzhao = New AdvancedMock
     bzhao.Connect ""
     bzhao.SetBuffer String(24 * 80, " ")
-    Assert "IsAtCommandPrompt returns False on blank screen", Not IsAtCommandPrompt()
+    Assert "IsCommandPromptVisible returns False on blank screen", Not IsCommandPromptVisible()
 End Sub
 
 ' --- DiscoverLineLetters ---
@@ -243,34 +257,34 @@ Sub Test_DiscoverLineLetters_StopsAfterGap()
         UBound(letters) = 0 And letters(0) = "A"
 End Sub
 
-' --- SendReviewCommand ---
+' --- WaitForReviewCommandCompletion ---
 
-Sub Test_SendReviewCommand_Success()
+Sub Test_WaitForReviewCommandCompletion_Success()
     Set bzhao = New AdvancedMock
     bzhao.Connect ""
     ' After the first Enter, SetPromptSequence advances to show COMMAND: on row 23.
     bzhao.SetPromptSequence Array("COMMAND:")
 
-    Dim result: result = SendReviewCommand("A")
+    Dim result: result = WaitForReviewCommandCompletion("R A")
     Dim keys: keys = bzhao.GetSentKeys()
-    Assert "SendReviewCommand sends 'R A' followed by Enter", _
+    Assert "WaitForReviewCommandCompletion sends 'R A' followed by Enter", _
         InStr(keys, "R A") > 0 And InStr(keys, "<NumpadEnter>") > 0
-    Assert "SendReviewCommand returns True when COMMAND: appears", result
+    Assert "WaitForReviewCommandCompletion returns True when COMMAND: appears", result
 End Sub
 
-Sub Test_SendReviewCommand_Timeout()
-    ' Screen never shows COMMAND: -> hits g_ReviewTimeoutMs (500 ms in test mode).
+Sub Test_WaitForReviewCommandCompletion_Timeout()
+    ' Screen never shows COMMAND: -> hits timeout (500 ms in test mode).
     Set bzhao = New AdvancedMock
     bzhao.Connect ""
     bzhao.SetBuffer String(24 * 80, " ")
 
-    Dim result: result = SendReviewCommand("B")
-    Assert "SendReviewCommand returns False on timeout", Not result
+    Dim result: result = WaitForReviewCommandCompletion("R B")
+    Assert "WaitForReviewCommandCompletion returns False on timeout", Not result
 End Sub
 
-' --- ReviewLineItems ---
+' --- ExecuteReviewSequence ---
 
-Sub Test_ReviewLineItems_AllPass()
+Sub Test_ExecuteReviewSequence_AllPass()
     ' Screen has A, B on rows 10-11; COMMAND: always on row 23.
     Set bzhao = New AdvancedMock
     bzhao.Connect ""
@@ -279,25 +293,24 @@ Sub Test_ReviewLineItems_AllPass()
     buf = PlaceLineLetter(buf, "B", 11)
     bzhao.SetBuffer buf
 
-    Assert "ReviewLineItems returns True when all R commands succeed", ReviewLineItems()
+    Assert "ExecuteReviewSequence returns True when all R commands succeed", ExecuteReviewSequence()
 End Sub
 
-Sub Test_ReviewLineItems_FallbackToABC()
+Sub Test_ExecuteReviewSequence_FallbackToABC()
     ' No line letters discovered -> falls back to A, B, C.
     Set bzhao = New AdvancedMock
     bzhao.Connect ""
     bzhao.SetBuffer MakeScreenBuffer("COMMAND:", 23, 1)
 
-    Dim result: result = ReviewLineItems()
+    Dim result: result = ExecuteReviewSequence()
     Dim keys: keys = bzhao.GetSentKeys()
-    Assert "ReviewLineItems uses fallback A,B,C when no letters discovered", _
+    Assert "ExecuteReviewSequence uses fallback A,B,C when no letters discovered", _
         InStr(keys, "R A") > 0 And InStr(keys, "R B") > 0 And InStr(keys, "R C") > 0
-    Assert "ReviewLineItems returns True with fallback A,B,C", result
+    Assert "ExecuteReviewSequence returns True with fallback A,B,C", result
 End Sub
 
-Sub Test_ReviewLineItems_StopsOnFirstFailure()
+Sub Test_ExecuteReviewSequence_StopsOnFirstFailure()
     ' Screen has A, B, C but COMMAND: never appears -> A fails -> B never attempted.
-    ' g_ReviewTimeoutMs = 500 keeps this test fast.
     Set bzhao = New AdvancedMock
     bzhao.Connect ""
     Dim buf: buf = String(24 * 80, " ")
@@ -306,10 +319,10 @@ Sub Test_ReviewLineItems_StopsOnFirstFailure()
     buf = PlaceLineLetter(buf, "C", 12)
     bzhao.SetBuffer buf
 
-    Dim result: result = ReviewLineItems()
+    Dim result: result = ExecuteReviewSequence()
     Dim keys: keys = bzhao.GetSentKeys()
-    Assert "ReviewLineItems returns False when first review fails", Not result
-    Assert "ReviewLineItems stops after first failure (R B not sent)", InStr(keys, "R B") = 0
+    Assert "ExecuteReviewSequence returns False when first review fails", Not result
+    Assert "ExecuteReviewSequence stops after first failure (R B not sent)", InStr(keys, "R B") = 0
 End Sub
 
 RunAllTests()
