@@ -63,6 +63,7 @@ Dim STABILITY_PAUSE: STABILITY_PAUSE = GetConfigSetting("Maintenance_RO_Closer",
 Dim LOOP_PAUSE: LOOP_PAUSE = GetConfigSetting("Maintenance_RO_Closer", "LoopPause", 1000)
 Dim REVIEW_PAUSE: REVIEW_PAUSE = GetConfigSetting("Maintenance_RO_Closer", "ReviewPause", 500)
 Dim BLACKLIST_TERMS: BLACKLIST_TERMS = GetConfigSetting("Maintenance_RO_Closer", "blacklist_terms", "")
+Dim OLD_RO_DAYS_THRESHOLD: OLD_RO_DAYS_THRESHOLD = GetConfigSetting("Maintenance_RO_Closer", "AssumeClosedAfterDays", 120)
 
 ' --- Picky Match State ---
 Dim CriteriaA, CriteriaB, CriteriaC
@@ -158,9 +159,8 @@ Sub ProcessRoList(fso, ByRef successfulCount)
                 
                 ' Check for errors or closed status
                 If IsRoProcessable(currentRo) Then
-                    LogResult "INFO", "RO " & currentRo & " is processable. Checking PM footprint criteria."
-                    If CheckPickyMatch() Then
-                        LogResult "INFO", "RO " & currentRo & " matches PM footprint. Proceeding with close flow."
+                    LogResult "INFO", "RO " & currentRo & " is processable. Evaluating business gates (blacklist/footprint/age override)."
+                    If ShouldProcessRoByBusinessRules(currentRo) Then
                         If ProcessRoReview() Then
                             If CloseRoFinal() Then
                                 LogResult "INFO", "SUCCESS: RO " & currentRo & " finalized and closed."
@@ -171,8 +171,6 @@ Sub ProcessRoList(fso, ByRef successfulCount)
                         Else
                             LogResult "ERROR", "Failed to complete review for RO: " & currentRo & " during Phase I."
                         End If
-                    Else
-                        LogResult "INFO", "RO " & currentRo & " does not match PM footprint. Skipping."
                     End If
                 End If
 
@@ -236,7 +234,7 @@ End Function
 ' --- Helper Subroutines & Functions ---
 
 Function IsRoProcessable(roNumber)
-    Dim screenContent, matchedBlacklistTerm
+    Dim screenContent
     bzhao.Pause STABILITY_PAUSE
     ' Read screen starting from Row 2 down to Row 6 to catch status (Row 5) and RO info
     ' We also read more to catch system errors (Pick/BASIC errors)
@@ -259,20 +257,193 @@ Function IsRoProcessable(roNumber)
         LogResult "INFO", "RO " & roNumber & " prompted for Sequence Number. Treating as valid prompt."
         IsRoProcessable = False
         Exit Function
-    ElseIf InStr(1, screenContent, "READY TO POST", vbTextCompare) = 0 Then
-        LogResult "INFO", "RO " & roNumber & " status is NOT 'READY TO POST'. Found instead: " & GetStatusSnip(screenContent)
-        IsRoProcessable = False
-        Exit Function
-    End If
-
-    matchedBlacklistTerm = GetMatchedBlacklistTerm(BLACKLIST_TERMS, screenContent)
-    If matchedBlacklistTerm <> "" Then
-        LogResult "INFO", "RO " & roNumber & " contains blacklisted term '" & matchedBlacklistTerm & "'. Skipping."
-        IsRoProcessable = False
-        Exit Function
     End If
     
     IsRoProcessable = True
+End Function
+
+Function ShouldProcessRoByBusinessRules(roNumber)
+    ' Gate order:
+    '   1. READY TO POST + not blacklisted  -> process
+    '   2. age > threshold (any status)     -> process (age overrides status + blacklist)
+    '   3. anything else                    -> skip
+    Dim isOldRoEligible, ageDays, openedDateToken
+    Dim thresholdDays, screenContent, isReadyToPost, matchedBlacklistTerm
+
+    thresholdDays = CInt(OLD_RO_DAYS_THRESHOLD)
+    screenContent = GetCurrentScreenContent()
+    isReadyToPost = (InStr(1, screenContent, "READY TO POST", vbTextCompare) > 0)
+    isOldRoEligible = IsRoOldEnoughForOverride(ageDays, openedDateToken)
+    matchedBlacklistTerm = GetMatchedBlacklistTerm(BLACKLIST_TERMS, screenContent)
+
+    LogResult "INFO", "RO " & roNumber & " | Gate Check: READY TO POST: " & BoolLabel(isReadyToPost) & " | Age > " & thresholdDays & " days: " & BoolLabel(isOldRoEligible) & " (" & IIf(ageDays >= 0, ageDays & " days", "date unknown") & ")"
+
+    ' Path 1: READY TO POST — still blocked by blacklist
+    If isReadyToPost Then
+        If matchedBlacklistTerm = "" Then
+            LogResult "INFO", "RO " & roNumber & " | Blacklisted: No | Proceeding (READY TO POST path)."
+            ShouldProcessRoByBusinessRules = True
+        Else
+            LogResult "INFO", "RO " & roNumber & " | Blacklisted: Yes ('" & matchedBlacklistTerm & "') | Age > " & thresholdDays & ": " & BoolLabel(isOldRoEligible) & " | " & IIf(isOldRoEligible, "Age override applied. Proceeding.", "Skipping.")
+            ShouldProcessRoByBusinessRules = isOldRoEligible
+        End If
+        Exit Function
+    End If
+
+    ' Path 2: Not READY TO POST — age is the only override
+    If isOldRoEligible Then
+        LogResult "INFO", "RO " & roNumber & " | Status override by age. Proceeding."
+        ShouldProcessRoByBusinessRules = True
+        Exit Function
+    End If
+
+    LogResult "INFO", "RO " & roNumber & " | Not READY TO POST and age threshold not met. Skipping."
+    ShouldProcessRoByBusinessRules = False
+End Function
+
+Function BoolLabel(value)
+    If value Then
+        BoolLabel = "Yes"
+    Else
+        BoolLabel = "No"
+    End If
+End Function
+
+Function IIf(condition, trueVal, falseVal)
+    If condition Then
+        IIf = trueVal
+    Else
+        IIf = falseVal
+    End If
+End Function
+
+Function GetCurrentScreenContent()
+    Dim screenContent
+    bzhao.ReadScreen screenContent, 1920, 1, 1
+    GetCurrentScreenContent = screenContent
+End Function
+
+Function IsRoOldEnoughForOverride(ByRef ageDays, ByRef openedDateToken)
+    Dim screenContent, parsedDate
+    ageDays = -1
+    openedDateToken = ""
+
+    screenContent = GetCurrentScreenContent()
+    openedDateToken = ExtractOpenedDateToken(screenContent)
+
+    If openedDateToken = "" Then
+        IsRoOldEnoughForOverride = False
+        Exit Function
+    End If
+
+    If Not TryParseCdkDate(openedDateToken, parsedDate) Then
+        LogResult "WARN", "Unable to parse OPENED DATE token '" & openedDateToken & "' for age override evaluation."
+        IsRoOldEnoughForOverride = False
+        Exit Function
+    End If
+
+    ageDays = DateDiff("d", parsedDate, Date)
+    IsRoOldEnoughForOverride = (ageDays > CInt(OLD_RO_DAYS_THRESHOLD))
+End Function
+
+Function ExtractOpenedDateToken(screenContent)
+    Dim regEx, matches
+    Set regEx = CreateObject("VBScript.RegExp")
+    regEx.IgnoreCase = True
+    regEx.Global = False
+    ' Match CDK date format DDMMMYY/DDMMMYYYY (e.g. 05NOV25) or slash format (e.g. 01/20/26)
+    ' Anchoring digit+letter+digit prevents grabbing trailing tokens like 'RO' from the next field
+    regEx.Pattern = "OPENED DATE:\s*(\d{1,2}[A-Z]{3}\d{2,4}|\d{1,2}/\d{1,2}/\d{2,4})"
+
+    If regEx.Test(screenContent) Then
+        Set matches = regEx.Execute(screenContent)
+        ExtractOpenedDateToken = Trim(matches(0).SubMatches(0))
+    Else
+        ExtractOpenedDateToken = ""
+    End If
+End Function
+
+Function TryParseCdkDate(rawDateValue, ByRef parsedDate)
+    Dim token, regEx, matches
+    Dim dayPart, monthPart, yearPart
+    Dim dayNumber, monthNumber, yearNumber
+
+    token = UCase(Trim(rawDateValue))
+    If token = "" Then
+        TryParseCdkDate = False
+        Exit Function
+    End If
+
+    If InStr(token, "/") > 0 Then
+        If IsDate(token) Then
+            parsedDate = CDate(token)
+            TryParseCdkDate = True
+            Exit Function
+        End If
+    End If
+
+    Set regEx = CreateObject("VBScript.RegExp")
+    regEx.IgnoreCase = True
+    regEx.Global = False
+    regEx.Pattern = "^(\d{1,2})([A-Z]{3})(\d{2,4})$"
+
+    If Not regEx.Test(token) Then
+        TryParseCdkDate = False
+        Exit Function
+    End If
+
+    Set matches = regEx.Execute(token)
+    dayPart = matches(0).SubMatches(0)
+    monthPart = matches(0).SubMatches(1)
+    yearPart = matches(0).SubMatches(2)
+
+    dayNumber = CInt(dayPart)
+    monthNumber = MonthNumberFromAbbrev(monthPart)
+    If monthNumber = 0 Then
+        TryParseCdkDate = False
+        Exit Function
+    End If
+
+    If Len(yearPart) = 2 Then
+        yearNumber = CInt(yearPart)
+        If yearNumber >= 70 Then
+            yearNumber = 1900 + yearNumber
+        Else
+            yearNumber = 2000 + yearNumber
+        End If
+    Else
+        yearNumber = CInt(yearPart)
+    End If
+
+    On Error Resume Next
+    parsedDate = DateSerial(yearNumber, monthNumber, dayNumber)
+    If Err.Number <> 0 Then
+        Err.Clear
+        On Error GoTo 0
+        TryParseCdkDate = False
+        Exit Function
+    End If
+    On Error GoTo 0
+
+    TryParseCdkDate = True
+End Function
+
+Function MonthNumberFromAbbrev(monthAbbrev)
+    Select Case UCase(Trim(monthAbbrev))
+        Case "JAN": MonthNumberFromAbbrev = 1
+        Case "FEB": MonthNumberFromAbbrev = 2
+        Case "MAR": MonthNumberFromAbbrev = 3
+        Case "APR": MonthNumberFromAbbrev = 4
+        Case "MAY": MonthNumberFromAbbrev = 5
+        Case "JUN": MonthNumberFromAbbrev = 6
+        Case "JUL": MonthNumberFromAbbrev = 7
+        Case "AUG": MonthNumberFromAbbrev = 8
+        Case "SEP": MonthNumberFromAbbrev = 9
+        Case "OCT": MonthNumberFromAbbrev = 10
+        Case "NOV": MonthNumberFromAbbrev = 11
+        Case "DEC": MonthNumberFromAbbrev = 12
+        Case Else: MonthNumberFromAbbrev = 0
+    End Select
 End Function
 
 Function GetStatusSnip(screenContent)
