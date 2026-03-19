@@ -264,24 +264,32 @@ End Function
 
 Function ShouldProcessRoByBusinessRules(roNumber)
     ' Gate order:
-    '   1. READY TO POST + not blacklisted  -> process
-    '   2. age > threshold (any status)     -> process (age overrides status + blacklist)
-    '   3. anything else                    -> skip
+    '   1. PM footprint must match          -> else skip
+    '   2. READY TO POST + not blacklisted  -> process
+    '   3. age > threshold (any status)     -> process (age overrides status + blacklist)
+    '   4. anything else                    -> skip
     Dim isOldRoEligible, ageDays, openedDateToken
-    Dim thresholdDays, screenContent, isReadyToPost, matchedBlacklistTerm
+    Dim thresholdDays, screenContent, isReadyToPost, matchedBlacklistTerm, isPickyMatch
 
     thresholdDays = CInt(OLD_RO_DAYS_THRESHOLD)
     screenContent = GetCurrentScreenContent()
     isReadyToPost = (InStr(1, screenContent, "READY TO POST", vbTextCompare) > 0)
     isOldRoEligible = IsRoOldEnoughForOverride(ageDays, openedDateToken)
     matchedBlacklistTerm = GetMatchedBlacklistTerm(BLACKLIST_TERMS, screenContent)
+    isPickyMatch = CheckPickyMatch()
 
-    LogResult "INFO", "RO " & roNumber & " | Gate Check: READY TO POST: " & BoolLabel(isReadyToPost) & " | Age > " & thresholdDays & " days: " & BoolLabel(isOldRoEligible) & " (" & IIf(ageDays >= 0, ageDays & " days", "date unknown") & ")"
+    LogResult "INFO", "RO " & roNumber & " | Gate Check: PM Footprint Match: " & BoolLabel(isPickyMatch) & " | READY TO POST: " & BoolLabel(isReadyToPost) & " | Age > " & thresholdDays & " days: " & BoolLabel(isOldRoEligible) & " (" & IIf(ageDays >= 0, ageDays & " days", "date unknown") & ")"
+
+    If Not isPickyMatch Then
+        LogResult "INFO", "RO " & roNumber & " | PM footprint mismatch. Skipping."
+        ShouldProcessRoByBusinessRules = False
+        Exit Function
+    End If
 
     ' Path 1: READY TO POST — still blocked by blacklist
     If isReadyToPost Then
         If matchedBlacklistTerm = "" Then
-            LogResult "INFO", "RO " & roNumber & " | Blacklisted: No | Proceeding (READY TO POST path)."
+            LogResult "INFO", "RO " & roNumber & " | Blacklisted: No | Proceeding (READY TO POST path + PM footprint match)."
             ShouldProcessRoByBusinessRules = True
         Else
             LogResult "INFO", "RO " & roNumber & " | Blacklisted: Yes ('" & matchedBlacklistTerm & "') | Age > " & thresholdDays & ": " & BoolLabel(isOldRoEligible) & " | " & IIf(isOldRoEligible, "Age override applied. Proceeding.", "Skipping.")
