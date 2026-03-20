@@ -405,7 +405,7 @@ End Function
 Function ResolveLogVerbosity()
     Dim configPath, rawValue, normalized
     configPath = g_fso.BuildPath(GetRepoRoot(), "config\config.ini")
-    rawValue = ReadIniValue(configPath, "Logging", "Verbosity")
+    rawValue = ReadIniValue(configPath, "Open_RO", "Verbosity")
 
     If Len(Trim(rawValue)) = 0 Then rawValue = "Med"
     normalized = LCase(Trim(rawValue))
