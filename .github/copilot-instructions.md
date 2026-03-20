@@ -26,3 +26,14 @@
 ## Code Review
 - Ignore nits (style, naming, minor readability), performance tuning, and non-critical hardening.
 - Flag only: critical bugs (failure/data corruption risk), important business-logic errors, breaking changes.
+
+## Pull Request Workflow
+- `gh` CLI is **not installed** on this machine. Do not use it.
+- To open or update a PR, use `tools/upsert_pr_with_body.ps1` — it calls the GitHub REST API using the same credentials already stored for `git push` (no browser, no manual auth).
+- Always write the PR body to a file under `Temp/` first, then invoke the script:
+  ```powershell
+  .\tools\upsert_pr_with_body.ps1 -Title "your title" -BodyFile "Temp\pr_body.md"
+  ```
+- The script auto-detects the current branch, detects existing open PRs (upserts), and uses `-Repo` when provided; otherwise it parses owner/repo from `git remote get-url origin`.
+- `-Head`, `-Base`, `-Draft`, and `-Repo` are optional overrides.
+- If no credentials are found, the script fails fast with an explicit error; it does not open a browser fallback.
