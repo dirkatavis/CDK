@@ -122,8 +122,6 @@ Sub Main(mva, mileage)
     If IsTextPresent("No matching") Then Exit Sub
 
 
-    Call WaitForPrompt("ENTER SEQUENCE NUMBER", "1", true, 1000)
-
 
     '==== INPUT POINT 2: BEFORE ENTERING COMMAND SELECTION ====
     ' NEED TO IDENTIFY: What menu/prompt shows before selecting command?
@@ -132,21 +130,11 @@ Sub Main(mva, mileage)
     
 
 
-    '==== INPUT POINT 3: BEFORE CONFIRMING DISPLAY ====
-    ' NEED TO IDENTIFY: What text appears before "Display them now" response?
-    ' CURRENT: Using "Display them now" - NEEDS VERIFICATION
-    Call WaitForPrompt("Display them now", "<NumpadEnter>", False, 1000)
-
     '==== INPUT POINT 4: BEFORE ENTERING MILEAGE ====
     ' NEED TO IDENTIFY: What prompt shows when mileage field is ready?
     ' CURRENT: Using "Miles In...:" - NEEDS VERIFICATION
     Call WaitForPrompt("Miles In", mileage, true, PROMPT_TIMEOUT_MS)
     
-
-    '==== INPUT POINT 5: BEFORE ENTERING MILEAGE VALIDATION ====
-    ' NEED TO IDENTIFY: What prompt asks for Y/N on mileage validation?
-    ' CURRENT: Using "greater than" - NEEDS VERIFICATION
-    Call WaitForPrompt("greater than", "Y", true, 1000)
 
     '==== INPUT POINT 6: BEFORE ENTERING TAG ====
     ' NEED TO IDENTIFY: What field label appears for tag entry?
