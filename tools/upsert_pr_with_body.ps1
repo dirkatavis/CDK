@@ -49,15 +49,36 @@ if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
         (& git branch --show-current).Trim()
     }
 
-    # --- Resolve owner/repo from remote ---
+    # --- Resolve source owner from origin remote ---
     $remoteUrl = (& git remote get-url origin 2>$null).Trim()
-    $remoteUrl = $remoteUrl -replace '^git@github\.com:', 'https://github.com/'
-    $remoteUrl = $remoteUrl -replace '\.git$', ''
-    if ($remoteUrl -notmatch 'github\.com/([^/]+)/([^/]+)$') {
-        throw "Cannot parse owner/repo from remote URL: $remoteUrl"
+    $normalizedRemote = $remoteUrl -replace '^git@github\.com:', 'https://github.com/'
+    $normalizedRemote = $normalizedRemote -replace '\.git$', ''
+    if ($normalizedRemote -notmatch 'github\.com/([^/]+)/([^/]+)$') {
+        throw "Cannot parse owner/repo from origin remote. Ensure origin points to a GitHub repository."
     }
-    $ghOwner = $Matches[1]
-    $ghRepo  = $Matches[2]
+    $sourceOwner = $Matches[1]
+    $sourceRepo  = $Matches[2]
+
+    # --- Resolve target owner/repo (prefer -Repo override) ---
+    if (-not [string]::IsNullOrWhiteSpace($Repo)) {
+        $repoSpec = $Repo.Trim()
+        if ($repoSpec -match '^[^/\s]+/[^/\s]+$') {
+            $ghOwner = ($repoSpec -split '/')[0]
+            $ghRepo  = ($repoSpec -split '/')[1]
+        } else {
+            $normalizedRepoSpec = $repoSpec -replace '^git@github\.com:', 'https://github.com/'
+            $normalizedRepoSpec = $normalizedRepoSpec -replace '\.git$', ''
+            if ($normalizedRepoSpec -match 'github\.com/([^/]+)/([^/]+)$') {
+                $ghOwner = $Matches[1]
+                $ghRepo  = $Matches[2]
+            } else {
+                throw "Invalid -Repo value '$Repo'. Expected 'owner/repo' or a GitHub repository URL."
+            }
+        }
+    } else {
+        $ghOwner = $sourceOwner
+        $ghRepo  = $sourceRepo
+    }
 
     # --- Resolve body file ---
     $resolvedBodyFile = if ([System.IO.Path]::IsPathRooted($BodyFile)) { $BodyFile } else {
@@ -91,7 +112,7 @@ if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
     # --- Check for existing open PR on this head ---
     $existingPr = $null
     try {
-        $prs = Invoke-RestMethod -Uri "$apiBase/pulls?state=open&head=${ghOwner}:${usedHead}" -Headers $headers
+        $prs = Invoke-RestMethod -Uri "$apiBase/pulls?state=open&head=${sourceOwner}:${usedHead}" -Headers $headers
         if ($prs.Count -gt 0) { $existingPr = $prs[0] }
     } catch { }
 
@@ -114,10 +135,11 @@ if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
         throw "-Title is required when no open PR exists for branch '$usedHead'."
     }
 
+    $headRef = if ($sourceOwner -eq $ghOwner) { $usedHead } else { "${sourceOwner}:${usedHead}" }
     $payload = @{
         title = $Title
         body  = $bodyText
-        head  = $usedHead
+        head  = $headRef
         base  = $Base
         draft = [bool]$Draft.IsPresent
     }

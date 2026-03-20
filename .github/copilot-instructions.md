@@ -34,6 +34,6 @@
   ```powershell
   .\tools\upsert_pr_with_body.ps1 -Title "your title" -BodyFile "Temp\pr_body.md"
   ```
-- The script auto-detects the current branch, detects existing open PRs (upserts), and parses owner/repo from `git remote get-url origin`.
+- The script auto-detects the current branch, detects existing open PRs (upserts), and uses `-Repo` when provided; otherwise it parses owner/repo from `git remote get-url origin`.
 - `-Head`, `-Base`, `-Draft`, and `-Repo` are optional overrides.
 - If no credentials are found, the script fails fast with an explicit error; it does not open a browser fallback.
