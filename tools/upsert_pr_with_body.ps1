@@ -37,12 +37,35 @@ function Invoke-GhJson {
     return $output | ConvertFrom-Json
 }
 
-if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
-    throw "GitHub CLI (gh) is required but was not found in PATH."
-}
-
 if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
     throw "git is required but was not found in PATH."
+}
+
+if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
+    # gh CLI not available — fall back to browser-based PR creation.
+    Write-Warning "GitHub CLI (gh) not found. Install from https://cli.github.com to automate PR creation."
+    Write-Warning "Falling back to browser-based PR creation..."
+
+    $currentHead = (& git branch --show-current).Trim()
+    $usedHead = if (-not [string]::IsNullOrWhiteSpace($Head)) { $Head } else { $currentHead }
+
+    $remoteUrl = (& git remote get-url origin 2>$null).Trim()
+    # Normalize SSH → HTTPS and strip .git suffix
+    $remoteUrl = $remoteUrl -replace '^git@github\.com:', 'https://github.com/'
+    $remoteUrl = $remoteUrl -replace '\.git$', ''
+
+    $prUrl = "$remoteUrl/compare/$Base...${usedHead}?expand=1"
+
+    if (Test-Path -LiteralPath $BodyFile -PathType Leaf) {
+        $bodyText = Get-Content -Raw $BodyFile
+        Add-Type -AssemblyName System.Windows.Forms
+        [System.Windows.Forms.Clipboard]::SetText($bodyText)
+        Write-Host "PR body copied to clipboard - paste it into the GitHub editor."
+    }
+
+    Write-Host "Opening: $prUrl"
+    Start-Process $prUrl
+    exit 0
 }
 
 $repoRoot = (& git rev-parse --show-toplevel).Trim()
