@@ -514,11 +514,11 @@ End Sub
 ' Subroutine: LOG - lightweight logger used by this archived script
 '--------------------------------------------------------------------
 Sub LOG(msg, level)
-    On Error Resume Next
     Dim lfs, lfile, errorNum, errorDesc
 
     If Not ShouldLog(level) Then Exit Sub
 
+    On Error Resume Next
     Set lfs = CreateObject("Scripting.FileSystemObject")
     
     ' Try to create log entry

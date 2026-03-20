@@ -90,20 +90,40 @@ AssertTrue "LOG_LEVEL_HIGH = 3", LOG_LEVEL_HIGH = 3
 WScript.Echo ""
 
 ' ============================================================================
-' BLOCK 3: ShouldLog Gating Logic (9 tests)
+' BLOCK 3: ShouldLog Gating Logic (11 tests)
 ' Replicates ShouldLog() in Open_RO.vbs in isolation.
 ' ============================================================================
 WScript.Echo "--- Block 3: ShouldLog Gating Logic ---"
 
+Function NormalizeLogLevelForTest(level)
+    Dim normalized
+    normalized = LCase(Trim(CStr(level)))
+    If normalized = "" Then normalized = "high"
+
+    Select Case normalized
+        Case "low"
+            NormalizeLogLevelForTest = LOG_LEVEL_LOW
+        Case "med"
+            NormalizeLogLevelForTest = LOG_LEVEL_MED
+        Case "high"
+            NormalizeLogLevelForTest = LOG_LEVEL_HIGH
+        Case Else
+            Err.Raise 5, "NormalizeLogLevelForTest", "Invalid log level requested: " & CStr(level)
+    End Select
+End Function
+
 Function ShouldLogAt(verbosity, level)
     Dim lvl
-    Select Case LCase(Trim(level))
-        Case "low"  : lvl = LOG_LEVEL_LOW
-        Case "med"  : lvl = LOG_LEVEL_MED
-        Case "high" : lvl = LOG_LEVEL_HIGH
-        Case Else   : lvl = LOG_LEVEL_HIGH
-    End Select
+    lvl = NormalizeLogLevelForTest(level)
     ShouldLogAt = (lvl <= verbosity)
+End Function
+
+Function RaisesOnInvalidLevel(level)
+    On Error Resume Next
+    Call ShouldLogAt(LOG_LEVEL_HIGH, level)
+    RaisesOnInvalidLevel = (Err.Number <> 0)
+    Err.Clear
+    On Error GoTo 0
 End Function
 
 AssertTrue "Low verbosity: 'low' IS logged",       ShouldLogAt(LOG_LEVEL_LOW,  "low")
@@ -115,6 +135,8 @@ AssertTrue "Med verbosity: 'high' is NOT logged",  Not ShouldLogAt(LOG_LEVEL_MED
 AssertTrue "High verbosity: 'low' IS logged",      ShouldLogAt(LOG_LEVEL_HIGH, "low")
 AssertTrue "High verbosity: 'med' IS logged",      ShouldLogAt(LOG_LEVEL_HIGH, "med")
 AssertTrue "High verbosity: 'high' IS logged",     ShouldLogAt(LOG_LEVEL_HIGH, "high")
+AssertTrue "Empty level defaults to high",         ShouldLogAt(LOG_LEVEL_HIGH, "")
+AssertTrue "Invalid level raises",                 RaisesOnInvalidLevel("verbose")
 
 WScript.Echo ""
 
