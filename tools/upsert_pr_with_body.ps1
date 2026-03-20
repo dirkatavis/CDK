@@ -78,14 +78,7 @@ if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
     } catch { }
 
     if (-not $token) {
-        # Last resort: browser fallback with body on clipboard
-        Write-Warning "No stored GitHub credentials found. Store a PAT via Windows Credential Manager or 'git credential approve'."
-        Write-Warning "Falling back to browser..."
-        Add-Type -AssemblyName System.Windows.Forms
-        [System.Windows.Forms.Clipboard]::SetText($bodyText)
-        Write-Host "PR body copied to clipboard - paste it into the GitHub editor."
-        Start-Process "$remoteUrl/compare/$Base...${usedHead}?expand=1"
-        exit 0
+        throw "No stored GitHub credentials found for github.com. Cannot auto-create/update PR. Configure credentials via Git Credential Manager (same creds used by 'git push') and retry."
     }
 
     $apiBase = "https://api.github.com/repos/$ghOwner/$ghRepo"

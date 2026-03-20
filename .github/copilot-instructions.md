@@ -36,4 +36,4 @@
   ```
 - The script auto-detects the current branch, detects existing open PRs (upserts), and parses owner/repo from `git remote get-url origin`.
 - `-Head`, `-Base`, `-Draft`, and `-Repo` are optional overrides.
-- If no credentials are found, the script falls back to opening the browser and copying the body to the clipboard.
+- If no credentials are found, the script fails fast with an explicit error; it does not open a browser fallback.
