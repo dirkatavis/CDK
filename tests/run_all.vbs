@@ -66,6 +66,7 @@ WScript.Echo "------------------------------------------------------------------
 RunAppSuite "App Test: Post Final Charges", "apps\post_final_charges\tests\run_all_tests.vbs"
 RunAppSuite "App Test: PFC Scrapper", "apps\pfc_scrapper\tests\test_pfc_scrapper.vbs"
 RunAppSuite "App Test: Validate RO List", "apps\validate_ro_list\tests\test_validate_ro_logic.vbs"
+RunAppSuite "Tool Test: Close Single RO", "tools\tests\test_close_single_ro.vbs"
 RunAppSuite "App Test: Open RO", "apps\repair_order\0_Open_RO\tests\run_all_tests.vbs"
 
 PrintOverallSummary()
