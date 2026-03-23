@@ -34,6 +34,9 @@ Const POST_ENTRY_WAIT = 200  ' Minimal wait after entry
 Const PRE_KEY_WAIT = 150     ' Pause before sending special keys
 Const POST_KEY_WAIT = 350    ' Pause after sending special keys
 Const PROMPT_TIMEOUT_MS = 5000 ' Default prompt timeout
+Const LOG_LEVEL_LOW = 1
+Const LOG_LEVEL_MED = 2
+Const LOG_LEVEL_HIGH = 3
 
 Dim CSV_FILE_PATH: CSV_FILE_PATH = GetConfigPath("Open_RO", "CSV")
 Dim OUTPUT_CSV_PATH: OUTPUT_CSV_PATH = GetConfigPath("Open_RO", "OutputCSV")
@@ -41,6 +44,7 @@ Dim SCRIPT_FOLDER: SCRIPT_FOLDER = "scripts\archive"
 Dim SLOW_MARKER_PATH: SLOW_MARKER_PATH = GetConfigPath("Open_RO", "DebugMarker")
 Const AppendMode = 8
 Dim LOG_FILE_PATH: LOG_FILE_PATH = GetConfigPath("Open_RO", "Log")
+Dim g_LogVerbosity: g_LogVerbosity = ResolveLogVerbosity()
 
 Dim fso, ts, strLine, arrValues, i, MVA, Mileage
 
@@ -64,8 +68,8 @@ csvOut.Close
 Set csvOut = Nothing
 
 ' Test logging immediately to verify log file creation
-LOG "Script started - Log file path: " & LOG_FILE_PATH
-LOG "Initialized output CSV (overwritten): " & OUTPUT_CSV_PATH
+LOG "Script started - Log file path: " & LOG_FILE_PATH, "med"
+LOG "Initialized output CSV (overwritten): " & OUTPUT_CSV_PATH, "med"
 
 Dim Bzhao
 On Error Resume Next
@@ -77,12 +81,12 @@ End If
 On Error GoTo 0
 
 If fso.FileExists(CSV_FILE_PATH) Then
-    LOG "CSV file found: " & CSV_FILE_PATH
+    LOG "CSV file found: " & CSV_FILE_PATH, "low"
     bzhao.Connect ""
-    LOG "Connected to BlueZone"
+    LOG "Connected to BlueZone", "low"
     Set ts = fso.OpenTextFile(CSV_FILE_PATH, 1)
     ts.ReadLine   ' Skip header row
-    LOG "Processing CSV data..."
+    LOG "Processing CSV data...", "low"
 
     Do While Not ts.AtEndOfStream
         strLine = ts.ReadLine
@@ -119,9 +123,6 @@ Sub Main(mva, mileage)
 
 
 
-    Call WaitForPrompt("ENTER SEQUENCE NUMBER", "1", true, 1000)
-
-
     '==== INPUT POINT 2: BEFORE ENTERING COMMAND SELECTION ====
     ' NEED TO IDENTIFY: What menu/prompt shows before selecting command?
     ' CURRENT: Looking for "Command?" - NEEDS VERIFICATION
@@ -129,21 +130,11 @@ Sub Main(mva, mileage)
     
 
 
-    '==== INPUT POINT 3: BEFORE CONFIRMING DISPLAY ====
-    ' NEED TO IDENTIFY: What text appears before "Display them now" response?
-    ' CURRENT: Using "Display them now" - NEEDS VERIFICATION
-    Call WaitForPrompt("Display them now", "<NumpadEnter>", False, 1000)
-
     '==== INPUT POINT 4: BEFORE ENTERING MILEAGE ====
     ' NEED TO IDENTIFY: What prompt shows when mileage field is ready?
     ' CURRENT: Using "Miles In...:" - NEEDS VERIFICATION
     Call WaitForPrompt("Miles In", mileage, true, PROMPT_TIMEOUT_MS)
     
-
-    '==== INPUT POINT 5: BEFORE ENTERING MILEAGE VALIDATION ====
-    ' NEED TO IDENTIFY: What prompt asks for Y/N on mileage validation?
-    ' CURRENT: Using "greater than" - NEEDS VERIFICATION
-    Call WaitForPrompt("greater than", "Y", true, 1000)
 
     '==== INPUT POINT 6: BEFORE ENTERING TAG ====
     ' NEED TO IDENTIFY: What field label appears for tag entry?
@@ -232,7 +223,7 @@ End Sub
 '--------------------------------------------------------------------
 Sub WaitForPrompt(promptText, valueToEnter, sendEnter, timeoutMs)
     
-    LOG "WaitForPrompt called - Looking for: [" & promptText & "] Value: [" & valueToEnter & "] SendEnter: " & sendEnter & " Timeout: " & timeoutMs & "ms"
+    LOG "WaitForPrompt called - Looking for: [" & promptText & "] Value: [" & valueToEnter & "] SendEnter: " & sendEnter & " Timeout: " & timeoutMs & "ms", "high"
     Dim startTime, currentTime, elapsedMs, promptFound
     
     startTime = Timer
@@ -241,7 +232,7 @@ Sub WaitForPrompt(promptText, valueToEnter, sendEnter, timeoutMs)
     Do
         ' Check for the prompt text first
         If IsTextPresent(promptText) Then
-            LOG "Detected prompt: " & promptText
+            LOG "Detected prompt: " & promptText, "high"
             promptFound = True
             Exit Do
         End If
@@ -256,7 +247,7 @@ Sub WaitForPrompt(promptText, valueToEnter, sendEnter, timeoutMs)
         
         ' Exit if timeout reached
         If elapsedMs >= timeoutMs Then
-            LOG "Timeout waiting for prompt: " & promptText
+            LOG "Timeout waiting for prompt: " & promptText, "med"
             If InStr(1, UCase(promptText), "MILEAGE OUT", vbTextCompare) > 0 Then
                 Dim timeoutScreen, timeoutRow23, timeoutRow24
                 bzhao.ReadScreen timeoutScreen, 160, 23, 1
@@ -268,7 +259,7 @@ Sub WaitForPrompt(promptText, valueToEnter, sendEnter, timeoutMs)
             End If
             Exit Do
         End If
-        LOG elapsedMs & "ms elapsed waiting for prompt: "
+        LOG elapsedMs & "ms elapsed waiting for prompt: ", "high"
     Loop
     
     ' Only send input if prompt was actually found
@@ -279,7 +270,7 @@ Sub WaitForPrompt(promptText, valueToEnter, sendEnter, timeoutMs)
         ' Check if the value is a special key command
         bzhao.Pause 1000
         If InStr(1, valueToEnter, "<") > 0 And InStr(1, valueToEnter, ">") > 0 Then
-            LOG "Sending key command: " & valueToEnter
+            LOG "Sending key command: " & valueToEnter, "high"
             Call FastKey(valueToEnter)
         Else
             Call FastText(valueToEnter)
@@ -291,7 +282,7 @@ Sub WaitForPrompt(promptText, valueToEnter, sendEnter, timeoutMs)
         
         Call WaitMs(POST_ENTRY_WAIT)
     Else
-        LOG "Prompt not found - skipping input"
+        LOG "Prompt not found - skipping input", "med"
     End If
 End Sub
 
@@ -300,7 +291,7 @@ End Sub
 ' Subroutine: FastText - Minimal delay text entry
 '--------------------------------------------------------------------
 Sub FastText(text)
-    LOG "Sending text: " & text
+    LOG "Sending text: " & text, "high"
     bzhao.SendKey text
     If IsSlowModeEnabled() Then
         Call WaitMs(1000)
@@ -313,7 +304,7 @@ End Sub
 ' Subroutine: FastKey - Minimal delay key press
 '--------------------------------------------------------------------
 Sub FastKey(key)
-    LOG "Sending key command: " & key
+    LOG "Sending key command: " & key, "high"
     ' Pause briefly before sending a special key to avoid injecting escape sequences into active fields
     If IsSlowModeEnabled() Then
         Call WaitMs(1000)
@@ -391,8 +382,69 @@ Function IsTextPresent(textToFind)
         End If
     Next
 
-    LOG "Screen content checked for: " & textToFind
-    LOG "Text presence result: " & IsTextPresent
+    LOG "Screen content checked for: " & textToFind, "high"
+    LOG "Text presence result: " & IsTextPresent, "high"
+End Function
+
+'--------------------------------------------------------------------
+' Function: ResolveLogVerbosity
+' Reads [Logging] Verbosity from config.ini with default Med
+'--------------------------------------------------------------------
+Function ResolveLogVerbosity()
+    Dim configPath, rawValue, normalized
+    configPath = g_fso.BuildPath(GetRepoRoot(), "config\config.ini")
+    rawValue = ReadIniValue(configPath, "Open_RO", "Verbosity")
+
+    If Len(Trim(rawValue)) = 0 Then rawValue = "Med"
+    normalized = LCase(Trim(rawValue))
+
+    Select Case normalized
+        Case "low"
+            ResolveLogVerbosity = LOG_LEVEL_LOW
+        Case "med"
+            ResolveLogVerbosity = LOG_LEVEL_MED
+        Case "high"
+            ResolveLogVerbosity = LOG_LEVEL_HIGH
+        Case Else
+            Err.Raise 5, "ResolveLogVerbosity", "Invalid [Logging] Verbosity value: " & rawValue & ". Expected Low, Med, or High."
+    End Select
+End Function
+
+'--------------------------------------------------------------------
+' Function: NormalizeLogLevel
+' Validates and normalizes a requested log level
+'--------------------------------------------------------------------
+Function NormalizeLogLevel(levelValue)
+    Dim normalized
+    normalized = LCase(Trim(CStr(levelValue)))
+    If normalized = "" Then normalized = "high"
+
+    Select Case normalized
+        Case "low", "med", "high"
+            NormalizeLogLevel = normalized
+        Case Else
+            Err.Raise 5, "NormalizeLogLevel", "Invalid log level requested: " & CStr(levelValue)
+    End Select
+End Function
+
+'--------------------------------------------------------------------
+' Function: ShouldLog
+' Returns True when requested log level should be written
+'--------------------------------------------------------------------
+Function ShouldLog(levelValue)
+    Dim requestedLevel, normalized
+    normalized = NormalizeLogLevel(levelValue)
+
+    Select Case normalized
+        Case "low"
+            requestedLevel = LOG_LEVEL_LOW
+        Case "med"
+            requestedLevel = LOG_LEVEL_MED
+        Case "high"
+            requestedLevel = LOG_LEVEL_HIGH
+    End Select
+
+    ShouldLog = (requestedLevel <= g_LogVerbosity)
 End Function
 
 '--------------------------------------------------------------------
@@ -449,9 +501,12 @@ End Sub
 '--------------------------------------------------------------------
 ' Subroutine: LOG - lightweight logger used by this archived script
 '--------------------------------------------------------------------
-Sub LOG(msg)
-    On Error Resume Next
+Sub LOG(msg, level)
     Dim lfs, lfile, errorNum, errorDesc
+
+    If Not ShouldLog(level) Then Exit Sub
+
+    On Error Resume Next
     Set lfs = CreateObject("Scripting.FileSystemObject")
     
     ' Try to create log entry

@@ -37,12 +37,122 @@ function Invoke-GhJson {
     return $output | ConvertFrom-Json
 }
 
-if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
-    throw "GitHub CLI (gh) is required but was not found in PATH."
-}
-
 if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
     throw "git is required but was not found in PATH."
+}
+
+if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
+    Write-Warning "GitHub CLI (gh) not found. Attempting REST API via stored git credentials..."
+
+    # --- Resolve head branch ---
+    $usedHead = if (-not [string]::IsNullOrWhiteSpace($Head)) { $Head } else {
+        (& git branch --show-current).Trim()
+    }
+
+    # --- Resolve source owner from origin remote ---
+    $remoteUrl = (& git remote get-url origin 2>$null).Trim()
+    $normalizedRemote = $remoteUrl -replace '^git@github\.com:', 'https://github.com/'
+    $normalizedRemote = $normalizedRemote -replace '\.git$', ''
+    if ($normalizedRemote -notmatch 'github\.com/([^/]+)/([^/]+)$') {
+        throw "Cannot parse owner/repo from origin remote. Ensure origin points to a GitHub repository."
+    }
+    $sourceOwner = $Matches[1]
+    $sourceRepo  = $Matches[2]
+
+    # --- Resolve target owner/repo (prefer -Repo override) ---
+    if (-not [string]::IsNullOrWhiteSpace($Repo)) {
+        $repoSpec = $Repo.Trim()
+        if ($repoSpec -match '^[^/\s]+/[^/\s]+$') {
+            $ghOwner = ($repoSpec -split '/')[0]
+            $ghRepo  = ($repoSpec -split '/')[1]
+        } else {
+            $normalizedRepoSpec = $repoSpec -replace '^git@github\.com:', 'https://github.com/'
+            $normalizedRepoSpec = $normalizedRepoSpec -replace '\.git$', ''
+            if ($normalizedRepoSpec -match 'github\.com/([^/]+)/([^/]+)$') {
+                $ghOwner = $Matches[1]
+                $ghRepo  = $Matches[2]
+            } else {
+                throw "Invalid -Repo value '$Repo'. Expected 'owner/repo' or a GitHub repository URL."
+            }
+        }
+    } else {
+        $ghOwner = $sourceOwner
+        $ghRepo  = $sourceRepo
+    }
+
+    # --- Resolve body file ---
+    $resolvedBodyFile = if ([System.IO.Path]::IsPathRooted($BodyFile)) { $BodyFile } else {
+        Join-Path (& git rev-parse --show-toplevel).Trim() $BodyFile
+    }
+    if (-not (Test-Path -LiteralPath $resolvedBodyFile -PathType Leaf)) {
+        throw "Body file not found: $resolvedBodyFile"
+    }
+    $bodyText = (Get-Content -Raw $resolvedBodyFile) -replace "`r`n", "`n" -replace "`r", "`n"
+
+    # --- Extract token from git credential store (same creds used for push) ---
+    $token = $null
+    try {
+        $credLines = "protocol=https`nhost=github.com`n" | & git credential fill 2>$null
+        foreach ($line in ($credLines -split "`r?`n")) {
+            if ($line -match '^password=(.+)') { $token = $Matches[1].Trim(); break }
+        }
+    } catch { }
+
+    if (-not $token) {
+        throw "No stored GitHub credentials found for github.com. Cannot auto-create/update PR. Configure credentials via Git Credential Manager (same creds used by 'git push') and retry."
+    }
+
+    $apiBase = "https://api.github.com/repos/$ghOwner/$ghRepo"
+    $headers = @{
+        Authorization          = "token $token"
+        Accept                 = "application/vnd.github+json"
+        "X-GitHub-Api-Version" = "2022-11-28"
+    }
+
+    # --- Check for existing open PR on this head ---
+    $existingPr = $null
+    try {
+        $prs = Invoke-RestMethod -Uri "$apiBase/pulls?state=open&head=${sourceOwner}:${usedHead}" -Headers $headers
+        if ($prs.Count -gt 0) { $existingPr = $prs[0] }
+    } catch { }
+
+    if ($existingPr) {
+        $patch = @{ body = $bodyText }
+        if (-not [string]::IsNullOrWhiteSpace($Title)) { $patch.title = $Title }
+        try {
+            $patchJson = [System.Text.Encoding]::UTF8.GetBytes(($patch | ConvertTo-Json -Depth 5 -Compress))
+            Invoke-RestMethod -Uri "$apiBase/pulls/$($existingPr.number)" -Method Patch `
+                -Headers $headers -Body $patchJson `
+                -ContentType "application/json" | Out-Null
+            Write-Host "Updated PR #$($existingPr.number): $($existingPr.html_url)"
+        } catch {
+            throw "Failed to update PR #$($existingPr.number) ($($existingPr.html_url)): $_"
+        }
+        exit 0
+    }
+
+    if ([string]::IsNullOrWhiteSpace($Title)) {
+        throw "-Title is required when no open PR exists for branch '$usedHead'."
+    }
+
+    $headRef = if ($sourceOwner -eq $ghOwner) { $usedHead } else { "${sourceOwner}:${usedHead}" }
+    $payload = @{
+        title = $Title
+        body  = $bodyText
+        head  = $headRef
+        base  = $Base
+        draft = [bool]$Draft.IsPresent
+    }
+    try {
+        $payloadJson = [System.Text.Encoding]::UTF8.GetBytes(($payload | ConvertTo-Json -Depth 5 -Compress))
+        $created = Invoke-RestMethod -Uri "$apiBase/pulls" -Method Post `
+            -Headers $headers -Body $payloadJson `
+            -ContentType "application/json"
+        Write-Host "Created PR #$($created.number): $($created.html_url)"
+    } catch {
+        throw "Failed to create PR for branch '$usedHead': $_"
+    }
+    exit 0
 }
 
 $repoRoot = (& git rev-parse --show-toplevel).Trim()

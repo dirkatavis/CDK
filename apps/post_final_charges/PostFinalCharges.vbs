@@ -2154,22 +2154,35 @@ Sub Main(roNumber)
     End If
 
     ' Integrity guard: current RO must not match previous RO from prior sequence.
-    ' To avoid false positives from transient UI lag, confirm with a second scrape before aborting.
+    ' To avoid false positives from transient UI lag, poll for a changed RO before aborting.
     Dim normalizedCurrentRo, refreshedRo, refreshedNormalizedRo
+    Dim recheckStart, recheckElapsed, foundDifferentRo
     normalizedCurrentRo = NormalizeRoIdentifier(currentRODisplay)
     If Len(normalizedCurrentRo) > 0 Then
         If Len(g_PreviousNormalizedRo) > 0 Then
             If normalizedCurrentRo = g_PreviousNormalizedRo And CStr(roNumber) <> CStr(g_PreviousSequenceNumber) Then
-                Call LogEvent("maj", "med", "Current RO matched previous sequence RO on initial read; rechecking after refresh wait", "Main", "RO " & normalizedCurrentRo & " at sequences " & g_PreviousSequenceNumber & ", " & roNumber, "")
+                Call LogEvent("maj", "med", "Current RO matched previous sequence RO on initial read; polling for changed RO", "Main", "RO " & normalizedCurrentRo & " at sequences " & g_PreviousSequenceNumber & ", " & roNumber, "")
 
-                Call WaitForScreenStable(500, 100)
-                refreshedRo = GetROFromScreen()
-                refreshedNormalizedRo = NormalizeRoIdentifier(refreshedRo)
+                foundDifferentRo = False
+                recheckStart = Timer
 
-                If Len(refreshedNormalizedRo) > 0 Then
-                    currentRODisplay = refreshedRo
-                    normalizedCurrentRo = refreshedNormalizedRo
-                End If
+                Do
+                    Call WaitForScreenStable(350, 100)
+                    refreshedRo = GetROFromScreen()
+                    refreshedNormalizedRo = NormalizeRoIdentifier(refreshedRo)
+
+                    If Len(refreshedNormalizedRo) > 0 Then
+                        currentRODisplay = refreshedRo
+                        normalizedCurrentRo = refreshedNormalizedRo
+                        If normalizedCurrentRo <> g_PreviousNormalizedRo Then
+                            foundDifferentRo = True
+                            Exit Do
+                        End If
+                    End If
+
+                    Call WaitMs(120)
+                    recheckElapsed = (Timer - recheckStart) * 1000
+                Loop While recheckElapsed < 3000
 
                 If normalizedCurrentRo = g_PreviousNormalizedRo And CStr(roNumber) <> CStr(g_PreviousSequenceNumber) Then
                     lastRoResult = "Error - Current RO matched previous sequence RO"
@@ -2179,7 +2192,11 @@ Sub Main(roNumber)
                     Call SafeMsg("Integrity check failed: sequence " & roNumber & " resolved to the same RO as previous sequence " & g_PreviousSequenceNumber & " (RO " & normalizedCurrentRo & ")." & vbCrLf & "Automation stopped for manual review.", True, "RO Mapping Error")
                     Exit Sub
                 Else
-                    Call LogEvent("comm", "med", "RO refresh re-check resolved mismatch; continuing", "Main", "Sequence " & roNumber & " now maps to RO " & currentRODisplay, "")
+                    If foundDifferentRo Then
+                        Call LogEvent("comm", "med", "RO polling re-check resolved mismatch; continuing", "Main", "Sequence " & roNumber & " now maps to RO " & currentRODisplay, "")
+                    Else
+                        Call LogEvent("comm", "med", "RO re-check retained current mapping; continuing", "Main", "Sequence " & roNumber & " maps to RO " & currentRODisplay, "")
+                    End If
                 End If
             End If
         End If
