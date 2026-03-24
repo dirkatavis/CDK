@@ -44,6 +44,9 @@ Dim g_CurrentCriticality, g_CurrentVerbosity
 Dim g_SessionDateLogged
 Dim g_LastSuccessfulLine
 Dim g_NoPromptCount
+Dim g_ProcessPromptSequenceTimeoutMsOverride
+Dim g_ProcessPromptSequenceMaxNoPromptIterationsOverride
+Dim g_ProcessPromptSequenceNoPromptRetryWaitMsOverride
 Dim g_CloseoutConfirmDelayMs
 Dim g_ReviewedROCount
 Dim g_FiledROCount
@@ -413,14 +416,50 @@ Function TimerToClockTime(timerValue)
 End Function
 
 ' Generic state machine to process a sequence of prompts from a given dictionary.
+Sub ResetProcessPromptSequenceOverrides()
+    g_ProcessPromptSequenceTimeoutMsOverride = Empty
+    g_ProcessPromptSequenceMaxNoPromptIterationsOverride = Empty
+    g_ProcessPromptSequenceNoPromptRetryWaitMsOverride = Empty
+End Sub
+
 Sub ProcessPromptSequence(prompts)
     Dim finished, promptKey, promptDetails, bestMatchKey, bestMatchLength
     Dim sequenceStartTime, sequenceElapsed
+    Dim resolvedSequenceTimeoutMs, resolvedMaxNoPromptIterations, resolvedNoPromptRetryWaitMs
     finished = False
     sequenceStartTime = Now() ' Use actual date/time instead of Timer
+
+    resolvedSequenceTimeoutMs = 30000
+    resolvedMaxNoPromptIterations = 20
+    resolvedNoPromptRetryWaitMs = 1000
+
+    On Error Resume Next
+    If Not IsEmpty(g_ProcessPromptSequenceTimeoutMsOverride) Then
+        resolvedSequenceTimeoutMs = CLng(g_ProcessPromptSequenceTimeoutMsOverride)
+        If Err.Number <> 0 Or resolvedSequenceTimeoutMs <= 0 Then
+            resolvedSequenceTimeoutMs = 30000
+            Err.Clear
+        End If
+    End If
+    If Not IsEmpty(g_ProcessPromptSequenceMaxNoPromptIterationsOverride) Then
+        resolvedMaxNoPromptIterations = CInt(g_ProcessPromptSequenceMaxNoPromptIterationsOverride)
+        If Err.Number <> 0 Or resolvedMaxNoPromptIterations <= 0 Then
+            resolvedMaxNoPromptIterations = 20
+            Err.Clear
+        End If
+    End If
+    If Not IsEmpty(g_ProcessPromptSequenceNoPromptRetryWaitMsOverride) Then
+        resolvedNoPromptRetryWaitMs = CLng(g_ProcessPromptSequenceNoPromptRetryWaitMsOverride)
+        If Err.Number <> 0 Or resolvedNoPromptRetryWaitMs <= 0 Then
+            resolvedNoPromptRetryWaitMs = 1000
+            Err.Clear
+        End If
+    End If
+    On Error GoTo 0
     
     ' DIAGNOSTIC: Log Timer behavior at start
     Call LogEvent("comm", "high", "ProcessPromptSequence started", "ProcessPromptSequence", "Timer diagnostics", "sequenceStartTime=" & sequenceStartTime & " (Now() at start)")
+    Call LogEvent("comm", "med", "ProcessPromptSequence retry policy", "ProcessPromptSequence", "timeoutMs=" & resolvedSequenceTimeoutMs & " maxNoPromptIterations=" & resolvedMaxNoPromptIterations, "noPromptRetryWaitMs=" & resolvedNoPromptRetryWaitMs)
     
     ' Initialize no-prompt counter for this sequence
     g_NoPromptCount = 0
@@ -466,9 +505,9 @@ Sub ProcessPromptSequence(prompts)
         timerElapsed = (currentTimer - sequenceStartTimer) 
         Call LogEvent("comm", "high", "TIMER vs CLOCK COMPARISON", "ProcessPromptSequence", "Timer elapsed: " & timerElapsed & " seconds", "Clock: " & currentTimerClock & " - " & sequenceStartClock)
         
-        If sequenceElapsed > 30000 Then ' 30-second timeout
-            Call LogEvent("crit", "low", "ProcessPromptSequence timed out after 30 seconds", "ProcessPromptSequence", "Automation stopped", "Now()=" & Now() & " sequenceStartTime=" & sequenceStartTime & " calculated=" & sequenceElapsed & "ms > 30000ms")
-            SafeMsg "ProcessPromptSequence timed out after 30 seconds.\nAutomation stopped.", True, "Sequence Timeout"
+        If sequenceElapsed > resolvedSequenceTimeoutMs Then
+            Call LogEvent("crit", "low", "ProcessPromptSequence timed out", "ProcessPromptSequence", "Automation stopped", "Now()=" & Now() & " sequenceStartTime=" & sequenceStartTime & " calculated=" & sequenceElapsed & "ms > " & resolvedSequenceTimeoutMs & "ms")
+            SafeMsg "ProcessPromptSequence timed out after " & Int(resolvedSequenceTimeoutMs / 1000) & " seconds." & vbCrLf & "Automation stopped.", True, "Sequence Timeout"
             g_ShouldAbort = True
             Exit Sub
         End If
@@ -757,14 +796,14 @@ Sub ProcessPromptSequence(prompts)
                 ' Track consecutive "no prompt" iterations to prevent infinite loops
                 g_NoPromptCount = g_NoPromptCount + 1
                 
-                If g_NoPromptCount > 20 Then ' Maximum 20 iterations of no prompt (5 seconds total)
+                If g_NoPromptCount > resolvedMaxNoPromptIterations Then
                     Call LogEvent("crit", "low", "Too many consecutive iterations with no prompt detected", "ProcessPromptSequence", "Possible infinite loop - aborting", "noPromptCount=" & g_NoPromptCount & " line=" & MainPromptLine & " text='" & mainPromptText & "'")
                     Call SafeMsg("Automation appears stuck - too many iterations with no prompt detected." & vbCrLf & "Line " & MainPromptLine & ": '" & mainPromptText & "'" & vbCrLf & "Stopping automation.", True, "Infinite Loop Detection")
                     g_ShouldAbort = True
                     finished = True
                 Else
-                    Call LogEvent("min", "med", "No prompt found - waiting and retrying", "ProcessPromptSequence", "Attempt " & g_NoPromptCount & " of 20", "line=" & MainPromptLine & " text='" & mainPromptText & "'")
-                    Call WaitMs(250)
+                    Call LogEvent("min", "med", "No prompt found - waiting and retrying", "ProcessPromptSequence", "Attempt " & g_NoPromptCount & " of " & resolvedMaxNoPromptIterations, "line=" & MainPromptLine & " text='" & mainPromptText & "' waitMs=" & resolvedNoPromptRetryWaitMs)
+                    Call WaitMs(resolvedNoPromptRetryWaitMs)
                 End If
             End If
         End If
@@ -3683,10 +3722,20 @@ Sub PerformFinalCloseout(callerName)
     Call LogInfo("Executing final closeout sequence with state machine", callerName)
     
     Dim closeoutPrompts
+    Dim closeoutSequenceTimeoutMs, closeoutMaxNoPromptIterations, closeoutNoPromptRetryWaitMs
     Set closeoutPrompts = CreateCloseoutPromptDictionary()
+    closeoutSequenceTimeoutMs = 120000
+    closeoutMaxNoPromptIterations = 20
+    closeoutNoPromptRetryWaitMs = 6000
+    Call LogEvent("comm", "med", "Using extended closeout retry window", callerName, "timeoutMs=" & closeoutSequenceTimeoutMs & " maxNoPromptIterations=" & closeoutMaxNoPromptIterations, "noPromptRetryWaitMs=" & closeoutNoPromptRetryWaitMs)
+
+    g_ProcessPromptSequenceTimeoutMsOverride = closeoutSequenceTimeoutMs
+    g_ProcessPromptSequenceMaxNoPromptIterationsOverride = closeoutMaxNoPromptIterations
+    g_ProcessPromptSequenceNoPromptRetryWaitMsOverride = closeoutNoPromptRetryWaitMs
     
     ' Process the entire closeout sequence using the state machine
     Call ProcessPromptSequence(closeoutPrompts)
+    Call ResetProcessPromptSequenceOverrides()
     
     lastRoResult = "Successfully filed"
     Call LogInfo("RO filed successfully - ready for downstream review", callerName)
