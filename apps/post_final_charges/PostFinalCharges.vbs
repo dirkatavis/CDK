@@ -51,6 +51,7 @@ Dim g_CloseoutConfirmDelayMs
 Dim g_ReviewedROCount
 Dim g_FiledROCount
 Dim g_BlacklistTermsRaw
+Dim g_CloseoutTriggers
 Dim g_SkipBlacklistCount
 Dim g_SkipStatusOpenCount
 Dim g_SkipStatusPreassignedCount
@@ -62,6 +63,7 @@ Dim g_SkipConfiguredCount
 Dim g_OverwriteLogOnStart
 Dim g_PreviousNormalizedRo
 Dim g_PreviousSequenceNumber
+Dim LEGACY_TRIGGER_LIST_PATH
 
 MainPromptLine = 23
 
@@ -92,6 +94,7 @@ LEGACY_CSV_PATH = GetConfigPath("PostFinalCharges", "CSV")
 LEGACY_LOG_PATH = GetConfigPath("PostFinalCharges", "Log")
 LEGACY_DIAG_LOG_PATH = GetConfigPath("PostFinalCharges", "DiagnosticLog")
 LEGACY_COMMONLIB_PATH = GetConfigPath("PostFinalCharges", "CommonLib")
+LEGACY_TRIGGER_LIST_PATH = GetConfigPath("PostFinalCharges", "TriggerList")
 
 
 
@@ -1037,6 +1040,70 @@ Function NormalizeRoIdentifier(rawValue)
 End Function
 
 '-----------------------------------------------------------------------------------
+' **FUNCTION NAME:** LoadCloseoutTriggers
+' **FUNCTIONALITY:**
+' Loads closeout trigger strings from a configured CSV/text file.
+' The file uses one trigger per line; blank lines and comment lines (# or ;) are ignored.
+' Fails fast if the configured file is missing or contains no usable triggers.
+'-----------------------------------------------------------------------------------
+Function LoadCloseoutTriggers(triggerListPath, ByRef triggerArray)
+    Dim fullPath, fileHandle, lineText, cleanedValue
+    Dim loadedCount
+
+    LoadCloseoutTriggers = False
+    ReDim triggerArray(-1)
+
+    triggerListPath = Trim(CStr(triggerListPath))
+    If Len(triggerListPath) = 0 Then
+        Call LogEvent("crit", "low", "TriggerList config missing", "LoadCloseoutTriggers", "PostFinalCharges.TriggerList", "Configure TriggerList in config.ini")
+        Exit Function
+    End If
+
+    If IsAbsolutePath(triggerListPath) Then
+        fullPath = triggerListPath
+    Else
+        fullPath = g_fso.BuildPath(GetRepoRoot(), triggerListPath)
+    End If
+
+    If Not g_fso.FileExists(fullPath) Then
+        Call LogEvent("crit", "low", "Configured TriggerList file not found", "LoadCloseoutTriggers", fullPath, "Check PostFinalCharges.TriggerList in config.ini")
+        Exit Function
+    End If
+
+    loadedCount = -1
+    Set fileHandle = g_fso.OpenTextFile(fullPath, 1)
+    Do While Not fileHandle.AtEndOfStream
+        lineText = Trim(CStr(fileHandle.ReadLine))
+
+        If Len(lineText) = 0 Then
+            ' ignore blank lines
+        ElseIf Left(lineText, 1) = "#" Or Left(lineText, 1) = ";" Then
+            ' ignore comment lines
+        Else
+            cleanedValue = lineText
+            If Left(cleanedValue, 1) = Chr(34) And Right(cleanedValue, 1) = Chr(34) And Len(cleanedValue) >= 2 Then
+                cleanedValue = Mid(cleanedValue, 2, Len(cleanedValue) - 2)
+            End If
+
+            If Len(Trim(CStr(cleanedValue))) > 0 Then
+                loadedCount = loadedCount + 1
+                ReDim Preserve triggerArray(loadedCount)
+                triggerArray(loadedCount) = cleanedValue
+            End If
+        End If
+    Loop
+    fileHandle.Close
+
+    If loadedCount < 0 Then
+        Call LogEvent("crit", "low", "Configured TriggerList is empty", "LoadCloseoutTriggers", fullPath, "Add at least one trigger entry")
+        Exit Function
+    End If
+
+    Call LogEvent("comm", "med", "Loaded closeout triggers", "LoadCloseoutTriggers", "Count: " & (UBound(triggerArray) + 1), "Source: " & triggerListPath)
+    LoadCloseoutTriggers = True
+End Function
+
+'-----------------------------------------------------------------------------------
 ' **FUNCTION NAME:** LoadSkipRoLookup
 ' **FUNCTIONALITY:**
 ' Loads RO numbers from one or more configured CSV files into a dictionary.
@@ -1810,6 +1877,9 @@ Sub InitializeConfig()
     On Error GoTo 0
 
     g_BlacklistTermsRaw = GetIniSetting("PostFinalCharges", "blacklist_terms", "")
+    If Not LoadCloseoutTriggers(GetConfigPath("PostFinalCharges", "TriggerList"), g_CloseoutTriggers) Then
+        g_ShouldAbort = True
+    End If
     g_SkipRoListRaw = GetIniSetting("PostFinalCharges", "SkipRoList", "")
     Set g_SkipRoLookup = CreateObject("Scripting.Dictionary")
     If Not LoadSkipRoLookup(g_SkipRoListRaw, g_SkipRoLookup) Then
@@ -3804,21 +3874,21 @@ End Sub
 Function FindTrigger()
     Call LogEvent("comm", "high", "FindTrigger starting", "FindTrigger", "Scanning for closeout triggers", "")
     
-    Dim triggers, i, candidate
-    ' Add or remove entries in this array as needed.
-    triggers = Array( _
-    "CHECK AND ADJUST TIRE PRESSURE", _
-    "REPLACE TIRE SENSOR", _
-    "PM CHANGE OIL & FILTER", _
-    "PMS PERFORMED ON LOT", _
-    "LABOR POSTED", _
-    "CHECK ENGINE LIGHT", _
-    "TIRE ROTATION", _
-    "MILEAGE IN" _
-    )
+    Dim i, candidate
+
+    If Not IsArray(g_CloseoutTriggers) Then
+        Call LogEvent("crit", "low", "Closeout triggers not initialized", "FindTrigger", "g_CloseoutTriggers is not an array", "InitializeConfig should load TriggerList")
+        FindTrigger = ""
+        Exit Function
+    End If
+    If UBound(g_CloseoutTriggers) < LBound(g_CloseoutTriggers) Then
+        Call LogEvent("crit", "low", "Closeout triggers list empty at runtime", "FindTrigger", "g_CloseoutTriggers", "Check TriggerList configuration")
+        FindTrigger = ""
+        Exit Function
+    End If
     
-    For i = LBound(triggers) To UBound(triggers)
-        candidate = triggers(i)
+    For i = LBound(g_CloseoutTriggers) To UBound(g_CloseoutTriggers)
+        candidate = g_CloseoutTriggers(i)
         Call LogEvent("comm", "max", "Checking trigger", "FindTrigger", "'" & candidate & "'", "")
         If IsTextPresent(candidate) Then
             Call LogEvent("comm", "med", "Trigger found", "FindTrigger", "'" & candidate & "'", "")
@@ -3827,7 +3897,7 @@ Function FindTrigger()
         End If
     Next
     
-    Call LogEvent("comm", "med", "No triggers found", "FindTrigger", "Checked " & (UBound(triggers) - LBound(triggers) + 1) & " triggers", "")
+    Call LogEvent("comm", "med", "No triggers found", "FindTrigger", "Checked " & (UBound(g_CloseoutTriggers) - LBound(g_CloseoutTriggers) + 1) & " triggers", "")
     FindTrigger = ""
 End Function
 

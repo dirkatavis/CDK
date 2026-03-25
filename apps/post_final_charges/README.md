@@ -8,6 +8,7 @@ Advanced automation for posting final charges to Repair Orders using a state mac
 
 ## Input Files
 - `CashoutRoList.csv` - List of ROs to process with charge details
+- `CloseoutTriggers.csv` - One closeout trigger phrase per line; editable list used by `FindTrigger()`
 
 ## Output/Logs
 - Input/output/log locations are defined in `config/config.ini` (`[PostFinalCharges]` section).
@@ -29,6 +30,7 @@ Recommended usage:
 
 ## Supporting Files
 - `CommonLib.vbs` - Shared helper functions and prompt detection logic
+- `CloseoutTriggers.csv` - Screen phrases that qualify an RO for trigger-based closeout
 
 ## Usage
 ```cmd
