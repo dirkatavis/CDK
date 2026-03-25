@@ -98,6 +98,9 @@ Sub Main()
     ' Test 13: SkipRoList runtime wiring regression
     RunTest "SkipRoList Runtime Regression", "cscript.exe test_skip_ro_list_runtime_regression.vbs"
 
+    ' Test 14: TriggerList runtime wiring regression
+    RunTest "TriggerList Runtime Regression", "cscript.exe test_trigger_list_runtime_regression.vbs"
+
     ' Summary
     WScript.Echo ""
     WScript.Echo "=== Test Results Summary ==="
