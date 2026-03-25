@@ -64,6 +64,10 @@ Dim g_OverwriteLogOnStart
 Dim g_PreviousNormalizedRo
 Dim g_PreviousSequenceNumber
 Dim LEGACY_TRIGGER_LIST_PATH
+Dim g_OlderRoThresholdDays
+Dim g_OlderRoStatuses
+Dim g_OlderRoFiledCount
+Dim g_OlderRoAttemptCount
 
 MainPromptLine = 23
 
@@ -1484,6 +1488,8 @@ Sub RunMainProcess()
             summaryMsg = "DONE" & vbCrLf & _
                 "ROs Reviewed: " & g_ReviewedROCount & vbCrLf & _
                 "ROs Posted: " & g_FiledROCount & vbCrLf & _
+                "Older ROs Attempted: " & g_OlderRoAttemptCount & vbCrLf & _
+                "Older ROs Posted: " & g_OlderRoFiledCount & vbCrLf & _
                 "Skips - Specific ROs: " & g_SkipConfiguredCount & vbCrLf & _
                 "Skips - Other Terms: " & g_SkipBlacklistCount & vbCrLf & _
                 "Skips - Open: " & g_SkipStatusOpenCount & vbCrLf & _
@@ -1888,6 +1894,24 @@ Sub InitializeConfig()
 
     g_EnableDiagnosticLogging = False
     DIAGNOSTIC_LOG_PATH = GetConfigPath("PostFinalCharges", "DiagnosticLog")
+
+    Dim olderRoThresholdValue
+    olderRoThresholdValue = GetIniSetting("PostFinalCharges", "OlderRoThresholdDays", "30")
+    On Error Resume Next
+    g_OlderRoThresholdDays = CInt(olderRoThresholdValue)
+    If Err.Number <> 0 Or g_OlderRoThresholdDays < 0 Then
+        g_OlderRoThresholdDays = 30
+        Err.Clear
+    End If
+    On Error GoTo 0
+    Dim olderRoStatusesRaw, olderStatusArr, si
+    olderRoStatusesRaw = GetIniSetting("PostFinalCharges", "OlderRoStatuses", "OPENED,OPEN")
+    olderStatusArr = Split(olderRoStatusesRaw, ",")
+    For si = 0 To UBound(olderStatusArr)
+        olderStatusArr(si) = UCase(Trim(olderStatusArr(si)))
+    Next
+    g_OlderRoStatuses = olderStatusArr
+    Call LogEvent("comm", "high", "Older RO threshold configured", "InitializeConfig", "Days: " & g_OlderRoThresholdDays & " Statuses: " & olderRoStatusesRaw, "")
 End Sub
 
 Sub ApplyLogStartupMode()
@@ -2074,6 +2098,8 @@ Sub ProcessRONumbers()
     g_SkipStatusPreassignedCount = 0
     g_SkipStatusOtherCount = 0
     g_SkipConfiguredCount = 0
+    g_OlderRoAttemptCount = 0
+    g_OlderRoFiledCount = 0
     Set g_SkipOtherStates = CreateObject("Scripting.Dictionary")
     g_PreviousNormalizedRo = ""
     g_PreviousSequenceNumber = ""
@@ -2383,7 +2409,27 @@ Sub Main(roNumber)
 
     ' After opening an RO, ensure it has the expected READY TO POST status.
     If Not IsStatusReady() Then
-        ' Call LogCore("RO STATUS not READY TO POST - exiting (E) and moving to next", "Main") ' Redundant, removed
+        ' Secondary gate: check if this is an older RO with an eligible status for closeout
+        Dim normalizedSkipStatus
+        normalizedSkipStatus = UCase(Trim(CStr(g_LastScrapedStatus)))
+        If IsOlderRoEligibleStatus(normalizedSkipStatus) And IsOlderRo() Then
+            g_OlderRoAttemptCount = g_OlderRoAttemptCount + 1
+            ' Undo the skip counter that IsStatusReady() already incremented,
+            ' since this RO will be processed (not skipped).
+            Select Case normalizedSkipStatus
+                Case "OPEN", "OPENED"
+                    g_SkipStatusOpenCount = g_SkipStatusOpenCount - 1
+                Case "PREASSIGNED", "PRE-ASSIGNED"
+                    g_SkipStatusPreassignedCount = g_SkipStatusPreassignedCount - 1
+            End Select
+            Call LogEvent("comm", "med", "Older RO qualifies for closeout", "Main", "Status: " & g_LastScrapedStatus & " RO: " & currentRODisplay, "")
+            Call Closeout_Ro(g_LastScrapedStatus)
+            If InStr(1, lastRoResult, "Successfully filed", vbTextCompare) > 0 Then
+                g_OlderRoFiledCount = g_OlderRoFiledCount + 1
+            End If
+            Exit Sub
+        End If
+
         Call FastText("E")
         Call FastKey("<NumpadEnter>")
         ' Wait for the command prompt to return to ensure we are in a known state
@@ -3252,6 +3298,200 @@ Function GetRepairOrderStatus()
 End Function
 
 
+'-----------------------------------------------------------------------------------
+' **FUNCTION NAME:** GetOpenedDate
+' **DATE CREATED:** 2026-03-25
+' **AUTHOR:** GitHub Copilot
+'
+' **FUNCTIONALITY:**
+' Reads the OPENED DATE field from the PFC screen (row 4) and returns the raw
+' date string in CDK DDMMMYY format (e.g. "04FEB26"). Returns empty string on
+' failure or if the prefix is not found.
+'-----------------------------------------------------------------------------------
+Function GetOpenedDate()
+    On Error Resume Next
+    If bzhao Is Nothing Then
+        Call LogEvent("min", "med", "GetOpenedDate: bzhao object not available", "GetOpenedDate", "", "")
+        GetOpenedDate = ""
+        Exit Function
+    End If
+
+    ' Read rows 1-6 (480 chars) to capture the OPENED DATE field regardless of exact row
+    Dim buf
+    bzhao.ReadScreen buf, 480, 1, 1
+    If Err.Number <> 0 Then
+        Call LogEvent("min", "med", "GetOpenedDate: ReadScreen failed", "GetOpenedDate", Err.Description, "")
+        Err.Clear
+        GetOpenedDate = ""
+        On Error GoTo 0
+        Exit Function
+    End If
+    On Error GoTo 0
+
+    Call LogEvent("comm", "max", "GetOpenedDate - raw buffer", "GetOpenedDate", "'" & Replace(buf, vbCrLf, " ") & "'", "")
+
+    ' Use regex to extract date token in either DDMMMYY or M/D/YY format
+    Dim regEx, matches
+    Set regEx = CreateObject("VBScript.RegExp")
+    regEx.IgnoreCase = True
+    regEx.Global = False
+    regEx.Pattern = "OPENED DATE:\s*(\d{1,2}[A-Z]{3}\d{2,4}|\d{1,2}/\d{1,2}/\d{2,4})"
+
+    If regEx.Test(buf) Then
+        Set matches = regEx.Execute(buf)
+        GetOpenedDate = Trim(matches(0).SubMatches(0))
+        Call LogEvent("comm", "high", "GetOpenedDate - parsed date", "GetOpenedDate", "'" & GetOpenedDate & "'", "")
+    Else
+        GetOpenedDate = ""
+    End If
+End Function
+
+
+'-----------------------------------------------------------------------------------
+' **FUNCTION NAME:** ParseCdkDate
+' **DATE CREATED:** 2026-03-25
+' **AUTHOR:** GitHub Copilot
+'
+' **FUNCTIONALITY:**
+' Parses a CDK date string in DDMMMYY format (e.g. "04FEB26") or slash format
+' (e.g. "01/20/26") into a VBScript Date value. Returns Empty if the input
+' cannot be parsed.
+'-----------------------------------------------------------------------------------
+Function ParseCdkDate(dateStr)
+    ParseCdkDate = Empty
+    Dim cleaned
+    cleaned = Trim(dateStr)
+    If Len(cleaned) = 0 Then Exit Function
+
+    ' Handle slash format (e.g. "01/20/26", "1/5/26") via VBScript CDate
+    If InStr(cleaned, "/") > 0 Then
+        On Error Resume Next
+        If IsDate(cleaned) Then
+            ParseCdkDate = CDate(cleaned)
+        End If
+        Err.Clear
+        On Error GoTo 0
+        Exit Function
+    End If
+
+    ' Handle DDMMMYY / DDMMMYYYY format (e.g. "04FEB26", "04FEB2026")
+    If Len(cleaned) < 7 Then Exit Function
+    cleaned = UCase(cleaned)
+
+    Dim dayPart, monthPart, yearPart
+    dayPart = Left(cleaned, 2)
+    monthPart = Mid(cleaned, 3, 3)
+    yearPart = Mid(cleaned, 6)
+
+    Dim monthNum
+    Select Case monthPart
+        Case "JAN": monthNum = 1
+        Case "FEB": monthNum = 2
+        Case "MAR": monthNum = 3
+        Case "APR": monthNum = 4
+        Case "MAY": monthNum = 5
+        Case "JUN": monthNum = 6
+        Case "JUL": monthNum = 7
+        Case "AUG": monthNum = 8
+        Case "SEP": monthNum = 9
+        Case "OCT": monthNum = 10
+        Case "NOV": monthNum = 11
+        Case "DEC": monthNum = 12
+        Case Else: Exit Function
+    End Select
+
+    On Error Resume Next
+    Dim dayNum, yearNum
+    dayNum = CInt(dayPart)
+    yearNum = CInt(yearPart)
+    If Err.Number <> 0 Then
+        Err.Clear
+        On Error GoTo 0
+        Exit Function
+    End If
+    On Error GoTo 0
+    If Len(yearPart) = 2 Then
+        If yearNum >= 70 Then
+            yearNum = 1900 + yearNum
+        Else
+            yearNum = 2000 + yearNum
+        End If
+    End If
+
+    On Error Resume Next
+    ParseCdkDate = DateSerial(yearNum, monthNum, dayNum)
+    If Err.Number <> 0 Then
+        Err.Clear
+        ParseCdkDate = Empty
+    End If
+    On Error GoTo 0
+End Function
+
+
+'-----------------------------------------------------------------------------------
+' **FUNCTION NAME:** IsOlderRo
+' **DATE CREATED:** 2026-03-25
+' **AUTHOR:** GitHub Copilot
+'
+' **FUNCTIONALITY:**
+' Determines if the current RO on screen qualifies as an "older" RO by comparing
+' the OPENED DATE to today. Returns True if the RO has been open for at least
+' g_OlderRoThresholdDays days. Returns False on parse failure or if below threshold.
+'-----------------------------------------------------------------------------------
+Function IsOlderRo()
+    IsOlderRo = False
+
+    If g_OlderRoThresholdDays <= 0 Then
+        Call LogEvent("comm", "high", "Older RO check disabled (threshold=0)", "IsOlderRo", "", "")
+        Exit Function
+    End If
+
+    Dim rawDate, openedDate, ageDays
+    rawDate = GetOpenedDate()
+    If Len(Trim(rawDate)) = 0 Then
+        Call LogEvent("min", "med", "Cannot determine RO age - OPENED DATE not found", "IsOlderRo", "", "")
+        Exit Function
+    End If
+
+    openedDate = ParseCdkDate(rawDate)
+    If IsEmpty(openedDate) Then
+        Call LogEvent("min", "med", "Cannot determine RO age - date parse failed", "IsOlderRo", "Raw: '" & rawDate & "'", "")
+        Exit Function
+    End If
+
+    ageDays = DateDiff("d", openedDate, Now())
+    Call LogEvent("comm", "high", "RO age calculated", "IsOlderRo", "Opened: " & rawDate & " Age: " & ageDays & " days (threshold: " & g_OlderRoThresholdDays & ")", "")
+
+    If ageDays >= g_OlderRoThresholdDays Then
+        IsOlderRo = True
+    End If
+End Function
+
+
+'-----------------------------------------------------------------------------------
+' **FUNCTION NAME:** IsOlderRoEligibleStatus
+' **DATE CREATED:** 2026-03-25
+' **AUTHOR:** GitHub Copilot
+'
+' **FUNCTIONALITY:**
+' Checks whether a given RO status is in the config-driven list of statuses
+' eligible for age-based closeout (g_OlderRoStatuses from config.ini).
+' Returns True if the status is eligible, False otherwise.
+'-----------------------------------------------------------------------------------
+Function IsOlderRoEligibleStatus(statusToCheck)
+    IsOlderRoEligibleStatus = False
+    If Not IsArray(g_OlderRoStatuses) Then Exit Function
+
+    Dim normalized, i
+    normalized = UCase(Trim(statusToCheck))
+    For i = 0 To UBound(g_OlderRoStatuses)
+        If normalized = g_OlderRoStatuses(i) Then
+            IsOlderRoEligibleStatus = True
+            Exit Function
+        End If
+    Next
+End Function
+
 
 '-----------------------------------------------------------------------------------
 ' **FUNCTION NAME:** WaitForTextSilent
@@ -3473,9 +3713,9 @@ Sub Closeout_Ro(roStatus)
         Select Case UCase(Trim(roStatus))
             Case "READY TO POST"
                 Call Closeout_ReadyToPost()
-            Case "PREASSIGNED"
+            Case "PREASSIGNED", "PRE-ASSIGNED"
                 Call Closeout_Preassigned()
-            Case "OPENED"
+            Case "OPENED", "OPEN"
                 Call Closeout_Open()
             Case Else
                 ' Default/fallback closeout for unknown statuses
