@@ -101,6 +101,9 @@ Sub Main()
     ' Test 14: TriggerList runtime wiring regression
     RunTest "TriggerList Runtime Regression", "cscript.exe test_trigger_list_runtime_regression.vbs"
 
+    ' Test 15: Older RO close feature tests
+    RunTest "Older RO Close Tests", "cscript.exe test_older_ro_close.vbs"
+
     ' Summary
     WScript.Echo ""
     WScript.Echo "=== Test Results Summary ==="

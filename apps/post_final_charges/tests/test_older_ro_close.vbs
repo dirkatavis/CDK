@@ -249,39 +249,43 @@ WScript.Echo "=== Age Calculation Logic ==="
 Dim threshold
 threshold = 30
 
+' Single reference date for all age tests (avoids midnight-crossing non-determinism)
+Dim refDate
+refDate = Date()
+
 ' Test 16: RO opened 45 days ago qualifies
 Dim oldDate
-oldDate = DateAdd("d", -45, Now())
+oldDate = DateAdd("d", -45, refDate)
 Dim oldDateAge
-oldDateAge = DateDiff("d", oldDate, Now())
+oldDateAge = DateDiff("d", oldDate, refDate)
 AssertTrue "45-day-old RO >= 30 threshold", (oldDateAge >= threshold)
 
 ' Test 17: RO opened 30 days ago qualifies (boundary)
 Dim boundaryDate
-boundaryDate = DateAdd("d", -30, Now())
+boundaryDate = DateAdd("d", -30, refDate)
 Dim boundaryAge
-boundaryAge = DateDiff("d", boundaryDate, Now())
+boundaryAge = DateDiff("d", boundaryDate, refDate)
 AssertTrue "30-day-old RO >= 30 threshold (boundary)", (boundaryAge >= threshold)
 
 ' Test 18: RO opened 29 days ago does NOT qualify
 Dim recentDate
-recentDate = DateAdd("d", -29, Now())
+recentDate = DateAdd("d", -29, refDate)
 Dim recentAge
-recentAge = DateDiff("d", recentDate, Now())
+recentAge = DateDiff("d", recentDate, refDate)
 AssertFalse "29-day-old RO < 30 threshold", (recentAge >= threshold)
 
 ' Test 19: RO opened today does NOT qualify
 Dim todayDate
-todayDate = Now()
+todayDate = refDate
 Dim todayAge
-todayAge = DateDiff("d", todayDate, Now())
+todayAge = DateDiff("d", todayDate, refDate)
 AssertFalse "0-day-old RO < 30 threshold", (todayAge >= threshold)
 
 ' Test 20: RO opened 365 days ago qualifies
 Dim veryOldDate
-veryOldDate = DateAdd("d", -365, Now())
+veryOldDate = DateAdd("d", -365, refDate)
 Dim veryOldAge
-veryOldAge = DateDiff("d", veryOldDate, Now())
+veryOldAge = DateDiff("d", veryOldDate, refDate)
 AssertTrue "365-day-old RO >= 30 threshold", (veryOldAge >= threshold)
 
 ' Test 21: Threshold = 0 disables feature
@@ -297,14 +301,17 @@ AssertFalse "Threshold 0 disables (age > 0 but threshold <= 0 check)", (zeroThre
 WScript.Echo ""
 WScript.Echo "=== Full Pipeline: Parse + Age ==="
 
-' Test 22: Parse the screenshot date (04FEB26) and calculate age from today (25MAR26)
+' Test 22: Parse the screenshot date (04FEB26) and calculate age against a fixed reference
 Dim screenDate
 screenDate = ParseCdkDate("04FEB26")
 If Not IsEmpty(screenDate) Then
+    ' Use a fixed reference date so the assertion is deterministic
+    Dim fixedRef
+    fixedRef = DateSerial(2026, 3, 25)  ' 25MAR26
     Dim screenAge
-    screenAge = DateDiff("d", screenDate, Now())
+    screenAge = DateDiff("d", screenDate, fixedRef)
     ' 04FEB26 to 25MAR26 = 49 days
-    AssertTrue "04FEB26 is >= 30 days old as of today", (screenAge >= 30)
+    AssertTrue "04FEB26 is >= 30 days old as of 25MAR26", (screenAge >= 30)
     AssertEqual "04FEB26 to 25MAR26 = 49 days", "49", CStr(screenAge)
 Else
     g_TestCount = g_TestCount + 2
@@ -317,14 +324,14 @@ Dim yesterdayStr, yesterdayParsed, yesterdayCalcAge
 Dim dayStr, monthStr, yearStr, monthNames
 monthNames = Array("", "JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC")
 Dim yesterday
-yesterday = DateAdd("d", -1, Now())
+yesterday = DateAdd("d", -1, refDate)
 dayStr = Right("0" & Day(yesterday), 2)
 monthStr = monthNames(Month(yesterday))
 yearStr = Right("0" & (Year(yesterday) - 2000), 2)
 yesterdayStr = dayStr & monthStr & yearStr
 yesterdayParsed = ParseCdkDate(yesterdayStr)
 If Not IsEmpty(yesterdayParsed) Then
-    yesterdayCalcAge = DateDiff("d", yesterdayParsed, Now())
+    yesterdayCalcAge = DateDiff("d", yesterdayParsed, refDate)
     AssertEqual "Yesterday formatted and parsed back = 1 day age", "1", CStr(yesterdayCalcAge)
 Else
     g_TestCount = g_TestCount + 1

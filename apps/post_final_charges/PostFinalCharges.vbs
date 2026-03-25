@@ -2414,6 +2414,14 @@ Sub Main(roNumber)
         normalizedSkipStatus = UCase(Trim(CStr(g_LastScrapedStatus)))
         If IsOlderRoEligibleStatus(normalizedSkipStatus) And IsOlderRo() Then
             g_OlderRoAttemptCount = g_OlderRoAttemptCount + 1
+            ' Undo the skip counter that IsStatusReady() already incremented,
+            ' since this RO will be processed (not skipped).
+            Select Case normalizedSkipStatus
+                Case "OPEN", "OPENED"
+                    g_SkipStatusOpenCount = g_SkipStatusOpenCount - 1
+                Case "PREASSIGNED", "PRE-ASSIGNED"
+                    g_SkipStatusPreassignedCount = g_SkipStatusPreassignedCount - 1
+            End Select
             Call LogEvent("comm", "med", "Older RO qualifies for closeout", "Main", "Status: " & g_LastScrapedStatus & " RO: " & currentRODisplay, "")
             Call Closeout_Ro(g_LastScrapedStatus)
             If InStr(1, lastRoResult, "Successfully filed", vbTextCompare) > 0 Then
@@ -3705,9 +3713,9 @@ Sub Closeout_Ro(roStatus)
         Select Case UCase(Trim(roStatus))
             Case "READY TO POST"
                 Call Closeout_ReadyToPost()
-            Case "PREASSIGNED"
+            Case "PREASSIGNED", "PRE-ASSIGNED"
                 Call Closeout_Preassigned()
-            Case "OPENED"
+            Case "OPENED", "OPEN"
                 Call Closeout_Open()
             Case Else
                 ' Default/fallback closeout for unknown statuses
