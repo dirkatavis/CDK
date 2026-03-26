@@ -4,25 +4,33 @@
 '          exact positions of data fields in the terminal.
 '=====================================================================================
 
-Dim bzhao: Set bzhao = CreateObject("BZWhll.WhllObj")
-Dim fso: Set fso = CreateObject("Scripting.FileSystemObject")
-Dim rowToRead: rowToRead = 4 ' The row where OPEN DATE is expected
+Call Main()
 
-On Error Resume Next
-bzhao.Connect ""
-If Err.Number <> 0 Then
-    MsgBox "Failed to connect to BlueZone terminal session.", vbCritical
-Else
-' --- Load PathHelper for centralized path management ---
-' This bootstrap handles the "No WScript" host environment in BlueZone
-Dim sh_bs, base_bs, helper_path_bs
-Set sh_bs = CreateObject("WScript.Shell")
-base_bs = sh_bs.ExpandEnvironmentStrings("%CDK_BASE%")
-If base_bs = "%CDK_BASE%" Then base_bs = sh_bs.Environment("USER")("CDK_BASE")
+Sub Main()
+    Dim bzhao: Set bzhao = CreateObject("BZWhll.WhllObj")
+    Dim fso: Set fso = CreateObject("Scripting.FileSystemObject")
+    Dim rowToRead: rowToRead = 4 ' The row where OPEN DATE is expected
 
-If base_bs = "" Then
-    MsgBox "CDK_BASE environment variable not set. Please run setup_cdk_base.vbs.", 16, "Error"
-Else
+    On Error Resume Next
+    bzhao.Connect ""
+    If Err.Number <> 0 Then
+        MsgBox "Failed to connect to BlueZone terminal session.", vbCritical
+        Exit Sub
+    End If
+    On Error GoTo 0
+
+    ' --- Load PathHelper for centralized path management ---
+    ' This bootstrap handles the "No WScript" host environment in BlueZone
+    Dim sh_bs, base_bs, helper_path_bs
+    Set sh_bs = CreateObject("WScript.Shell")
+    base_bs = sh_bs.ExpandEnvironmentStrings("%CDK_BASE%")
+    If base_bs = "%CDK_BASE%" Then base_bs = sh_bs.Environment("USER")("CDK_BASE")
+
+    If base_bs = "" Then
+        MsgBox "CDK_BASE environment variable not set. Please run setup_cdk_base.vbs.", 16, "Error"
+        Exit Sub
+    End If
+
     helper_path_bs = fso.BuildPath(base_bs, "framework\PathHelper.vbs")
     If Not fso.FileExists(helper_path_bs) Then
         MsgBox "ERROR: Cannot find PathHelper.vbs at: " & helper_path_bs, 16, "Validation Error"
@@ -52,13 +60,13 @@ Else
         bzhao.ReadScreen line, 80, row, 1
         result = result & "R" & row & " | " & line & vbCrLf
     Next
-    
+
     result = result & "     " & header3
 
     ' Generate output file using PathHelper and config.ini
     Dim filePath
     filePath = GetConfigPath("Coordinate_Finder", "Output")
-    
+
     Dim ts
     Set ts = fso.CreateTextFile(filePath, True)
     ts.Write result
@@ -66,5 +74,4 @@ Else
 
     MsgBox "Terminal coordinates captured for Row " & rowToRead & "." & vbCrLf & _
            "Path: " & filePath, vbInformation, "Capture Complete"
-End If
-End If
+End Sub
