@@ -114,6 +114,21 @@ cscript tests\test_hardcoded_paths_comprehensive.vbs
 cscript apps\post_final_charges\tests\run_default_value_tests.vbs
 ```
 
+## PR Description — Feature Enumeration (Required)
+
+Every PR description **must include an explicit list of all features and behaviors introduced by the change.** This is the primary defense against incomplete implementations.
+
+**Rule:** If a feature is not listed in the PR description, it will never be caught as missing during review. If it is listed but absent from the diff, a reviewer can flag it before merge.
+
+Each listed feature must be specific enough to verify in the diff. Examples of good entries:
+- "WCH ROs are skipped before closeout"
+- "Session summary dialog shows `Skips - Warranty (WCH): N`"
+- "`g_SkipWarrantyCount` declared globally and initialized to 0 per run"
+
+Vague entries like "adds warranty support" are not acceptable — they cannot be verified against the diff.
+
+This rule applies to all contributors, including AI assistants generating PR bodies.
+
 ## Example PR Checklist
 
 - [ ] Branch created from `upstream/main`
@@ -122,6 +137,7 @@ cscript apps\post_final_charges\tests\run_default_value_tests.vbs
 - [ ] Tests pass locally (10+/11 expected)
 - [ ] PR created **from your fork to upstream** (not fork to fork)
 - [ ] PR description includes related GitHub issue(s)
+- [ ] PR description enumerates **all features and behaviors** introduced (see above)
 - [ ] Code follows existing patterns and conventions
 
 ## Questions?

@@ -121,7 +121,9 @@ Sub Main(mva, mileage)
     ' Skip if no matching vehicle - check but don't enter anything
     If IsTextPresent("No matching") Then Exit Sub
 
-
+    '==== INPUT POINT 1B: SEQUENCE NUMBER SELECTION ====
+    ' Handles "CHOOSE ONE" or "SEQUENCE NUMBER" prompt - select option #1
+    Call WaitForPrompt("CHOOSE ONE|SEQUENCE NUMBER", "1", true, PROMPT_TIMEOUT_MS)
 
     '==== INPUT POINT 2: BEFORE ENTERING COMMAND SELECTION ====
     ' NEED TO IDENTIFY: What menu/prompt shows before selecting command?
