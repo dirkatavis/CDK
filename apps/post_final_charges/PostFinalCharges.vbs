@@ -60,6 +60,7 @@ Dim g_SkipOtherStates
 Dim g_SkipRoListRaw
 Dim g_SkipRoLookup
 Dim g_SkipConfiguredCount
+Dim g_SkipWarrantyCount
 Dim g_OverwriteLogOnStart
 Dim g_PreviousNormalizedRo
 Dim g_PreviousSequenceNumber
@@ -2098,6 +2099,7 @@ Sub ProcessRONumbers()
     g_SkipStatusPreassignedCount = 0
     g_SkipStatusOtherCount = 0
     g_SkipConfiguredCount = 0
+    g_SkipWarrantyCount = 0
     g_OlderRoAttemptCount = 0
     g_OlderRoFiledCount = 0
     Set g_SkipOtherStates = CreateObject("Scripting.Dictionary")
@@ -2378,6 +2380,19 @@ Sub Main(roNumber)
         Call FastKey("<NumpadEnter>")
         Call WaitForPrompt("COMMAND:", "", False, 5000, "")
         lastRoResult = "Skipped - Configured RO skip list"
+        Exit Sub
+    End If
+
+    ' --- WARRANTY SKIP GATE ---
+    ' Allow 1000ms for RO detail lines (including LTYPE) to fully render before scanning.
+    Call WaitMs(1000)
+    If IsTextPresent("WCH") Then
+        g_SkipWarrantyCount = g_SkipWarrantyCount + 1
+        Call LogEvent("comm", "med", "Warranty labor type detected - skipping RO", "Main", "WCH found on RO: " & currentRODisplay, "")
+        Call FastText("E")
+        Call FastKey("<NumpadEnter>")
+        Call WaitForPrompt("COMMAND:", "", False, 5000, "")
+        lastRoResult = "Skipped - WCH labor type"
         Exit Sub
     End If
 
