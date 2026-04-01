@@ -104,6 +104,9 @@ Sub Main()
     ' Test 15: Older RO close feature tests
     RunTest "Older RO Close Tests", "cscript.exe test_older_ro_close.vbs"
 
+    ' Test 16: WCH skip counter runtime wiring regression
+    RunTest "WCH Skip Counter Runtime Regression", "cscript.exe test_wch_skip_counter_runtime_regression.vbs"
+
     ' Summary
     WScript.Echo ""
     WScript.Echo "=== Test Results Summary ==="

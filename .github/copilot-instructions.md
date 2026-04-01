@@ -27,6 +27,9 @@
 - Ignore nits (style, naming, minor readability), performance tuning, and non-critical hardening.
 - Flag only: critical bugs (failure/data corruption risk), important business-logic errors, breaking changes.
 
+## Pull Request — Feature Enumeration (Non-Negotiable)
+Every PR body you write must include an explicit, verifiable list of **all features and behaviors** introduced by the change — not just the primary mechanism. Each entry must be specific enough to locate in the diff (e.g., "session summary shows `Skips - Warranty (WCH): N`", not "adds warranty support"). If a feature is not listed, it will never be caught as missing at review.
+
 ## Pull Request Workflow
 - `gh` CLI is **not installed** on this machine. Do not use it.
 - To open or update a PR, use `tools/upsert_pr_with_body.ps1` — it calls the GitHub REST API using the same credentials already stored for `git push` (no browser, no manual auth).

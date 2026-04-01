@@ -1492,6 +1492,7 @@ Sub RunMainProcess()
                 "Older ROs Attempted: " & g_OlderRoAttemptCount & vbCrLf & _
                 "Older ROs Posted: " & g_OlderRoFiledCount & vbCrLf & _
                 "Skips - Specific ROs: " & g_SkipConfiguredCount & vbCrLf & _
+                "Skips - Warranty (WCH): " & g_SkipWarrantyCount & vbCrLf & _
                 "Skips - Other Terms: " & g_SkipBlacklistCount & vbCrLf & _
                 "Skips - Open: " & g_SkipStatusOpenCount & vbCrLf & _
                 "Skips - Pre-Assigned: " & g_SkipStatusPreassignedCount & vbCrLf & _
