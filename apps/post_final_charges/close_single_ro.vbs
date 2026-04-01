@@ -10,7 +10,7 @@ Sub Main()
     bzhao.Connect ""
 
     ' 1. Ensure at COMMAND: prompt on the RO detail screen
-    WaitForTextAtBottom "COMMAND:"
+    If Not WaitForTextAtBottom("COMMAND:") Then Exit Sub
 
     ' 2. Review phase: execute R A, R B, R C sequence before issuing Final Charge
     If Not ExecuteReviewSequence() Then
@@ -18,32 +18,32 @@ Sub Main()
     End If
 
     ' 3. FC command (Final Charge) — only after all reviews pass
-    WaitForTextAtBottom "COMMAND:"
+    If Not WaitForTextAtBottom("COMMAND:") Then Exit Sub
     EnterTextAndWait "FC"
     bzhao.Pause 1000
 
     ' 4. ALL LABOR POSTED prompt
-    WaitForTextAtBottom "ALL LABOR POSTED"
+    If Not WaitForTextAtBottom("ALL LABOR POSTED") Then Exit Sub
     EnterTextAndWait "Y"
     bzhao.Pause 1000
 
     ' 5. MILEAGE OUT prompt (accept default)
-    WaitForTextAtBottom "MILEAGE OUT"
+    If Not WaitForTextAtBottom("MILEAGE OUT") Then Exit Sub
     EnterTextAndWait ""
     bzhao.Pause 1000
 
     ' 6. MILEAGE IN prompt
-    WaitForTextAtBottom "MILEAGE IN"
+    If Not WaitForTextAtBottom("MILEAGE IN") Then Exit Sub
     EnterTextAndWait ""
     bzhao.Pause 1000
 
     ' 7. OK TO CLOSE prompt
-    WaitForTextAtBottom "O.K. TO CLOSE RO"
+    If Not WaitForTextAtBottom("O.K. TO CLOSE RO") Then Exit Sub
     EnterTextAndWait "Y"
     bzhao.Pause 1000
 
     ' 8. INVOICE PRINTER prompt
-    WaitForTextAtBottom "INVOICE PRINTER"
+    If Not WaitForTextAtBottom("INVOICE PRINTER") Then Exit Sub
     EnterTextAndWait "2"
     bzhao.Pause 1000
 End Sub
@@ -131,7 +131,10 @@ Function ProcessRoReview()
 
     For i = 65 To 90
         lineLetter = Chr(i)
-        WaitForTextAtBottom "COMMAND:"
+        If Not WaitForTextAtBottom("COMMAND:") Then
+            ProcessRoReview = False
+            Exit Function
+        End If
         bzhao.SendKey "R " & lineLetter
         bzhao.Pause 100
         bzhao.SendKey "<NumpadEnter>"
@@ -185,7 +188,10 @@ Function HandleReviewPrompts(lineLetter)
                 Exit Function
             End If
 
-            WaitForTextAtBottom "COMMAND:"
+            If Not WaitForTextAtBottom("COMMAND:") Then
+                HandleReviewPrompts = False
+                Exit Function
+            End If
             bzhao.SendKey "R " & lineLetter
             bzhao.Pause 100
             bzhao.SendKey "<NumpadEnter>"
@@ -249,7 +255,7 @@ Function FinishLineForReview(lineLetter)
 
     FinishLineForReview = False
 
-    WaitForTextAtBottom "COMMAND:"
+    If Not WaitForTextAtBottom("COMMAND:") Then Exit Function
     bzhao.SendKey "FNL " & lineLetter
     bzhao.Pause 100
     bzhao.SendKey "<NumpadEnter>"
@@ -268,7 +274,7 @@ Function FinishLineForReview(lineLetter)
         ElseIf InStr(1, screenContent, "LINE " & lineLetter & " IS ALREADY FINISHED", vbTextCompare) > 0 Then
             bzhao.SendKey "<Enter>"
             bzhao.Pause REVIEW_PAUSE
-            WaitForTextAtBottom "COMMAND:"
+            If Not WaitForTextAtBottom("COMMAND:") Then Exit Function
             FinishLineForReview = True
             Exit Function
         ElseIf InStr(1, screenContent, "LINE CODE " & lineLetter & " IS NOT ON FILE", vbTextCompare) > 0 Then
@@ -598,58 +604,9 @@ Sub LogErrorMessage(message)
 End Sub
 
 '-----------------------------------------------------------
-' Discovers which line letters (A-Z) are present on the
-' current RO detail screen (rows 10-22, column 1).
-' Returns an array of letter strings, or an empty array.
-'-----------------------------------------------------------
-Function DiscoverLineLetters()
-    Dim i, capturedLetter, screenContentBuffer, nextColChar
-    Dim tempLetters(25), foundCount, emptyRowCount, startReadRow
-    foundCount = 0
-    emptyRowCount = 0
-
-    For startReadRow = 10 To 22
-        bzhao.ReadScreen screenContentBuffer, 1, startReadRow, 1
-        capturedLetter = Trim(screenContentBuffer)
-
-        If Len(capturedLetter) = 1 Then
-            If Asc(UCase(capturedLetter)) >= Asc("A") And Asc(UCase(capturedLetter)) <= Asc("Z") Then
-                bzhao.ReadScreen nextColChar, 1, startReadRow, 2
-                If Len(nextColChar) > 0 And Asc(nextColChar) = 32 Then
-                    tempLetters(foundCount) = UCase(capturedLetter)
-                    foundCount = foundCount + 1
-                    emptyRowCount = 0
-                Else
-                    emptyRowCount = emptyRowCount + 1
-                End If
-            Else
-                emptyRowCount = emptyRowCount + 1
-            End If
-        Else
-            emptyRowCount = emptyRowCount + 1
-        End If
-
-        If emptyRowCount >= 3 Then Exit For
-    Next
-
-    If foundCount = 0 Then
-        DiscoverLineLetters = Array()
-        Exit Function
-    End If
-
-    Dim foundLetters()
-    ReDim foundLetters(foundCount - 1)
-    For i = 0 To foundCount - 1
-        foundLetters(i) = tempLetters(i)
-    Next
-
-    DiscoverLineLetters = foundLetters
-End Function
-
-'-----------------------------------------------------------
 ' Waits for text to appear at bottom of screen (rows 23-24)
 '-----------------------------------------------------------
-Sub WaitForTextAtBottom(targetText)
+Function WaitForTextAtBottom(targetText)
     Dim elapsed, screenContentBuffer, screenLength, found, col
     elapsed = 0
     col = 1
@@ -675,14 +632,18 @@ Sub WaitForTextAtBottom(targetText)
             End If
         Next
         
-        If found Then Exit Do
+        If found Then
+            WaitForTextAtBottom = True
+            Exit Function
+        End If
         
         If elapsed >= 30000 Then
             bzhao.msgBox "ERROR: Timeout waiting for '" & targetText & "'" & vbCrLf & "Last 2 lines: " & vbCrLf & buffer23 & vbCrLf & buffer24, 16
-            Exit Sub
+            WaitForTextAtBottom = False
+            Exit Function
         End If
     Loop
-End Sub
+End Function
 
 '-----------------------------------------------------------
 ' Sends text and presses Enter
