@@ -64,6 +64,7 @@ Dim LOOP_PAUSE: LOOP_PAUSE = GetConfigSetting("Maintenance_RO_Closer", "LoopPaus
 Dim REVIEW_PAUSE: REVIEW_PAUSE = GetConfigSetting("Maintenance_RO_Closer", "ReviewPause", 500)
 Dim BLACKLIST_TERMS: BLACKLIST_TERMS = GetConfigSetting("Maintenance_RO_Closer", "blacklist_terms", "")
 Dim OLD_RO_DAYS_THRESHOLD: OLD_RO_DAYS_THRESHOLD = GetConfigSetting("Maintenance_RO_Closer", "AssumeClosedAfterDays", 120)
+Dim REALLY_OLD_DAYS: REALLY_OLD_DAYS = GetConfigSetting("Maintenance_RO_Closer", "ReallyOldDays", 60)
 
 ' --- Picky Match State ---
 Dim CriteriaA, CriteriaB, CriteriaC
@@ -149,6 +150,7 @@ Sub ProcessRoList(fso, ByRef successfulCount)
                 If ShouldSkipRo(currentRo) Then
                     LogResult "INFO", "RO " & currentRo & " found in SkipRoList. Skipping before entry."
                 Else
+                LogResult "INFO", String(50, "=")
                 LogResult "INFO", "Processing RO: " & currentRo
                 
                 ' Ensure we are at the main prompt
@@ -159,7 +161,7 @@ Sub ProcessRoList(fso, ByRef successfulCount)
                 
                 ' Check for errors or closed status
                 If IsRoProcessable(currentRo) Then
-                    LogResult "INFO", "RO " & currentRo & " is processable. Evaluating business gates (blacklist/footprint/age override)."
+                    LogResult "INFO", "RO " & currentRo & " is processable."
                     If ShouldProcessRoByBusinessRules(currentRo) Then
                         If ProcessRoReview() Then
                             If CloseRoFinal() Then
@@ -263,48 +265,57 @@ Function IsRoProcessable(roNumber)
 End Function
 
 Function ShouldProcessRoByBusinessRules(roNumber)
-    ' Gate order:
-    '   1. PM footprint must match          -> else skip
-    '   2. READY TO POST + not blacklisted  -> process
-    '   3. age > threshold (any status)     -> process (age overrides status + blacklist)
-    '   4. anything else                    -> skip
-    Dim isOldRoEligible, ageDays, openedDateToken
-    Dim thresholdDays, screenContent, isReadyToPost, matchedBlacklistTerm, isPickyMatch
+    ' === Business Rules: Close/Skip Decision Table ===
+    '
+    ' RO Status        | Condition          | Action
+    ' -----------------+--------------------+--------
+    ' Any              | Blacklisted        | SKIP
+    ' Any              | Age >= 60 days     | CLOSE
+    ' Any              | Footprint mismatch | SKIP
+    ' READY TO POST    | (none)             | CLOSE
+    ' Any other        | (none)             | SKIP
+    '
+    ' Rules evaluated top to bottom. First match wins.
+    ' =================================================
+    Dim ageDays, openedDateToken
+    Dim screenContent, isReadyToPost, matchedBlacklistTerm, isPickyMatch
 
-    thresholdDays = CInt(OLD_RO_DAYS_THRESHOLD)
     screenContent = GetCurrentScreenContent()
     isReadyToPost = (InStr(1, screenContent, "READY TO POST", vbTextCompare) > 0)
-    isOldRoEligible = IsRoOldEnoughForOverride(ageDays, openedDateToken)
+    IsRoOldEnoughForOverride ageDays, openedDateToken ' return value unused; ageDays populated ByRef
     matchedBlacklistTerm = GetMatchedBlacklistTerm(BLACKLIST_TERMS, screenContent)
     isPickyMatch = CheckPickyMatch()
 
-    LogResult "INFO", "RO " & roNumber & " | Gate Check: PM Footprint Match: " & BoolLabel(isPickyMatch) & " | READY TO POST: " & BoolLabel(isReadyToPost) & " | Age > " & thresholdDays & " days: " & BoolLabel(isOldRoEligible) & " (" & IIf(ageDays >= 0, ageDays & " days", "date unknown") & ")"
+    LogResult "INFO", "RO " & roNumber & " | Footprint: " & BoolLabel(isPickyMatch) & " | Status: " & IIf(isReadyToPost, "READY TO POST", "Not Ready") & " | Age: " & IIf(ageDays >= 0, ageDays & " days", "unknown")
 
-    If Not isPickyMatch Then
-        LogResult "INFO", "RO " & roNumber & " | PM footprint mismatch. Skipping."
+    ' Gate 1: Blacklist always wins
+    If matchedBlacklistTerm <> "" Then
+        LogResult "INFO", "RO " & roNumber & " | Blacklisted ('" & matchedBlacklistTerm & "'). Skipping."
         ShouldProcessRoByBusinessRules = False
         Exit Function
     End If
 
-    ' Path 1: READY TO POST — still blocked by blacklist
-    If isReadyToPost Then
-        If matchedBlacklistTerm = "" Then
-            LogResult "INFO", "RO " & roNumber & " | Blacklisted: No | Proceeding (READY TO POST path + PM footprint match)."
-            ShouldProcessRoByBusinessRules = True
-        Else
-            LogResult "INFO", "RO " & roNumber & " | Blacklisted: Yes ('" & matchedBlacklistTerm & "') | Age > " & thresholdDays & ": " & BoolLabel(isOldRoEligible) & " | " & IIf(isOldRoEligible, "Age override applied. Proceeding.", "Skipping.")
-            ShouldProcessRoByBusinessRules = isOldRoEligible
-        End If
-        Exit Function
-    End If
-
-    ' Path 2: Not READY TO POST — age is the only override
-    If isOldRoEligible Then
-        LogResult "INFO", "RO " & roNumber & " | Status override by age. Proceeding."
+    ' Gate 2: Really old — close regardless of footprint or status
+    If ageDays >= CInt(REALLY_OLD_DAYS) Then
+        LogResult "INFO", "RO " & roNumber & " | Age " & ageDays & " days >= ReallyOldDays (" & REALLY_OLD_DAYS & "). Closing."
         ShouldProcessRoByBusinessRules = True
         Exit Function
     End If
 
+    ' Gate 3: Footprint must match
+    If Not isPickyMatch Then
+        ShouldProcessRoByBusinessRules = False
+        Exit Function
+    End If
+
+    ' Gate 4: READY TO POST
+    If isReadyToPost Then
+        LogResult "INFO", "RO " & roNumber & " | READY TO POST + footprint match. Closing."
+        ShouldProcessRoByBusinessRules = True
+        Exit Function
+    End If
+
+    ' Gate 5: Skip anything else
     LogResult "INFO", "RO " & roNumber & " | Not READY TO POST and age threshold not met. Skipping."
     ShouldProcessRoByBusinessRules = False
 End Function
@@ -598,7 +609,7 @@ Function CheckPickyMatch()
                     matchCount = matchCount + 1
                     Exit For
                 Else
-                    LogResult "INFO", "Mismatch at Row " & row & " (Line " & targetLetter & "). Found: '" & Trim(screenContent) & "'"
+                    LogResult "INFO", "Line " & targetLetter & ": No approved description found. Content: '" & Trim(screenContent) & "'"
                     CheckPickyMatch = False
                     Exit Function
                 End If

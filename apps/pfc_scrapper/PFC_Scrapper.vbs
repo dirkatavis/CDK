@@ -35,7 +35,9 @@ ExecuteGlobal g_fso.OpenTextFile(helperPath).ReadAll
 Dim LOG_FILE_PATH: LOG_FILE_PATH = GetConfigPath("PFC_Scrapper", "Log")
 Dim OUTPUT_CSV_PATH: OUTPUT_CSV_PATH = GetConfigPath("PFC_Scrapper", "OutputCSV")
 Dim SCREEN_WAIT_DELAY: SCREEN_WAIT_DELAY = CInt(GetIniSetting("PFC_Scrapper", "ScreenWaitDelay", "1000"))
+Dim START_SEQUENCE: START_SEQUENCE = CInt(GetIniSetting("PFC_Scrapper", "StartSequence", "1"))
 Dim SKIP_SEQUENCES: SKIP_SEQUENCES = GetIniSetting("PFC_Scrapper", "SkipSequences", "")
+Dim EMPLOYEE_NUMBER: EMPLOYEE_NUMBER = GetIniSetting("PFC_Scrapper", "EmployeeNumber", "")
 
 ' --- CDK Objects ---
 Dim bzhao: Set bzhao = CreateObject("BZWhll.WhllObj")
@@ -44,7 +46,7 @@ Dim bzhao: Set bzhao = CreateObject("BZWhll.WhllObj")
 Sub RunScrapper()
     Dim i, totalScraped, csvFile
     totalScraped = 0
-    i = 1
+    i = START_SEQUENCE
 
     LogResult "INFO", "Starting PFC Scrapper. Output: " & OUTPUT_CSV_PATH
 
@@ -62,25 +64,36 @@ Sub RunScrapper()
     Set csvFile = g_fso.CreateTextFile(OUTPUT_CSV_PATH, True)
     csvFile.WriteLine "RO number, Tech ID, RO status, Line A, Line B, Line C, Open Date"
 
+    Dim abortAll: abortAll = False
+
     Do
+        If abortAll Then Exit Do
+
         LogResult "INFO", "Processing sequence: " & i
-        
+
         ' Skip logic
         If ShouldSkipSequence(i) Then
             LogResult "INFO", "Skipping sequence " & i & " as per config."
             i = i + 1
         Else
-            ' Ensure we are at COMMAND prompt
+            ' Ensure we are at COMMAND prompt — recover if security menu is showing
             If Not WaitForPrompt("COMMAND:", 5) Then
                 LogResult "ERROR", "Timed out waiting for COMMAND prompt at sequence " & i
-                Exit Do
+                If DetectAndRecover() Then
+                    LogResult "INFO", "Recovery successful. Retrying sequence " & i & "."
+                Else
+                    LogResult "ERROR", "Recovery failed. Exiting."
+                    abortAll = True
+                End If
             End If
+
+            If abortAll Then Exit Do
 
             ' Enter sequence number
             bzhao.SendKey i & "<NumpadEnter>"
             bzhao.Pause SCREEN_WAIT_DELAY
 
-            ' Wait for state change - either RO screen or error
+            ' Wait for state change - either RO screen, security menu, or error
             Dim screenText, startTime, screenFound
             startTime = Timer
             screenFound = False
@@ -93,13 +106,24 @@ Sub RunScrapper()
                     MsgBox "PFC Scraper Finished." & vbCrLf & "Total Scraped: " & totalScraped, vbInformation
                     Exit Sub
                 End If
-                
+
                 ' Look for RO header or status line as confirmation we are in an RO
                 If InStr(1, screenText, "RO:", vbTextCompare) > 0 Or InStr(1, screenText, "RO STATUS:", vbTextCompare) > 0 Then
                     screenFound = True
                     Exit Do ' Proceed to scrape
                 End If
-                
+
+                ' Detect known error conditions — recover and skip this sequence
+                If IsKnownErrorPresent(screenText) Then
+                    If DetectAndRecover() Then
+                        LogResult "INFO", "Recovery successful. Sequence " & i & " will be skipped."
+                    Else
+                        LogResult "ERROR", "Recovery failed. Exiting."
+                        abortAll = True
+                    End If
+                    Exit Do
+                End If
+
                 If Timer - startTime > 10 Then
                     LogResult "ERROR", "Timeout waiting for RO screen at sequence " & i
                     Exit Do
@@ -107,11 +131,13 @@ Sub RunScrapper()
                 bzhao.Pause 500
             Loop
 
+            If abortAll Then Exit Do
+
             If screenFound Then
                 ' Scrape Data
                 Dim roData
                 roData = ScrapeCurrentRO()
-                
+
                 If roData <> "" Then
                     csvFile.WriteLine roData
                     totalScraped = totalScraped + 1
@@ -123,7 +149,7 @@ Sub RunScrapper()
             Else
                 LogResult "ERROR", "Sequence " & i & " skipped due to screen transition timeout."
             End If
-            
+
             i = i + 1
         End If
     Loop
@@ -294,6 +320,107 @@ Function GetLineDescription(letter)
 End Function
 
 ' --- Shared Helpers ---
+
+' --- Error Detection and Recovery ---
+' To add a new error: add a trigger to IsKnownErrorPresent(), and an ElseIf block in DetectAndRecover().
+
+Function IsKnownErrorPresent(screenContent)
+    IsKnownErrorPresent = (InStr(1, screenContent, "PRESS RETURN TO CONTINUE", vbTextCompare) > 0 Or _
+                           InStr(1, screenContent, "Process is locked by", vbTextCompare) > 0)
+End Function
+
+Function DetectAndRecover()
+    Dim screenContent
+    bzhao.ReadScreen screenContent, 1920, 1, 1
+
+    If InStr(1, screenContent, "PRESS RETURN TO CONTINUE", vbTextCompare) > 0 Then
+        LogResult "INFO", "Error detected: VEHID not on file."
+        DetectAndRecover = RecoverFromVehidError()
+    ElseIf InStr(1, screenContent, "Process is locked by", vbTextCompare) > 0 Then
+        LogResult "INFO", "Error detected: Process locked."
+        DetectAndRecover = RecoverFromLockedProcess()
+    Else
+        LogResult "ERROR", "Unrecognised screen state — no recovery handler matched."
+        DetectAndRecover = False
+    End If
+End Function
+
+Function RecoverFromLockedProcess()
+    RecoverFromLockedProcess = False
+    LogResult "INFO", "Recovery: dismissing locked process, waiting for sequence prompt."
+    bzhao.SendKey "<Enter>"
+    If Not WaitForPrompt("COMMAND:(SEQ#", 10) Then
+        LogResult "ERROR", "Recovery failed: sequence prompt not found after locked process dismiss."
+        Exit Function
+    End If
+    LogResult "INFO", "Recovery complete. Back at sequence prompt."
+    RecoverFromLockedProcess = True
+End Function
+
+Function WaitForAnyOf(targets, timeoutSec)
+    Dim start, elapsed, screenContent, j, targetList
+    targetList = Split(targets, "|")
+    start = Timer
+    Do
+        bzhao.ReadScreen screenContent, 1920, 1, 1
+        For j = 0 To UBound(targetList)
+            If InStr(1, screenContent, Trim(targetList(j)), vbTextCompare) > 0 Then
+                WaitForAnyOf = True
+                Exit Function
+            End If
+        Next
+        bzhao.Pause 500
+        elapsed = Timer - start
+    Loop While elapsed < timeoutSec
+    WaitForAnyOf = False
+End Function
+
+Function RecoverFromVehidError()
+    RecoverFromVehidError = False
+    LogResult "INFO", "Recovery step 1: dismissing VEHID error, waiting for Function Code prompt."
+    bzhao.SendKey "<Enter>"
+    If Not WaitForPrompt("FUNCTION CODE", 5) Then
+        LogResult "ERROR", "Recovery failed at step 1: FUNCTION CODE prompt not found."
+        Exit Function
+    End If
+
+    LogResult "INFO", "Recovery step 2: entering PFC."
+    bzhao.SendKey "PFC"
+    bzhao.Pause 100
+    bzhao.SendKey "<NumpadEnter>"
+    If Not WaitForPrompt("EMPLOYEE NUMBER", 10) Then
+        LogResult "ERROR", "Recovery failed at step 2: EMPLOYEE NUMBER prompt not found."
+        Exit Function
+    End If
+
+    LogResult "INFO", "Recovery step 3: entering employee number."
+    bzhao.SendKey EMPLOYEE_NUMBER
+    bzhao.Pause 100
+    bzhao.SendKey "<NumpadEnter>"
+    If Not WaitForAnyOf("CAMP|PASTEUR", 10) Then
+        LogResult "ERROR", "Recovery failed at step 3: name confirmation prompt not found."
+        Exit Function
+    End If
+
+    LogResult "INFO", "Recovery step 4: confirming employee name."
+    bzhao.SendKey "<NumpadEnter>"
+    If Not WaitForPrompt("ENTER OPTION", 10) Then
+        LogResult "ERROR", "Recovery failed at step 4: PFC menu not found after name confirm."
+        Exit Function
+    End If
+
+    LogResult "INFO", "Recovery step 5: selecting option 2."
+    bzhao.SendKey "2"
+    bzhao.Pause 100
+    bzhao.SendKey "<NumpadEnter>"
+    If Not WaitForPrompt("COMMAND:(SEQ#", 10) Then
+        LogResult "ERROR", "Recovery failed at step 5: sequence prompt not found."
+        Exit Function
+    End If
+
+    LogResult "INFO", "Recovery complete. Back at sequence prompt."
+    RecoverFromVehidError = True
+End Function
 
 Function WaitForPrompt(text, timeoutSec)
     Dim start, elapsed, screenContent
