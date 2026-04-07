@@ -8,32 +8,12 @@
 
 Option Explicit
 
-' --- Load PathHelper for centralized path management ---
+' --- Bootstrap ---
 Dim g_fso: Set g_fso = CreateObject("Scripting.FileSystemObject")
-Const BASE_ENV_VAR_LOCAL = "CDK_BASE"
-
-' Find repo root by searching for .cdkroot marker
-Function FindRepoRootForBootstrap()
-    Dim sh: Set sh = CreateObject("WScript.Shell")
-    Dim basePath: basePath = sh.Environment("USER")(BASE_ENV_VAR_LOCAL)
-
-    If basePath = "" Or Not g_fso.FolderExists(basePath) Then
-        Err.Raise 53, "Bootstrap", "Invalid or missing CDK_BASE. Value: " & basePath
-    End If
-
-    If Not g_fso.FileExists(g_fso.BuildPath(basePath, ".cdkroot")) Then
-        Err.Raise 53, "Bootstrap", "Cannot find .cdkroot in base path:" & vbCrLf & basePath
-    End If
-
-    FindRepoRootForBootstrap = basePath
-End Function
-
-Dim helperPath: helperPath = g_fso.BuildPath(FindRepoRootForBootstrap(), "framework\PathHelper.vbs")
-ExecuteGlobal g_fso.OpenTextFile(helperPath).ReadAll
-
-' Load host compatibility helpers (guarded wrappers for WScript)
-Dim hostCompatPath: hostCompatPath = g_fso.BuildPath(FindRepoRootForBootstrap(), "framework\HostCompat.vbs")
-ExecuteGlobal g_fso.OpenTextFile(hostCompatPath).ReadAll
+Dim g_sh: Set g_sh = CreateObject("WScript.Shell")
+Dim g_root: g_root = g_sh.Environment("USER")("CDK_BASE")
+ExecuteGlobal g_fso.OpenTextFile(g_fso.BuildPath(g_root, "framework\PathHelper.vbs")).ReadAll
+ExecuteGlobal g_fso.OpenTextFile(g_fso.BuildPath(g_root, "framework\HostCompat.vbs")).ReadAll
 
 ' --- Execution Parameters ---
 Dim MAIN_PROMPT: MAIN_PROMPT = "R.O. NUMBER"
@@ -45,8 +25,7 @@ Dim SKIP_RO_LIST_PATH: SKIP_RO_LIST_PATH = GetConfigPath("Maintenance_RO_Closer"
 
 ' --- Configurable Pauses ---
 Function GetConfigSetting(section, key, defaultValue)
-    Dim root: root = FindRepoRootForBootstrap()
-    Dim configFile: configFile = g_fso.BuildPath(root, "config\config.ini")
+    Dim configFile: configFile = g_fso.BuildPath(g_root, "config\config.ini")
     Dim val: val = ReadIniValue(configFile, section, key)
     If val = "" Then
         GetConfigSetting = defaultValue

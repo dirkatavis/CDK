@@ -7,47 +7,19 @@ Option Explicit
 ' Expected statuses: "NOT ON FILE" or "(PFC) POST FINAL CHARGES"
 ' ======================================================================
 
-Dim fso: Set fso = CreateObject("Scripting.FileSystemObject")
-Dim sh: Set sh = CreateObject("WScript.Shell")
+' --- Bootstrap ---
+Dim g_fso: Set g_fso = CreateObject("Scripting.FileSystemObject")
+Dim g_sh: Set g_sh = CreateObject("WScript.Shell")
+Dim g_root: g_root = g_sh.Environment("USER")("CDK_BASE")
+ExecuteGlobal g_fso.OpenTextFile(g_fso.BuildPath(g_root, "framework\PathHelper.vbs")).ReadAll
+
 Dim mockMode: mockMode = False
-Dim envVal: envVal = sh.Environment("PROCESS")("MOCK_VALIDATE_RO")
-If envVal = "" Then envVal = sh.Environment("USER")("MOCK_VALIDATE_RO")
+Dim envVal: envVal = g_sh.Environment("PROCESS")("MOCK_VALIDATE_RO")
+If envVal = "" Then envVal = g_sh.Environment("USER")("MOCK_VALIDATE_RO")
 If LCase(envVal) = "1" Or LCase(envVal) = "true" Then mockMode = True
-' --- Bootstrap using PathHelper (mandatory pattern) ---
-Const BASE_ENV_VAR_LOCAL = "CDK_BASE"
-
-' FindRepoRootForBootstrap is intentionally strict: it validates CDK_BASE and .cdkroot
-Function FindRepoRootForBootstrap()
-    Dim basePath: basePath = sh.Environment("USER")(BASE_ENV_VAR_LOCAL)
-    If basePath = "" Or Not fso.FolderExists(basePath) Then
-        Err.Raise 53, "Bootstrap", "Invalid or missing CDK_BASE. Value: " & basePath
-    End If
-    If Not fso.FileExists(fso.BuildPath(basePath, ".cdkroot")) Then
-        Err.Raise 53, "Bootstrap", "Cannot find .cdkroot in base path:" & vbCrLf & basePath
-    End If
-    FindRepoRootForBootstrap = basePath
-End Function
-
-' Load PathHelper and HostCompat using strict bootstrap
-Dim repoRoot: repoRoot = FindRepoRootForBootstrap()
-Dim helperPath: helperPath = fso.BuildPath(repoRoot, "framework\PathHelper.vbs")
-
-' Helper to load a file and return its contents
-Function ReadFile(p)
-    Dim ts, s
-    Set ts = fso.OpenTextFile(p, 1)
-    s = ts.ReadAll
-    ts.Close
-    ReadFile = s
-End Function
-
-' Execute helper scripts in global scope
-Dim incCode
-incCode = ReadFile(helperPath)
-ExecuteGlobal incCode
 
 ' --- Use GetConfigPath for required files (fail-fast) ---
-Dim inputFile: inputFile = sh.Environment("PROCESS")("MOCK_INPUT_FILE")
+Dim inputFile: inputFile = g_sh.Environment("PROCESS")("MOCK_INPUT_FILE")
 If mockMode And inputFile <> "" Then
     ' Use environment override
 Else
@@ -55,13 +27,13 @@ Else
 End If
 
 ' Validate inputFile unless we're in mock mode with MOCK_SCREEN_MAPS
-Dim mockMapsEnvCheck: mockMapsEnvCheck = sh.Environment("PROCESS")("MOCK_SCREEN_MAPS")
-If mockMapsEnvCheck = "" Then mockMapsEnvCheck = sh.Environment("USER")("MOCK_SCREEN_MAPS")
+Dim mockMapsEnvCheck: mockMapsEnvCheck = g_sh.Environment("PROCESS")("MOCK_SCREEN_MAPS")
+If mockMapsEnvCheck = "" Then mockMapsEnvCheck = g_sh.Environment("USER")("MOCK_SCREEN_MAPS")
 If Not (mockMode And mockMapsEnvCheck <> "") Then
     If inputFile = "" Then
         Err.Raise 53, "ValidateRoList", "Missing config.ini entry: [ValidateRoList] InputFile"
     End If
-    If Not fso.FileExists(inputFile) Then
+    If Not g_fso.FileExists(inputFile) Then
         Err.Raise 53, "ValidateRoList", "Input file not found: " & inputFile
     End If
 End If
@@ -70,12 +42,12 @@ Dim toolsOutDir: toolsOutDir = GetConfigPath("ValidateRoList", "OutDir")
 If toolsOutDir = "" Then
     Err.Raise 53, "ValidateRoList", "Missing config.ini entry: [ValidateRoList] OutDir"
 End If
-If Not fso.FolderExists(toolsOutDir) Then
+If Not g_fso.FolderExists(toolsOutDir) Then
     Err.Raise 53, "ValidateRoList", "OutDir path does not exist: " & toolsOutDir
 End If
 
 ' Use explicit output file from config (Mandatory - Fail Fast)
-Dim outputFile: outputFile = sh.Environment("PROCESS")("MOCK_OUTPUT_FILE")
+Dim outputFile: outputFile = g_sh.Environment("PROCESS")("MOCK_OUTPUT_FILE")
 If mockMode And outputFile <> "" Then
     ' Use environment override
 Else
@@ -87,23 +59,23 @@ If outputFile = "" Then
 End If
 
 Dim outputBaseName: outputBaseName = "ValidateRoList"
-If outputFile <> "" Then outputBaseName = fso.GetBaseName(outputFile)
+If outputFile <> "" Then outputBaseName = g_fso.GetBaseName(outputFile)
 
 ' --- Logging initialization (must be available before WaitForOneOf uses it) ---
 ' Logging level: 1=ERROR,2=INFO,3=DEBUG. Can override with env VALIDATERO_DEBUG
 Dim DEBUG_LEVEL: DEBUG_LEVEL = 1
-Dim envDbg: envDbg = sh.Environment("PROCESS")("VALIDATERO_DEBUG")
-If envDbg = "" Then envDbg = sh.Environment("USER")("VALIDATERO_DEBUG")
+Dim envDbg: envDbg = g_sh.Environment("PROCESS")("VALIDATERO_DEBUG")
+If envDbg = "" Then envDbg = g_sh.Environment("USER")("VALIDATERO_DEBUG")
 If IsNumeric(envDbg) Then DEBUG_LEVEL = CInt(envDbg)
 
 ' Log file placed in the configured OutDir next to results
-Dim logFile: logFile = fso.BuildPath(toolsOutDir, outputBaseName & "_log.txt")
+Dim logFile: logFile = g_fso.BuildPath(toolsOutDir, outputBaseName & "_log.txt")
 Dim logTS: Set logTS = Nothing
 On Error Resume Next
-Set logTS = fso.OpenTextFile(logFile, 8, True)
+Set logTS = g_fso.OpenTextFile(logFile, 8, True)
 If Err.Number <> 0 Then
     Err.Clear
-    Set logTS = fso.CreateTextFile(logFile, True)
+    Set logTS = g_fso.CreateTextFile(logFile, True)
 End If
 On Error GoTo 0
 logTS.WriteLine "ValidateRoList log started: " & Now & " | Init"
@@ -158,11 +130,11 @@ screenMapPath = GetConfigPath("ValidateRoList", "ScreenMap")
 ' Allow overriding the screen map via env var for mock runs
 ' Check both singular and plural env names; prefer explicit MOCK_SCREEN_MAP if set,
 ' otherwise accept the first entry of MOCK_SCREEN_MAPS
-Dim mockScreenMap: mockScreenMap = sh.Environment("PROCESS")("MOCK_SCREEN_MAP")
-If mockScreenMap = "" Then mockScreenMap = sh.Environment("USER")("MOCK_SCREEN_MAP")
+Dim mockScreenMap: mockScreenMap = g_sh.Environment("PROCESS")("MOCK_SCREEN_MAP")
+If mockScreenMap = "" Then mockScreenMap = g_sh.Environment("USER")("MOCK_SCREEN_MAP")
 If mockScreenMap = "" Then
-    Dim tmpMaps: tmpMaps = sh.Environment("PROCESS")("MOCK_SCREEN_MAPS")
-    If tmpMaps = "" Then tmpMaps = sh.Environment("USER")("MOCK_SCREEN_MAPS")
+    Dim tmpMaps: tmpMaps = g_sh.Environment("PROCESS")("MOCK_SCREEN_MAPS")
+    If tmpMaps = "" Then tmpMaps = g_sh.Environment("USER")("MOCK_SCREEN_MAPS")
     If tmpMaps <> "" Then
         Dim firstMap: firstMap = Split(tmpMaps, ";")(0)
         mockScreenMap = Trim(firstMap)
@@ -179,32 +151,32 @@ MainPromptLine = 23
 ' Support a quick mock mode that takes one-or-more screen-map files and
 ' produces a single _out file with one line per map. Use env var
 ' MOCK_SCREEN_MAPS with semicolon-separated paths (absolute or repo-relative).
-Dim mockMapsEnv: mockMapsEnv = sh.Environment("PROCESS")("MOCK_SCREEN_MAPS")
-If mockMapsEnv = "" Then mockMapsEnv = sh.Environment("USER")("MOCK_SCREEN_MAPS")
+Dim mockMapsEnv: mockMapsEnv = g_sh.Environment("PROCESS")("MOCK_SCREEN_MAPS")
+If mockMapsEnv = "" Then mockMapsEnv = g_sh.Environment("USER")("MOCK_SCREEN_MAPS")
 If mockMode And mockMapsEnv <> "" Then
     ' Use environment override for output if provided, else use default in toolsOutDir
-    Dim mockOut: mockOut = sh.Environment("PROCESS")("MOCK_OUTPUT_FILE")
-    If mockOut = "" Then mockOut = fso.BuildPath(toolsOutDir, "ValidateRoList_mock_out.txt")
+    Dim mockOut: mockOut = g_sh.Environment("PROCESS")("MOCK_OUTPUT_FILE")
+    If mockOut = "" Then mockOut = g_fso.BuildPath(toolsOutDir, "ValidateRoList_mock_out.txt")
     
-    Dim mockLog: mockLog = fso.BuildPath(toolsOutDir, "ValidateRoList_mock_log.txt")
-    Dim mockOutTS: Set mockOutTS = fso.CreateTextFile(mockOut, True)
-    Dim mockLogTS: Set mockLogTS = fso.CreateTextFile(mockLog, True)
+    Dim mockLog: mockLog = g_fso.BuildPath(toolsOutDir, "ValidateRoList_mock_log.txt")
+    Dim mockOutTS: Set mockOutTS = g_fso.CreateTextFile(mockOut, True)
+    Dim mockLogTS: Set mockLogTS = g_fso.CreateTextFile(mockLog, True)
     mockLogTS.WriteLine "Mock map run started: " & Now & " | maps=" & mockMapsEnv
     Dim mapsArr: mapsArr = Split(mockMapsEnv, ";")
     Dim mi
     For mi = 0 To UBound(mapsArr)
         Dim mapPath: mapPath = Trim(mapsArr(mi))
         If mapPath <> "" Then
-            If Not fso.FileExists(mapPath) Then
+            If Not g_fso.FileExists(mapPath) Then
                 ' Do NOT fallback to hardcoded repo paths here; require maps to be
                 ' provided via config or absolute paths. Record missing and continue.
             End If
 
-            If Not fso.FileExists(mapPath) Then
+            If Not g_fso.FileExists(mapPath) Then
                 mockLogTS.WriteLine Now & " | SKIP missing map: " & mapPath
-                mockOutTS.WriteLine fso.GetBaseName(mapPath) & ",MISSING"
+                mockOutTS.WriteLine g_fso.GetBaseName(mapPath) & ",MISSING"
             Else
-                Dim simTS: Set simTS = fso.OpenTextFile(mapPath, 1, False)
+                Dim simTS: Set simTS = g_fso.OpenTextFile(mapPath, 1, False)
                 Dim simBuf: simBuf = ""
                 Do Until simTS.AtEndOfStream
                     simBuf = simBuf & " " & simTS.ReadLine
@@ -222,7 +194,7 @@ If mockMode And mockMapsEnv <> "" Then
                     status = "UNKNOWN"
                 End If
                 mockLogTS.WriteLine Now & " | MAP=" & mapPath & " -> " & status
-                mockOutTS.WriteLine fso.GetFileName(mapPath) & "," & status
+                mockOutTS.WriteLine g_fso.GetFileName(mapPath) & "," & status
             End If
         End If
     Next
@@ -234,7 +206,7 @@ If mockMode And mockMapsEnv <> "" Then
     WScript.Echo conclMsg
     If Err.Number <> 0 Then
         Err.Clear
-        Dim echoTS: Set echoTS = fso.OpenTextFile(mockLog, 8, True)
+        Dim echoTS: Set echoTS = g_fso.OpenTextFile(mockLog, 8, True)
         echoTS.WriteLine Now & " | " & conclMsg
         echoTS.Close
     End If
@@ -245,9 +217,9 @@ If mockMode And mockMapsEnv <> "" Then
 End If
 
 If Not mockMode Then
-    Dim bzhao: Set bzhao = CreateObject("BZWhll.WhllObj")
+    Dim g_bzhao: Set g_bzhao = CreateObject("BZWhll.WhllObj")
     On Error Resume Next
-    bzhao.Connect ""
+    g_bzhao.Connect ""
     If Err.Number <> 0 Then
         MsgBox "ERROR: Failed to connect to BlueZone terminal session. " & Err.Description, vbCritical, "ValidateRoList"
         On Error Resume Next
@@ -267,8 +239,8 @@ Function WaitForOneOf(targetsCSV, timeoutMs)
     Do
         If mockMode Then
             ' In mock mode, use the provided screen map file as a simulated terminal snapshot
-            If screenMapPath <> "" And fso.FileExists(screenMapPath) Then
-                Dim simTS: Set simTS = fso.OpenTextFile(screenMapPath, 1, False)
+            If screenMapPath <> "" And g_fso.FileExists(screenMapPath) Then
+                Dim simTS: Set simTS = g_fso.OpenTextFile(screenMapPath, 1, False)
                 Dim simBuf: simBuf = ""
                 Do Until simTS.AtEndOfStream
                     simBuf = simBuf & " " & simTS.ReadLine
@@ -289,11 +261,11 @@ Function WaitForOneOf(targetsCSV, timeoutMs)
         End If
 
         pollCount = pollCount + 1
-        bzhao.Pause 250
+        g_bzhao.Pause 250
         elapsed = elapsed + 250
         
         ' Read the entire 24x80 screen in a single COM call (fastest method)
-        bzhao.ReadScreen screenBuffer, 1920, 1, 1
+        g_bzhao.ReadScreen screenBuffer, 1920, 1, 1
         screenBuffer = UCase(screenBuffer)
 
         For i = 0 To UBound(targets)
@@ -314,8 +286,8 @@ Function WaitForOneOf(targetsCSV, timeoutMs)
 End Function
 
 ' --- Process input file ---
-Dim inTS: Set inTS = fso.OpenTextFile(inputFile, 1, False)
-Dim outTS: Set outTS = fso.CreateTextFile(outputFile, True)
+Dim inTS: Set inTS = g_fso.OpenTextFile(inputFile, 1, False)
+Dim outTS: Set outTS = g_fso.CreateTextFile(outputFile, True)
 
 Dim ln, roVal, roStatus, foundResult
 Dim timeoutMs: timeoutMs = 3000 ' 3 seconds timeout for responsiveness
@@ -328,11 +300,11 @@ Do Until inTS.AtEndOfStream
     If roVal <> "" Then
         ' Direct terminal entry: includes requested 500ms delays for UI stability
         If Not mockMode Then
-            bzhao.Pause 700 ' Delay before typing RO
-            bzhao.SendKey roVal
-            bzhao.Pause 500 ' Delay before Enter
-            bzhao.SendKey "<NumpadEnter>"	    
-            bzhao.Pause 500 ' Delay before Enter
+            g_bzhao.Pause 700 ' Delay before typing RO
+            g_bzhao.SendKey roVal
+            g_bzhao.Pause 500 ' Delay before Enter
+            g_bzhao.SendKey "<NumpadEnter>"	    
+            g_bzhao.Pause 500 ' Delay before Enter
         End If
 
         ' Wait for the UI cue to appear (250ms polling)
@@ -358,7 +330,7 @@ Do Until inTS.AtEndOfStream
         ' Return to main COMMAND: prompt if valid, or sync at prompt if invalid
         If roStatus = "Open" Then
             If Not mockMode Then
-                bzhao.SendKey "E<NumpadEnter>"
+                g_bzhao.SendKey "E<NumpadEnter>"
                 On Error Resume Next
                 WaitForOneOf "COMMAND:", timeoutMs
                 On Error GoTo 0
@@ -381,7 +353,7 @@ On Error Resume Next
 WScript.Echo finalMsg
 If Err.Number <> 0 Then
     Err.Clear
-    Dim finalLogTS: Set finalLogTS = fso.OpenTextFile(fso.BuildPath(toolsOutDir, "ValidateRoList_final_log.txt"), 8, True)
+    Dim finalLogTS: Set finalLogTS = g_fso.OpenTextFile(g_fso.BuildPath(toolsOutDir, "ValidateRoList_final_log.txt"), 8, True)
     finalLogTS.WriteLine Now & " | " & finalMsg
     finalLogTS.Close
 End If
