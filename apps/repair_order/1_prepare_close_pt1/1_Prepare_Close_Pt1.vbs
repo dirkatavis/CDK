@@ -8,28 +8,11 @@ Option Explicit
 '              apps/repair_order/1_prepare_close_pt1.
 '====================================================================
 
-' --- Load PathHelper for centralized path management ---
+' --- Bootstrap ---
 Dim g_fso: Set g_fso = CreateObject("Scripting.FileSystemObject")
-Const BASE_ENV_VAR_LOCAL = "CDK_BASE"
-
-' Find repo root by searching for .cdkroot marker
-Function FindRepoRootForBootstrap()
-    Dim sh: Set sh = CreateObject("WScript.Shell")
-    Dim basePath: basePath = sh.Environment("USER")(BASE_ENV_VAR_LOCAL)
-
-    If basePath = "" Or Not g_fso.FolderExists(basePath) Then
-        Err.Raise 53, "Bootstrap", "Invalid or missing CDK_BASE. Value: " & basePath
-    End If
-
-    If Not g_fso.FileExists(g_fso.BuildPath(basePath, ".cdkroot")) Then
-        Err.Raise 53, "Bootstrap", "Cannot find .cdkroot in base path:" & vbCrLf & basePath
-    End If
-
-    FindRepoRootForBootstrap = basePath
-End Function
-
-Dim helperPath: helperPath = g_fso.BuildPath(FindRepoRootForBootstrap(), "framework\PathHelper.vbs")
-ExecuteGlobal g_fso.OpenTextFile(helperPath).ReadAll
+Dim g_sh: Set g_sh = CreateObject("WScript.Shell")
+Dim g_root: g_root = g_sh.Environment("USER")("CDK_BASE")
+ExecuteGlobal g_fso.OpenTextFile(g_fso.BuildPath(g_root, "framework\PathHelper.vbs")).ReadAll
 
 ' --- Configuration ---
 Dim CSV_FILE: CSV_FILE = GetConfigPath("Prepare_Close_Pt1", "CSV")
@@ -38,31 +21,28 @@ Dim RO_SCREEN_POLL_MS: RO_SCREEN_POLL_MS = GetConfigInt("Prepare_Close_Pt1", "Ro
 Const NUM_COLUMN = 0 ' Kept for clarity
 
 ' --- VBScript Objects ---
-Dim fso, tsInput
-Dim bzhao ' BlueZone Host Access Object
+Dim tsInput
+Dim g_bzhao ' BlueZone Host Access Object
 
 ' --- Variables ---
 Dim strLine ' Holds the entire line from the file, which is the RO number
 Dim RoNumber
 
 ' --- Main Execution ---
-' Initialize File System Object (FSO)
-Set fso = CreateObject("Scripting.FileSystemObject")
-
 ' Connect to BlueZone
-Set bzhao = CreateObject("BZWhll.WhllObj")
-Dim connResult: connResult = bzhao.Connect("")
+Set g_bzhao = CreateObject("BZWhll.WhllObj")
+Dim connResult: connResult = g_g_bzhao.Connect("")
 If connResult <> 0 Then
     MsgBox "Error: Could not connect to BlueZone session. Ensure BlueZone is open and active.", vbCritical, "Connection Failed"
     WScript.Quit 1
 End If
 
 ' Check and Open Input File
-If fso.FileExists(CSV_FILE) Then
-    Set tsInput = fso.OpenTextFile(CSV_FILE, 1) ' 1=ForReading
+If g_fso.FileExists(CSV_FILE) Then
+    Set tsInput = g_fso.OpenTextFile(CSV_FILE, 1) ' 1=ForReading
 Else
     MsgBox "Error: Input file not found at " & CSV_FILE, vbCritical
-        bzhao.StopScript
+        g_bzhao.StopScript
 End If
 
 ' Process Records
@@ -76,11 +56,11 @@ Loop
 
 ' Cleanup
 tsInput.Close
-bzhao.Disconnect
+g_bzhao.Disconnect
 
 Set tsInput = Nothing
-Set fso = Nothing
-Set bzhao = Nothing
+Set g_fso = Nothing
+Set g_bzhao = Nothing
 
 ' --- Subroutines ---
 
@@ -110,7 +90,7 @@ Function HasAnyLineLettersOnScreen()
         row = 10 + i
 
         On Error Resume Next
-        bzhao.ReadScreen screenContentBuffer, 1, row, 1
+        g_bzhao.ReadScreen screenContentBuffer, 1, row, 1
         If Err.Number <> 0 Then
             Err.Clear
             Exit For
@@ -122,7 +102,7 @@ Function HasAnyLineLettersOnScreen()
             If Asc(UCase(capturedLetter)) >= Asc("A") And Asc(UCase(capturedLetter)) <= Asc("Z") Then
                 nextColChar = ""
                 On Error Resume Next
-                bzhao.ReadScreen nextColChar, 1, row, 2
+                g_bzhao.ReadScreen nextColChar, 1, row, 2
                 If Err.Number <> 0 Then
                     Err.Clear
                     nextColChar = ""
@@ -154,7 +134,7 @@ Function WaitForRoDetailScreen(ro)
             Exit Function
         End If
 
-        bzhao.Pause RO_SCREEN_POLL_MS
+        g_bzhao.Pause RO_SCREEN_POLL_MS
         elapsedMs = elapsedMs + RO_SCREEN_POLL_MS
     Loop
 
@@ -178,7 +158,7 @@ Function DiscoverLineLetters()
         startReadColumn = 1
         readLength = 1
         On Error Resume Next
-        bzhao.ReadScreen screenContentBuffer, readLength, startReadRow, startReadColumn
+        g_bzhao.ReadScreen screenContentBuffer, readLength, startReadRow, startReadColumn
         If Err.Number <> 0 Then
             Err.Clear
             Exit For
@@ -190,7 +170,7 @@ Function DiscoverLineLetters()
                 ' Peek column 2 to ensure this is a line letter (typical form: "A  DESCRIPTION")
                 nextColChar = ""
                 On Error Resume Next
-                bzhao.ReadScreen nextColChar, 1, startReadRow, startReadColumn + 1
+                g_bzhao.ReadScreen nextColChar, 1, startReadRow, startReadColumn + 1
                 If Err.Number <> 0 Then
                     Err.Clear
                     nextColChar = ""
@@ -232,8 +212,8 @@ End Function
 ' Subroutine to perform BlueZone automation steps for a single RO
 Sub ProcessRo(RoNumber)
     Dim commands, i, screenState
-    bzhao.SendKey RoNumber
-    bzhao.SendKey "<NumpadEnter>"
+    g_bzhao.SendKey RoNumber
+    g_bzhao.SendKey "<NumpadEnter>"
 
     screenState = WaitForRoDetailScreen(RoNumber)
 
@@ -254,23 +234,23 @@ Sub ProcessRo(RoNumber)
         Exit Sub
     End If
     For i = 0 To UBound(commands)
-        bzhao.Pause 1000
-        bzhao.SendKey "CCC " & commands(i)
-        bzhao.SendKey "<Enter>"
-        bzhao.Pause 2000
+        g_bzhao.Pause 1000
+        g_bzhao.SendKey "CCC " & commands(i)
+        g_bzhao.SendKey "<Enter>"
+        g_bzhao.Pause 2000
         Call WaitForStoryClosure(commands(i))
     Next
-    bzhao.SendKey "E"
-    bzhao.SendKey "<Enter>"
-    bzhao.Pause 1000
+    g_bzhao.SendKey "E"
+    g_bzhao.SendKey "<Enter>"
+    g_bzhao.Pause 1000
 End Sub
 
 ' Checks if line 2 contains 'NOT ON FILE' or 'closed'
 Function CheckForROError()
     Dim screenContentBuffer, screenLength
     screenLength = 80
-    bzhao.Pause 2000
-    bzhao.ReadScreen screenContentBuffer, screenLength, 2, 1
+    g_bzhao.Pause 2000
+    g_bzhao.ReadScreen screenContentBuffer, screenLength, 2, 1
     If InStr(screenContentBuffer, "NOT ON FILE") > 0 Then
         CheckForROError = "NOT ON FILE"
     ElseIf InStr(screenContentBuffer, "closed") > 0 Then
@@ -294,17 +274,17 @@ Sub WaitForTextState(targetText, pollInterval, timeout, wantPresent, errorMsg, s
     Dim elapsed, screenContentBuffer, screenLength, found
     elapsed = 0
     Do
-        bzhao.Pause pollInterval
+        g_bzhao.Pause pollInterval
         elapsed = elapsed + pollInterval
         screenLength = 8 * 80
-        bzhao.ReadScreen screenContentBuffer, screenLength, 8, 1
+        g_bzhao.ReadScreen screenContentBuffer, screenLength, 8, 1
         found = (InStr(screenContentBuffer, targetText) > 0)
         If (wantPresent And found) Or (Not wantPresent And Not found) Then
             Exit Do
         End If
         If elapsed >= timeout Then
             MsgBox "ERROR: " & errorMsg & ". Script will exit.", vbCritical
-            bzhao.StopScript
+            g_bzhao.StopScript
         End If
     Loop
 End Sub
@@ -313,8 +293,8 @@ End Sub
 Sub ReadAndShowFullScreen()
     Dim screenContentBuffer, screenLength
     screenLength = 24 * 80
-    bzhao.ReadScreen screenContentBuffer, screenLength, 1, 1
-    bzhao.Pause 2000
+    g_bzhao.ReadScreen screenContentBuffer, screenLength, 1, 1
+    g_bzhao.Pause 2000
     MsgBox screenContentBuffer, vbOKOnly, "Full Screen Content: " & screenContentBuffer
 End Sub
 

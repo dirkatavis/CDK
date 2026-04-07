@@ -1,25 +1,10 @@
 Option Explicit
 
+' --- Bootstrap ---
 Dim g_fso: Set g_fso = CreateObject("Scripting.FileSystemObject")
-Const BASE_ENV_VAR_LOCAL = "CDK_BASE"
-
-Function FindRepoRootForBootstrap()
-    Dim sh: Set sh = CreateObject("WScript.Shell")
-    Dim basePath: basePath = sh.Environment("USER")(BASE_ENV_VAR_LOCAL)
-
-    If basePath = "" Or Not g_fso.FolderExists(basePath) Then
-        Err.Raise 53, "Bootstrap", "Invalid or missing CDK_BASE. Value: " & basePath
-    End If
-
-    If Not g_fso.FileExists(g_fso.BuildPath(basePath, ".cdkroot")) Then
-        Err.Raise 53, "Bootstrap", "Cannot find .cdkroot in base path:" & vbCrLf & basePath
-    End If
-
-    FindRepoRootForBootstrap = basePath
-End Function
-
-Dim helperPath: helperPath = g_fso.BuildPath(FindRepoRootForBootstrap(), "framework\PathHelper.vbs")
-ExecuteGlobal g_fso.OpenTextFile(helperPath).ReadAll
+Dim g_sh: Set g_sh = CreateObject("WScript.Shell")
+Dim g_root: g_root = g_sh.Environment("USER")("CDK_BASE")
+ExecuteGlobal g_fso.OpenTextFile(g_fso.BuildPath(g_root, "framework\PathHelper.vbs")).ReadAll
 
 Dim LOG_FILE_PATH: LOG_FILE_PATH = GetConfigPath("GetMvaFromVin", "Log")
 Dim DIAG_LOG_FILE_PATH: DIAG_LOG_FILE_PATH = GetConfigPath("GetMvaFromVin", "DiagnosticLog")
@@ -40,7 +25,7 @@ Dim POLL_MS: POLL_MS = CLng(GetIniSetting("GetMvaFromVin", "PollMs", "300"))
 Dim CAPTURE_SCREEN_ON_ERROR: CAPTURE_SCREEN_ON_ERROR = ParseBoolean(GetIniSetting("GetMvaFromVin", "CaptureScreenOnError", "true"), True)
 Dim CONTINUE_ON_ERROR: CONTINUE_ON_ERROR = ParseBoolean(GetIniSetting("GetMvaFromVin", "ContinueOnError", "true"), True)
 
-Dim bzhao: Set bzhao = CreateObject("BZWhll.WhllObj")
+Dim g_bzhao: Set g_bzhao = CreateObject("BZWhll.WhllObj")
 
 Sub Main()
     Dim inFile, outFile, headerLine, vinColumnIndex
@@ -61,7 +46,7 @@ Sub Main()
     End If
 
     On Error Resume Next
-    bzhao.Connect ""
+    g_bzhao.Connect ""
     If Err.Number <> 0 Then
         Call LogResult("ERROR", "Failed to connect to BlueZone/Compass session: " & Err.Description)
         Err.Clear
@@ -143,7 +128,7 @@ Sub ProcessVin(vinValue, ByRef mvaValue, ByRef statusValue, ByRef errorValue)
         Exit Sub
     End If
 
-    bzhao.SendKey vinValue & SEARCH_SUBMIT_KEY
+    g_bzhao.SendKey vinValue & SEARCH_SUBMIT_KEY
     Call WaitMs(POLL_MS)
 
     If Not WaitForResultScreen(resultScreen, RESULTS_WAIT_SEC) Then
@@ -234,7 +219,7 @@ Sub MaybeReturnToSearch()
 
     If WaitForText(VIN_PROMPT_TEXT, 1) Then Exit Sub
 
-    bzhao.SendKey RETURN_TO_SEARCH_KEY
+    g_bzhao.SendKey RETURN_TO_SEARCH_KEY
     Call WaitMs(POLL_MS)
 End Sub
 
@@ -259,7 +244,7 @@ Function ReadScreenAll()
     Dim content
     content = ""
     On Error Resume Next
-    bzhao.ReadScreen content, 1920, 1, 1
+    g_bzhao.ReadScreen content, 1920, 1, 1
     If Err.Number <> 0 Then
         content = ""
         Err.Clear
@@ -270,7 +255,7 @@ End Function
 
 Sub WaitMs(ms)
     If ms < 0 Then ms = 0
-    bzhao.Pause CLng(ms)
+    g_bzhao.Pause CLng(ms)
 End Sub
 
 Function SecondsSince(startTimer)

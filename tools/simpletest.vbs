@@ -22,9 +22,19 @@ For i = 0 To 4
     MsgBox terms(i) & " found in:" & Chr(10) & results
 Next
 
+MsgBox "DONE", vbInformation, "SimpleTest Complete"
+
 Sub SearchFolder(folderPath, searchTerm)
     Dim folder, file, subfolder, ts, content, stripped
     Set folder = g_fso.GetFolder(folderPath)
+
+    ' Skip folders that are not part of the CDK source tree
+    Dim folderName: folderName = LCase(folder.Name)
+    If folderName = ".venv" Or folderName = "node_modules" Or folderName = ".git" Or _
+       folderName = ".pytest_cache" Or folderName = ".ruff_cache" Or folderName = "temp" Then
+        Exit Sub
+    End If
+
     For Each file In folder.Files
         If LCase(Right(file.Name, 4)) = ".vbs" Then
             On Error Resume Next

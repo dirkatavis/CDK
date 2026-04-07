@@ -5,28 +5,11 @@
 
 Option Explicit
 
-' --- Load PathHelper for centralized path management ---
+' --- Bootstrap ---
 Dim g_fso: Set g_fso = CreateObject("Scripting.FileSystemObject")
-Const BASE_ENV_VAR_LOCAL = "CDK_BASE"
-
-' Find repo root by searching for .cdkroot marker
-Function FindRepoRootForBootstrap()
-    Dim sh: Set sh = CreateObject("WScript.Shell")
-    Dim basePath: basePath = sh.Environment("USER")(BASE_ENV_VAR_LOCAL)
-
-    If basePath = "" Or Not g_fso.FolderExists(basePath) Then
-        Err.Raise 53, "Bootstrap", "Invalid or missing CDK_BASE. Value: " & basePath
-    End If
-
-    If Not g_fso.FileExists(g_fso.BuildPath(basePath, ".cdkroot")) Then
-        Err.Raise 53, "Bootstrap", "Cannot find .cdkroot in base path:" & vbCrLf & basePath
-    End If
-
-    FindRepoRootForBootstrap = basePath
-End Function
-
-Dim helperPath: helperPath = g_fso.BuildPath(FindRepoRootForBootstrap(), "framework\PathHelper.vbs")
-ExecuteGlobal g_fso.OpenTextFile(helperPath).ReadAll
+Dim g_sh: Set g_sh = CreateObject("WScript.Shell")
+Dim g_root: g_root = g_sh.Environment("USER")("CDK_BASE")
+ExecuteGlobal g_g_fso.OpenTextFile(g_g_fso.BuildPath(g_root, "framework\PathHelper.vbs")).ReadAll
 
 ' --- Configuration Constants ---
 Const POLL_INTERVAL = 1000   ' Check every 1000ms (1 time per second)
@@ -46,14 +29,11 @@ Const AppendMode = 8
 Dim LOG_FILE_PATH: LOG_FILE_PATH = GetConfigPath("Open_RO", "Log")
 Dim g_LogVerbosity: g_LogVerbosity = ResolveLogVerbosity()
 
-Dim fso, ts, strLine, arrValues, i, MVA, Mileage
-
-' --- Initialize Files (Amend for new session) ---
-Set fso = CreateObject("Scripting.FileSystemObject")
+Dim ts, strLine, arrValues, i, MVA, Mileage
 
 ' Initialize log file
 Dim logInit
-Set logInit = fso.OpenTextFile(LOG_FILE_PATH, AppendMode, True)
+Set logInit = g_fso.OpenTextFile(LOG_FILE_PATH, AppendMode, True)
 logInit.WriteLine "===================================================="
 logInit.WriteLine "SESSION START: " & Now
 logInit.WriteLine "===================================================="
@@ -62,7 +42,7 @@ Set logInit = Nothing
 
 ' Initialize output CSV with headers
 Dim csvOut
-Set csvOut = fso.CreateTextFile(OUTPUT_CSV_PATH, True)
+Set csvOut = g_fso.CreateTextFile(OUTPUT_CSV_PATH, True)
 csvOut.WriteLine "RO_Number"
 csvOut.Close
 Set csvOut = Nothing
@@ -71,20 +51,20 @@ Set csvOut = Nothing
 LOG "Script started - Log file path: " & LOG_FILE_PATH, "med"
 LOG "Initialized output CSV (overwritten): " & OUTPUT_CSV_PATH, "med"
 
-Dim Bzhao
+Dim g_bzhao
 On Error Resume Next
-Set Bzhao = CreateObject("BZWhll.WhllObj")
+Set g_bzhao = CreateObject("BZWhll.WhllObj")
 If Err.Number <> 0 Then
     ' Will report at connect time; clear for now
     Err.Clear
 End If
 On Error GoTo 0
 
-If fso.FileExists(CSV_FILE_PATH) Then
+If g_fso.FileExists(CSV_FILE_PATH) Then
     LOG "CSV file found: " & CSV_FILE_PATH, "low"
-    bzhao.Connect ""
+    g_bzhao.Connect ""
     LOG "Connected to BlueZone", "low"
-    Set ts = fso.OpenTextFile(CSV_FILE_PATH, 1)
+    Set ts = g_fso.OpenTextFile(CSV_FILE_PATH, 1)
     ts.ReadLine   ' Skip header row
     LOG "Processing CSV data...", "low"
 
@@ -103,8 +83,8 @@ If fso.FileExists(CSV_FILE_PATH) Then
     Set ts = Nothing
 End If
 
-Set fso = Nothing
-bzhao.Disconnect
+Set g_fso = Nothing
+g_bzhao.Disconnect
 
 '--------------------------------------------------------------------
 ' Subroutine: Main - Fully Standardized with WaitForPrompt
@@ -115,7 +95,7 @@ Sub Main(mva, mileage)
     ' NEED TO IDENTIFY: What prompt appears when CDK is ready for Vehicle ID?
     ' CURRENT: Using "Vehid....." - NEEDS VERIFICATION
     Call WaitForPrompt("Vehid.....", mva, true, PROMPT_TIMEOUT_MS)
-    ' bzhao.Pause 1000
+    ' g_bzhao.Pause 1000
 
 
     ' Skip if no matching vehicle - check but don't enter anything
@@ -142,68 +122,68 @@ Sub Main(mva, mileage)
     ' NEED TO IDENTIFY: What field label appears for tag entry?
     ' CURRENT: Using "Tag......" - NEEDS VERIFICATION
     Call WaitForPrompt("Tag......", mva, true, PROMPT_TIMEOUT_MS)
-    ' bzhao.Pause 1000
+    ' g_bzhao.Pause 1000
 
     '==== INPUT POINT 7: BEFORE ENTERING VENDOR ====
     ' NEED TO IDENTIFY: What prompt shows for vendor field?
     ' CURRENT: Using "PMVEND" - NEEDS VERIFICATION
     Call WaitForPrompt("Quick Codes", "PMVEND", True, PROMPT_TIMEOUT_MS)
-    ' bzhao.Pause 1000
+    ' g_bzhao.Pause 1000
 
     '==== INPUT POINT 8: BEFORE F3 KEY ====
     ' NEED TO IDENTIFY: What screen/text indicates ready for F3?
     ' CURRENT: No verification - NEEDS PROMPT DETECTION
     Call WaitForPrompt("Quick Code Description", "<F3>", False, PROMPT_TIMEOUT_MS)
-    ' bzhao.Pause 1000
+    ' g_bzhao.Pause 1000
 
     '==== INPUT POINT 9: BEFORE F8 KEY ====
     ' NEED to IDENTIFY: What screen/text indicates ready for F8?
     ' CURRENT: No verification - NEEDS PROMPT DETECTION
     Call WaitForPrompt("Quick Codes", "<F8>", False, PROMPT_TIMEOUT_MS)
-    ' bzhao.Pause 1000
+    ' g_bzhao.Pause 1000
     
     '==== INPUT POINT 10: BEFORE ENTERING "99" ====
     ' NEED TO IDENTIFY: What prompt shows for "99" entry?
     ' CURRENT: No verification - NEEDS PROMPT DETECTION
     Call WaitForPrompt("Tech", "99", False, PROMPT_TIMEOUT_MS)
-    ' bzhao.Pause 1000
+    ' g_bzhao.Pause 1000
     
     '==== INPUT POINT 11: BEFORE SECOND F3 ====
     ' NEED TO IDENTIFY: What indicates ready for second F3?
     ' CURRENT: No verification - NEEDS PROMPT DETECTION
     Call WaitForPrompt("Tech", "<F3>", False, PROMPT_TIMEOUT_MS)
-    ' bzhao.Pause 1000
+    ' g_bzhao.Pause 1000
     
     '==== INPUT POINT 12: BEFORE THIRD F3 ====
     ' NEED TO IDENTIFY: What indicates ready for third F3?
     ' CURRENT: No verification - NEEDS PROMPT DETECTION
     Call WaitForPrompt("Quick Codes", "<F3>", False, PROMPT_TIMEOUT_MS)
-    ' bzhao.Pause 1000    
+    ' g_bzhao.Pause 1000    
     
     '==== INPUT POINT 13: BEFORE FIRST ENTER KEY ====
     ' NEED TO IDENTIFY: What text shows system is ready for Enter?
     ' CURRENT: No verification - NEEDS PROMPT DETECTION
     Call WaitForPrompt("Choose an option", "<NumpadEnter>", False, PROMPT_TIMEOUT_MS)
-    ' bzhao.Pause 1000
+    ' g_bzhao.Pause 1000
     
     '==== INPUT POINT 14: BEFORE SECOND ENTER KEY ====
     ' NEED TO IDENTIFY: What prompt appears before second Enter?
     ' CURRENT: No verification - NEEDS PROMPT DETECTION
     Call WaitForPrompt("MILEAGE OUT", "<NumpadEnter>", False, 30000)
-    ' bzhao.Pause 1000
+    ' g_bzhao.Pause 1000
     
     '==== INPUT POINT 15: BEFORE THIRD ENTER KEY ====
     ' NEED TO IDENTIFY: What prompt appears before third Enter?
     ' CURRENT: No verification - NEEDS PROMPT DETECTION
 
     Call WaitForPrompt("MILEAGE IN", "<NumpadEnter>", False, 10000)
-    ' bzhao.Pause 1000
+    ' g_bzhao.Pause 1000
     
     '==== INPUT POINT 16: BEFORE ENTERING FINAL "N" ====
     ' NEED TO IDENTIFY: What question/prompt is asking for N response?
     ' CURRENT: No verification - NEEDS PROMPT DETECTION
     Call WaitForPrompt("O.K. TO CLOSE RO", "N", true, 30000)
-    ' bzhao.Pause 1000
+    ' g_bzhao.Pause 1000
 
     ' Scrape and log
     Dim roNumber
@@ -252,7 +232,7 @@ Sub WaitForPrompt(promptText, valueToEnter, sendEnter, timeoutMs)
             LOG "Timeout waiting for prompt: " & promptText, "med"
             If InStr(1, UCase(promptText), "MILEAGE OUT", vbTextCompare) > 0 Then
                 Dim timeoutScreen, timeoutRow23, timeoutRow24
-                bzhao.ReadScreen timeoutScreen, 160, 23, 1
+                g_bzhao.ReadScreen timeoutScreen, 160, 23, 1
                 timeoutRow23 = Left(timeoutScreen, 80)
                 timeoutRow24 = Mid(timeoutScreen, 81, 80)
                 MsgBox "Timeout waiting for prompt: " & promptText & vbCrLf & vbCrLf & _
@@ -270,7 +250,7 @@ Sub WaitForPrompt(promptText, valueToEnter, sendEnter, timeoutMs)
         If IsSlowModeEnabled() Then Call WaitMs(1000)
         
         ' Check if the value is a special key command
-        bzhao.Pause 1000
+        g_bzhao.Pause 1000
         If InStr(1, valueToEnter, "<") > 0 And InStr(1, valueToEnter, ">") > 0 Then
             LOG "Sending key command: " & valueToEnter, "high"
             Call FastKey(valueToEnter)
@@ -294,7 +274,7 @@ End Sub
 '--------------------------------------------------------------------
 Sub FastText(text)
     LOG "Sending text: " & text, "high"
-    bzhao.SendKey text
+    g_bzhao.SendKey text
     If IsSlowModeEnabled() Then
         Call WaitMs(1000)
     Else
@@ -313,7 +293,7 @@ Sub FastKey(key)
     Else
         Call WaitMs(PRE_KEY_WAIT)
     End If
-    bzhao.SendKey key
+    g_bzhao.SendKey key
     ' Allow the host some time to process the special key and transition screens
     If IsSlowModeEnabled() Then
         Call WaitMs(1000)
@@ -342,7 +322,7 @@ Function GetRepairOrderEnhanced()
     Dim screenContent, screenLength, pos, startPos, ch, roNumber
     screenLength = 24 * 80
     
-    bzhao.ReadScreen screenContent, screenLength, 1, 1
+    g_bzhao.ReadScreen screenContent, screenLength, 1, 1
     pos = InStr(1, screenContent, "Created repair order ", vbTextCompare)
     
     If pos > 0 Then
@@ -373,7 +353,7 @@ Function IsTextPresent(textToFind)
     Dim screenLength
     Dim targets, i
     screenLength = 24 * 80 
-    bzhao.ReadScreen screenContentBuffer, screenLength, 1, 1
+    g_bzhao.ReadScreen screenContentBuffer, screenLength, 1, 1
 
     targets = Split(textToFind, "|")
     IsTextPresent = False
@@ -394,7 +374,7 @@ End Function
 '--------------------------------------------------------------------
 Function ResolveLogVerbosity()
     Dim configPath, rawValue, normalized
-    configPath = g_fso.BuildPath(GetRepoRoot(), "config\config.ini")
+    configPath = g_g_fso.BuildPath(GetRepoRoot(), "config\config.ini")
     rawValue = ReadIniValue(configPath, "Open_RO", "Verbosity")
 
     If Len(Trim(rawValue)) = 0 Then rawValue = "Med"
