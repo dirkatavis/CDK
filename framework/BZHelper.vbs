@@ -253,4 +253,45 @@ Function WaitForPrompt(promptText, inputValue, sendEnter, timeoutMs, description
     WaitForPrompt = found
 End Function
 
+'-------------------------------------------------------------------------------------
+' WaitForAnyOf — Wait for any one of several pipe-delimited targets to appear.
+'
+' Parameters:
+'   targets    — pipe-delimited list of strings to search for (e.g. "CAMP|PASTEUR")
+'   timeoutMs  — milliseconds to wait before giving up (0 = use default 5000ms)
+'
+' Returns True if any target is found, False if timeout elapsed.
+'
+' Uses IsTextPresent internally — search is case-insensitive, row-by-row.
+' Canonical version. Authoritative source: framework\BZHelper.vbs
+'-------------------------------------------------------------------------------------
+Function WaitForAnyOf(targets, timeoutMs)
+    Dim waitStart, waitElapsed
+
+    If timeoutMs <= 0 Then timeoutMs = 5000
+
+    BZH_Log "INFO", "BZHelper.WaitForAnyOf: Waiting for '" & targets & "' (timeout " & timeoutMs & "ms)"
+
+    waitStart = Timer
+    Do
+        If IsTextPresent(targets) Then
+            BZH_Log "INFO", "BZHelper.WaitForAnyOf: Found match in '" & targets & "'"
+            WaitForAnyOf = True
+            Exit Function
+        End If
+
+        WaitMs 500
+
+        waitElapsed = Timer - waitStart
+        If waitElapsed < 0 Then waitElapsed = waitElapsed + 86400
+        waitElapsed = waitElapsed * 1000
+
+        If waitElapsed > timeoutMs Then
+            BZH_Log "WARN", "BZHelper.WaitForAnyOf: Timeout after " & timeoutMs & "ms waiting for '" & targets & "'"
+            WaitForAnyOf = False
+            Exit Function
+        End If
+    Loop
+End Function
+
 End If ' g_BZHelper_Loaded load guard

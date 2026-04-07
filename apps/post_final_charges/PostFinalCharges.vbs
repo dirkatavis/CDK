@@ -1,23 +1,20 @@
 Option Explicit
 
 
-' --- Load PathHelper for centralized path management ---
+' --- Bootstrap ---
 Dim g_fso: Set g_fso = CreateObject("Scripting.FileSystemObject")
-Dim bootstrapShell: Set bootstrapShell = CreateObject("WScript.Shell")
-Dim bootstrapRoot: bootstrapRoot = bootstrapShell.Environment("USER")("CDK_BASE")
-If bootstrapRoot = "" Or Not g_fso.FolderExists(bootstrapRoot) Then
-    Err.Raise 53, "Bootstrap", "Invalid or missing CDK_BASE. Value: " & bootstrapRoot
+Dim g_sh: Set g_sh = CreateObject("WScript.Shell")
+Dim g_root: g_root = g_sh.Environment("USER")("CDK_BASE")
+If g_root = "" Or Not g_fso.FolderExists(g_root) Then
+    Err.Raise 53, "Bootstrap", "Invalid or missing CDK_BASE. Value: " & g_root
 End If
-If Not g_fso.FileExists(g_fso.BuildPath(bootstrapRoot, ".cdkroot")) Then
-    Err.Raise 53, "Bootstrap", "Cannot find .cdkroot in base path:" & vbCrLf & bootstrapRoot
+If Not g_fso.FileExists(g_fso.BuildPath(g_root, ".cdkroot")) Then
+    Err.Raise 53, "Bootstrap", "Cannot find .cdkroot in base path:" & vbCrLf & g_root
 End If
-
-Dim helperPath: helperPath = g_fso.BuildPath(bootstrapRoot, "framework\PathHelper.vbs")
-ExecuteGlobal g_fso.OpenTextFile(helperPath).ReadAll
+ExecuteGlobal g_fso.OpenTextFile(g_fso.BuildPath(g_root, "framework\PathHelper.vbs")).ReadAll
 
 ' --- Load ValidateSetup for dependency checking ---
-Dim validateSetupPath: validateSetupPath = g_fso.BuildPath(FindRepoRootForBootstrap(), "framework\ValidateSetup.vbs")
-ExecuteGlobal g_fso.OpenTextFile(validateSetupPath).ReadAll
+ExecuteGlobal g_fso.OpenTextFile(g_fso.BuildPath(g_root, "framework\ValidateSetup.vbs")).ReadAll
 
 ' Global script variables
 Dim CSV_FILE_PATH, LOG_FILE_PATH

@@ -342,23 +342,6 @@ Function RecoverFromLockedProcess()
     RecoverFromLockedProcess = True
 End Function
 
-Function WaitForAnyOf(targets, timeoutSec)
-    Dim start, elapsed, screenContent, j, targetList
-    targetList = Split(targets, "|")
-    start = Timer
-    Do
-        g_bzhao.ReadScreen screenContent, 1920, 1, 1
-        For j = 0 To UBound(targetList)
-            If InStr(1, screenContent, Trim(targetList(j)), vbTextCompare) > 0 Then
-                WaitForAnyOf = True
-                Exit Function
-            End If
-        Next
-        g_bzhao.Pause 500
-        elapsed = Timer - start
-    Loop While elapsed < timeoutSec
-    WaitForAnyOf = False
-End Function
 
 Function RecoverFromVehidError()
     RecoverFromVehidError = False
@@ -382,7 +365,7 @@ Function RecoverFromVehidError()
     g_bzhao.SendKey EMPLOYEE_NUMBER
     g_bzhao.Pause 100
     g_bzhao.SendKey "<NumpadEnter>"
-    If Not WaitForAnyOf("CAMP|PASTEUR", 10) Then
+    If Not WaitForAnyOf("CAMP|PASTEUR", 10000) Then
         LogResult "ERROR", "Recovery failed at step 3: name confirmation prompt not found."
         Exit Function
     End If

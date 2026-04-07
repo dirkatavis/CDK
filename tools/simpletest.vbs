@@ -19,10 +19,15 @@ Dim i
 For i = 0 To 4
     Dim results: results = ""
     SearchFolder g_root, terms(i)
-    MsgBox terms(i) & " found in:" & Chr(10) & results
+    WScript.Echo "=== " & terms(i) & " ==="
+    If results = "" Then
+        WScript.Echo "  (none)"
+    Else
+        WScript.Echo results
+    End If
 Next
 
-MsgBox "DONE", vbInformation, "SimpleTest Complete"
+WScript.Echo "=== DONE ==="
 
 Sub SearchFolder(folderPath, searchTerm)
     Dim folder, file, subfolder, ts, content, stripped
