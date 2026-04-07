@@ -51,6 +51,42 @@ If Not ValidateEnvironment() Then
 End If
 ```
 
+### BZHelper.vbs
+**Purpose:** Authoritative shared library for BlueZone terminal automation
+- Centralises all terminal interaction: connection, screen reading, text detection, keystroke sending, prompt waiting
+- Eliminates duplication of `WaitForPrompt`, `IsTextPresent`, `WaitMs`, `FastKey`/`FastText` across 13+ scripts
+- `BZH_Log` shim bridges to the calling script's log system (`LogResult`) without coupling
+
+**Key Functions:**
+- `ConnectBZ()` — Connect `g_bzhao` to the active BlueZone session; returns True/False
+- `DisconnectBZ()` — Cleanly disconnect and release `g_bzhao`
+- `BZReadScreen(length, row, col)` — Wrapper around `g_bzhao.ReadScreen`
+- `IsTextPresent(searchText)` — Pipe-delimited multi-target screen search; case-insensitive
+- `BZSendKey(keyValue)` — Send keystroke or text to terminal; returns True/False
+- `WaitMs(milliseconds)` — Busy-wait; midnight rollover safe
+- `WaitForPrompt(promptText, inputValue, sendEnter, timeoutMs, description)` — Canonical prompt wait with optional input send; timeout in **milliseconds**
+
+**Usage Pattern:**
+```vbs
+' 1. Declare and instantiate g_bzhao BEFORE loading BZHelper
+Dim g_bzhao: Set g_bzhao = CreateObject("BZWhll.WhllObj")
+
+' 2. Load BZHelper (after PathHelper)
+Dim bzHelperPath: bzHelperPath = g_fso.BuildPath(g_root, "framework\BZHelper.vbs")
+ExecuteGlobal g_fso.OpenTextFile(bzHelperPath).ReadAll
+
+' 3. Connect and use
+If ConnectBZ() Then
+    If WaitForPrompt("R.O. NUMBER", roNumber, True, 30000, "Main prompt") Then
+        ' prompt found, input sent, Enter pressed
+    End If
+    DisconnectBZ
+End If
+```
+
+**Migration note:** Scripts previously calling `WaitForPrompt(text, timeoutSec)` (PFC_Scrapper, Pfc_Summary)
+must update call sites — the canonical signature uses **milliseconds**, not seconds.
+
 ### HostCompat.vbs
 **Purpose:** Dual-context execution compatibility (standalone vs BlueZone)
 - Enables scripts to run in both BlueZone and standalone cscript.exe environments

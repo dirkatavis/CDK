@@ -8,28 +8,15 @@
 
 Option Explicit
 
-' --- Load PathHelper for centralized path management ---
+' --- Bootstrap ---
 Dim g_fso: Set g_fso = CreateObject("Scripting.FileSystemObject")
-Const BASE_ENV_VAR_LOCAL = "CDK_BASE"
+Dim g_sh: Set g_sh = CreateObject("WScript.Shell")
+Dim g_root: g_root = g_sh.Environment("USER")("CDK_BASE")
+ExecuteGlobal g_fso.OpenTextFile(g_fso.BuildPath(g_root, "framework\PathHelper.vbs")).ReadAll
 
-' Find repo root by searching for .cdkroot marker
-Function FindRepoRootForBootstrap()
-    Dim sh: Set sh = CreateObject("WScript.Shell")
-    Dim basePath: basePath = sh.Environment("USER")(BASE_ENV_VAR_LOCAL)
-
-    If basePath = "" Or Not g_fso.FolderExists(basePath) Then
-        Err.Raise 53, "Bootstrap", "Invalid or missing CDK_BASE. Value: " & basePath
-    End If
-
-    If Not g_fso.FileExists(g_fso.BuildPath(basePath, ".cdkroot")) Then
-        Err.Raise 53, "Bootstrap", "Cannot find .cdkroot in base path:" & vbCrLf & basePath
-    End If
-
-    FindRepoRootForBootstrap = basePath
-End Function
-
-Dim helperPath: helperPath = g_fso.BuildPath(FindRepoRootForBootstrap(), "framework\PathHelper.vbs")
-ExecuteGlobal g_fso.OpenTextFile(helperPath).ReadAll
+' --- CDK Terminal Object (must be declared before loading BZHelper) ---
+Dim g_bzhao: Set g_bzhao = CreateObject("BZWhll.WhllObj")
+ExecuteGlobal g_fso.OpenTextFile(g_fso.BuildPath(g_root, "framework\BZHelper.vbs")).ReadAll
 
 ' --- Configuration ---
 Dim LOG_FILE_PATH: LOG_FILE_PATH = GetConfigPath("PFC_Scrapper", "Log")
@@ -39,8 +26,6 @@ Dim START_SEQUENCE: START_SEQUENCE = CInt(GetIniSetting("PFC_Scrapper", "StartSe
 Dim SKIP_SEQUENCES: SKIP_SEQUENCES = GetIniSetting("PFC_Scrapper", "SkipSequences", "")
 Dim EMPLOYEE_NUMBER: EMPLOYEE_NUMBER = GetIniSetting("PFC_Scrapper", "EmployeeNumber", "")
 
-' --- CDK Objects ---
-Dim bzhao: Set bzhao = CreateObject("BZWhll.WhllObj")
 
 ' --- Main Script ---
 Sub RunScrapper()
@@ -52,7 +37,7 @@ Sub RunScrapper()
 
     ' Connect to terminal
     On Error Resume Next
-    bzhao.Connect ""
+    g_bzhao.Connect ""
     If Err.Number <> 0 Then
         LogResult "ERROR", "Failed to connect to BlueZone: " & Err.Description
         MsgBox "Failed to connect to BlueZone terminal session.", vbCritical
@@ -77,7 +62,7 @@ Sub RunScrapper()
             i = i + 1
         Else
             ' Ensure we are at COMMAND prompt — recover if security menu is showing
-            If Not WaitForPrompt("COMMAND:", 5) Then
+            If Not WaitForPrompt("COMMAND:", "", False, 5000, "") Then
                 LogResult "ERROR", "Timed out waiting for COMMAND prompt at sequence " & i
                 If DetectAndRecover() Then
                     LogResult "INFO", "Recovery successful. Retrying sequence " & i & "."
@@ -90,15 +75,15 @@ Sub RunScrapper()
             If abortAll Then Exit Do
 
             ' Enter sequence number
-            bzhao.SendKey i & "<NumpadEnter>"
-            bzhao.Pause SCREEN_WAIT_DELAY
+            g_bzhao.SendKey i & "<NumpadEnter>"
+            g_bzhao.Pause SCREEN_WAIT_DELAY
 
             ' Wait for state change - either RO screen, security menu, or error
             Dim screenText, startTime, screenFound
             startTime = Timer
             screenFound = False
             Do
-                bzhao.ReadScreen screenText, 1920, 1, 1
+                g_bzhao.ReadScreen screenText, 1920, 1, 1
                 If InStr(1, screenText, "DOES NOT EXIST", vbTextCompare) > 0 Then
                     LogResult "INFO", "Reached end of sequence at " & i & ". Termination signal detected."
                     csvFile.Close
@@ -128,7 +113,7 @@ Sub RunScrapper()
                     LogResult "ERROR", "Timeout waiting for RO screen at sequence " & i
                     Exit Do
                 End If
-                bzhao.Pause 500
+                g_bzhao.Pause 500
             Loop
 
             If abortAll Then Exit Do
@@ -144,8 +129,8 @@ Sub RunScrapper()
                 End If
 
                 ' Return to command prompt
-                bzhao.SendKey "E<NumpadEnter>"
-                bzhao.Pause SCREEN_WAIT_DELAY
+                g_bzhao.SendKey "E<NumpadEnter>"
+                g_bzhao.Pause SCREEN_WAIT_DELAY
             Else
                 LogResult "ERROR", "Sequence " & i & " skipped due to screen transition timeout."
             End If
@@ -204,18 +189,18 @@ Function GetTechId()
 
     ' Find Line A header first to anchor our search
     For row = 10 To 22 
-        bzhao.ReadScreen buf, 1, row, 1
+        g_bzhao.ReadScreen buf, 1, row, 1
         ' Look for 'A' in the line code column (Column 1)
         If UCase(Trim(buf)) = "A" Then
             ' Once 'A' is found, scan rows below for the L1 labor line
             For i = 0 To 3
                 If row + i <= 24 Then
-                    bzhao.ReadScreen wholeLine, 80, row + i, 1
+                    g_bzhao.ReadScreen wholeLine, 80, row + i, 1
                     ' Check for L1 marker (indicators say it starts around Col 4)
                     If InStr(1, wholeLine, "L1", vbTextCompare) > 0 Then
                         ' Based on debug: Tech ID is visible if reading from Col 40
                         ' We read a larger block covering the tech field and ltype
-                        bzhao.ReadScreen foundText, 15, row + i, 40 
+                        g_bzhao.ReadScreen foundText, 15, row + i, 40 
                         
                         If re.Test(foundText) Then
                             Set matches = re.Execute(foundText)
@@ -233,7 +218,7 @@ End Function
 Function GetROFromScreen()
     Dim buf, re, matches
     ' Based on Header Map: RO number is on Row 3
-    bzhao.ReadScreen buf, 240, 1, 1 ' Read top 3 rows
+    g_bzhao.ReadScreen buf, 240, 1, 1 ' Read top 3 rows
     Set re = CreateObject("VBScript.RegExp")
     re.Pattern = "RO:?\s*(\d{4,})"
     re.IgnoreCase = True
@@ -255,7 +240,7 @@ End Function
 Function GetOpenDateFromScreen()
     Dim buf, re, matches
     ' Based on Header Map: Row 4 contains "OPENED DATE: 05NOV25"
-    bzhao.ReadScreen buf, 80, 4, 1 
+    g_bzhao.ReadScreen buf, 80, 4, 1 
     
     Set re = CreateObject("VBScript.RegExp")
     ' Match "OPENED DATE: " followed by alphanumeric date (e.g. 05NOV25)
@@ -267,7 +252,7 @@ Function GetOpenDateFromScreen()
         GetOpenDateFromScreen = Trim(matches(0).SubMatches(0))
     Else
         ' Fallback to scanning rows 1-3 if Row 4 format differs
-        bzhao.ReadScreen buf, 240, 1, 1
+        g_bzhao.ReadScreen buf, 240, 1, 1
         re.Pattern = "(?:DATE|OPN|OPEN):?\s*([A-Z0-9/]{6,10})"
         If re.Test(buf) Then
             Set matches = re.Execute(buf)
@@ -281,7 +266,7 @@ End Function
 Function GetRepairOrderStatus()
     Dim buf, re, matches
     ' Based on Header Map: Row 5 contains "RO STATUS: WORKING"
-    bzhao.ReadScreen buf, 80, 5, 1
+    g_bzhao.ReadScreen buf, 80, 5, 1
     
     Set re = CreateObject("VBScript.RegExp")
     re.Pattern = "RO STATUS:\s*([A-Z\s]{1,15})"
@@ -292,7 +277,7 @@ Function GetRepairOrderStatus()
         GetRepairOrderStatus = Trim(matches(0).SubMatches(0))
     Else
         ' Fallback: check Row 5, Col 12 specifically
-        bzhao.ReadScreen buf, 15, 5, 12
+        g_bzhao.ReadScreen buf, 15, 5, 12
         GetRepairOrderStatus = Trim(buf)
     End If
 End Function
@@ -303,15 +288,15 @@ Function GetLineDescription(letter)
     ' Header ends at Row 6 (REMARKS). Lines A, B, C start at Row 7.
     ' We scan from Row 10 to skip potential multi-line headers (e.g. REPAIR, REMARKS)
     For row = 10 To 22
-        bzhao.ReadScreen buf, 1, row, 1
+        g_bzhao.ReadScreen buf, 1, row, 1
         ' Look for the letter specifically in column 1
         If UCase(Trim(buf)) = UCase(letter) Then
             ' Peek column 2 to ensure this is a line letter (typical form: "A  DESCRIPTION")
-            bzhao.ReadScreen nextColChar, 1, row, 2
+            g_bzhao.ReadScreen nextColChar, 1, row, 2
             If Asc(nextColChar) = 32 Then
                 ' Found the line letter anchor in Col 1
                 ' Based on previous working state, description starts around Col 4
-                bzhao.ReadScreen foundText, 50, row, 4
+                g_bzhao.ReadScreen foundText, 50, row, 4
                 GetLineDescription = Left(Trim(foundText), 25)
                 Exit Function
             End If
@@ -331,7 +316,7 @@ End Function
 
 Function DetectAndRecover()
     Dim screenContent
-    bzhao.ReadScreen screenContent, 1920, 1, 1
+    g_bzhao.ReadScreen screenContent, 1920, 1, 1
 
     If InStr(1, screenContent, "PRESS RETURN TO CONTINUE", vbTextCompare) > 0 Then
         LogResult "INFO", "Error detected: VEHID not on file."
@@ -348,8 +333,8 @@ End Function
 Function RecoverFromLockedProcess()
     RecoverFromLockedProcess = False
     LogResult "INFO", "Recovery: dismissing locked process, waiting for sequence prompt."
-    bzhao.SendKey "<Enter>"
-    If Not WaitForPrompt("COMMAND:(SEQ#", 10) Then
+    g_bzhao.SendKey "<Enter>"
+    If Not WaitForPrompt("COMMAND:(SEQ#", "", False, 10000, "") Then
         LogResult "ERROR", "Recovery failed: sequence prompt not found after locked process dismiss."
         Exit Function
     End If
@@ -362,14 +347,14 @@ Function WaitForAnyOf(targets, timeoutSec)
     targetList = Split(targets, "|")
     start = Timer
     Do
-        bzhao.ReadScreen screenContent, 1920, 1, 1
+        g_bzhao.ReadScreen screenContent, 1920, 1, 1
         For j = 0 To UBound(targetList)
             If InStr(1, screenContent, Trim(targetList(j)), vbTextCompare) > 0 Then
                 WaitForAnyOf = True
                 Exit Function
             End If
         Next
-        bzhao.Pause 500
+        g_bzhao.Pause 500
         elapsed = Timer - start
     Loop While elapsed < timeoutSec
     WaitForAnyOf = False
@@ -378,42 +363,42 @@ End Function
 Function RecoverFromVehidError()
     RecoverFromVehidError = False
     LogResult "INFO", "Recovery step 1: dismissing VEHID error, waiting for Function Code prompt."
-    bzhao.SendKey "<Enter>"
-    If Not WaitForPrompt("FUNCTION CODE", 5) Then
+    g_bzhao.SendKey "<Enter>"
+    If Not WaitForPrompt("FUNCTION CODE", "", False, 5000, "") Then
         LogResult "ERROR", "Recovery failed at step 1: FUNCTION CODE prompt not found."
         Exit Function
     End If
 
     LogResult "INFO", "Recovery step 2: entering PFC."
-    bzhao.SendKey "PFC"
-    bzhao.Pause 100
-    bzhao.SendKey "<NumpadEnter>"
-    If Not WaitForPrompt("EMPLOYEE NUMBER", 10) Then
+    g_bzhao.SendKey "PFC"
+    g_bzhao.Pause 100
+    g_bzhao.SendKey "<NumpadEnter>"
+    If Not WaitForPrompt("EMPLOYEE NUMBER", "", False, 10000, "") Then
         LogResult "ERROR", "Recovery failed at step 2: EMPLOYEE NUMBER prompt not found."
         Exit Function
     End If
 
     LogResult "INFO", "Recovery step 3: entering employee number."
-    bzhao.SendKey EMPLOYEE_NUMBER
-    bzhao.Pause 100
-    bzhao.SendKey "<NumpadEnter>"
+    g_bzhao.SendKey EMPLOYEE_NUMBER
+    g_bzhao.Pause 100
+    g_bzhao.SendKey "<NumpadEnter>"
     If Not WaitForAnyOf("CAMP|PASTEUR", 10) Then
         LogResult "ERROR", "Recovery failed at step 3: name confirmation prompt not found."
         Exit Function
     End If
 
     LogResult "INFO", "Recovery step 4: confirming employee name."
-    bzhao.SendKey "<NumpadEnter>"
-    If Not WaitForPrompt("ENTER OPTION", 10) Then
+    g_bzhao.SendKey "<NumpadEnter>"
+    If Not WaitForPrompt("ENTER OPTION", "", False, 10000, "") Then
         LogResult "ERROR", "Recovery failed at step 4: PFC menu not found after name confirm."
         Exit Function
     End If
 
     LogResult "INFO", "Recovery step 5: selecting option 2."
-    bzhao.SendKey "2"
-    bzhao.Pause 100
-    bzhao.SendKey "<NumpadEnter>"
-    If Not WaitForPrompt("COMMAND:(SEQ#", 10) Then
+    g_bzhao.SendKey "2"
+    g_bzhao.Pause 100
+    g_bzhao.SendKey "<NumpadEnter>"
+    If Not WaitForPrompt("COMMAND:(SEQ#", "", False, 10000, "") Then
         LogResult "ERROR", "Recovery failed at step 5: sequence prompt not found."
         Exit Function
     End If
@@ -422,30 +407,6 @@ Function RecoverFromVehidError()
     RecoverFromVehidError = True
 End Function
 
-Function WaitForPrompt(text, timeoutSec)
-    Dim start, elapsed, screenContent
-    start = Timer
-    Do
-        bzhao.ReadScreen screenContent, 1920, 1, 1
-        If InStr(1, screenContent, text, vbTextCompare) > 0 Then
-            WaitForPrompt = True
-            Exit Function
-        End If
-        bzhao.Pause 500
-        elapsed = Timer - start
-    Loop While elapsed < timeoutSec
-    WaitForPrompt = False
-End Function
-
-Function IsTextPresent(text)
-    Dim screenContent
-    bzhao.ReadScreen screenContent, 1920, 1, 1
-    If InStr(1, screenContent, text, vbTextCompare) > 0 Then
-        IsTextPresent = True
-    Else
-        IsTextPresent = False
-    End If
-End Function
 
 Sub LogResult(ByVal level, ByVal message)
     Dim logFile

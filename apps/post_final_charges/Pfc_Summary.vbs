@@ -6,27 +6,15 @@
 
 Option Explicit
 
-' --- Load PathHelper for centralized path management ---
+' --- Bootstrap ---
 Dim g_fso: Set g_fso = CreateObject("Scripting.FileSystemObject")
-Const BASE_ENV_VAR_LOCAL = "CDK_BASE"
+Dim g_sh: Set g_sh = CreateObject("WScript.Shell")
+Dim g_root: g_root = g_sh.Environment("USER")("CDK_BASE")
+ExecuteGlobal g_fso.OpenTextFile(g_fso.BuildPath(g_root, "framework\PathHelper.vbs")).ReadAll
 
-Function FindRepoRootForBootstrap()
-    Dim sh: Set sh = CreateObject("WScript.Shell")
-    Dim basePath: basePath = sh.Environment("USER")(BASE_ENV_VAR_LOCAL)
-
-    If basePath = "" Or Not g_fso.FolderExists(basePath) Then
-        Err.Raise 53, "Bootstrap", "Invalid or missing CDK_BASE. Value: " & basePath
-    End If
-
-    If Not g_fso.FileExists(g_fso.BuildPath(basePath, ".cdkroot")) Then
-        Err.Raise 53, "Bootstrap", "Cannot find .cdkroot in base path:" & vbCrLf & basePath
-    End If
-
-    FindRepoRootForBootstrap = basePath
-End Function
-
-Dim helperPath: helperPath = g_fso.BuildPath(FindRepoRootForBootstrap(), "framework\PathHelper.vbs")
-ExecuteGlobal g_fso.OpenTextFile(helperPath).ReadAll
+' --- CDK Terminal Object (must be declared before loading BZHelper) ---
+Dim g_bzhao: Set g_bzhao = CreateObject("BZWhll.WhllObj")
+ExecuteGlobal g_fso.OpenTextFile(g_fso.BuildPath(g_root, "framework\BZHelper.vbs")).ReadAll
 
 ' --- Configuration ---
 Dim LOG_FILE_PATH: LOG_FILE_PATH = GetConfigPath("Pfc_Summary", "Log")
@@ -35,8 +23,6 @@ Dim START_SEQUENCE: START_SEQUENCE = CInt(GetIniSetting("Pfc_Summary", "StartSeq
 Dim END_SEQUENCE: END_SEQUENCE = CInt(GetIniSetting("Pfc_Summary", "EndSequenceNumber", "100"))
 Dim STEP_DELAY_MS: STEP_DELAY_MS = CInt(GetIniSetting("Pfc_Summary", "StepDelayMs", "1000"))
 
-' --- CDK Objects ---
-Dim bzhao: Set bzhao = CreateObject("BZWhll.WhllObj")
 
 Sub RunSummary()
     Dim i, totalScraped, csvFile
@@ -46,7 +32,7 @@ Sub RunSummary()
     LogResult "INFO", "Sequence range: " & START_SEQUENCE & " to " & END_SEQUENCE
 
     On Error Resume Next
-    bzhao.Connect ""
+    g_bzhao.Connect ""
     If Err.Number <> 0 Then
         LogResult "ERROR", "Failed to connect to BlueZone: " & Err.Description
         Exit Sub
@@ -54,7 +40,7 @@ Sub RunSummary()
     On Error GoTo 0
 
     ' Give the terminal a moment to settle before starting the loop
-    bzhao.Pause STEP_DELAY_MS
+    g_bzhao.Pause STEP_DELAY_MS
 
     Set csvFile = g_fso.CreateTextFile(OUTPUT_CSV_PATH, True)
     csvFile.WriteLine "RO_Number,Status"
@@ -62,23 +48,23 @@ Sub RunSummary()
     For i = START_SEQUENCE To END_SEQUENCE
         LogResult "INFO", "Processing sequence: " & i
 
-        If Not WaitForPrompt("COMMAND:", 5) Then
+        If Not WaitForPrompt("COMMAND:", "", False, 5000, "") Then
             LogResult "ERROR", "Timed out waiting for COMMAND prompt at sequence " & i
             Exit For
         End If
 
 
-        bzhao.Pause STEP_DELAY_MS
+        g_bzhao.Pause STEP_DELAY_MS
 
-        bzhao.SendKey i & "<NumpadEnter>"
-        bzhao.Pause STEP_DELAY_MS
+        g_bzhao.SendKey i & "<NumpadEnter>"
+        g_bzhao.Pause STEP_DELAY_MS
 
         Dim screenText, startTime, screenFound
         startTime = Timer
         screenFound = False
 
         Do
-            bzhao.ReadScreen screenText, 1920, 1, 1
+            g_bzhao.ReadScreen screenText, 1920, 1, 1
 
             If InStr(1, screenText, "DOES NOT EXIST", vbTextCompare) > 0 Then
                 LogResult "INFO", "Reached end of sequence at " & i & ". Termination signal detected."
@@ -97,7 +83,7 @@ Sub RunSummary()
                 Exit Do
             End If
 
-            bzhao.Pause 500
+            g_bzhao.Pause 500
         Loop
 
         If screenFound Then
@@ -112,9 +98,9 @@ Sub RunSummary()
             totalScraped = totalScraped + 1
             LogResult "INFO", "Wrote row: " & roNumber & "," & roStatus
 
-            bzhao.Pause STEP_DELAY_MS
-            bzhao.SendKey "E<NumpadEnter>"
-            bzhao.Pause STEP_DELAY_MS
+            g_bzhao.Pause STEP_DELAY_MS
+            g_bzhao.SendKey "E<NumpadEnter>"
+            g_bzhao.Pause STEP_DELAY_MS
         Else
             LogResult "ERROR", "Sequence " & i & " skipped due to screen transition timeout."
         End If
@@ -127,7 +113,7 @@ End Sub
 Function GetROFromScreen()
     Dim buf, re, matches
 
-    bzhao.ReadScreen buf, 240, 1, 1
+    g_bzhao.ReadScreen buf, 240, 1, 1
 
     Set re = CreateObject("VBScript.RegExp")
     re.Pattern = "RO:?\s*(\d{4,})"
@@ -150,7 +136,7 @@ End Function
 Function GetRepairOrderStatus()
     Dim buf, re, matches
 
-    bzhao.ReadScreen buf, 80, 5, 1
+    g_bzhao.ReadScreen buf, 80, 5, 1
 
     Set re = CreateObject("VBScript.RegExp")
     re.Pattern = "RO STATUS:\s*([A-Z\s]{1,20})"
@@ -160,7 +146,7 @@ Function GetRepairOrderStatus()
         Set matches = re.Execute(buf)
         GetRepairOrderStatus = Trim(matches(0).SubMatches(0))
     Else
-        bzhao.ReadScreen buf, 15, 5, 12
+        g_bzhao.ReadScreen buf, 15, 5, 12
         If Trim(buf) = "" Then
             GetRepairOrderStatus = "UNKNOWN"
         Else
@@ -169,23 +155,6 @@ Function GetRepairOrderStatus()
     End If
 End Function
 
-Function WaitForPrompt(text, timeoutSec)
-    Dim startTime, elapsed, screenContent
-    startTime = Timer
-
-    Do
-        bzhao.ReadScreen screenContent, 1920, 1, 1
-        If InStr(1, screenContent, text, vbTextCompare) > 0 Then
-            WaitForPrompt = True
-            Exit Function
-        End If
-
-        bzhao.Pause 500
-        elapsed = Timer - startTime
-    Loop While elapsed < timeoutSec
-
-    WaitForPrompt = False
-End Function
 
 Sub LogResult(ByVal level, ByVal message)
     Dim logFile
