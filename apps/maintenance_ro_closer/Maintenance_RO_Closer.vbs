@@ -64,7 +64,6 @@ Dim LOOP_PAUSE: LOOP_PAUSE = GetConfigSetting("Maintenance_RO_Closer", "LoopPaus
 Dim REVIEW_PAUSE: REVIEW_PAUSE = GetConfigSetting("Maintenance_RO_Closer", "ReviewPause", 500)
 Dim BLACKLIST_TERMS: BLACKLIST_TERMS = GetConfigSetting("Maintenance_RO_Closer", "blacklist_terms", "")
 Dim OLD_RO_DAYS_THRESHOLD: OLD_RO_DAYS_THRESHOLD = GetConfigSetting("Maintenance_RO_Closer", "AssumeClosedAfterDays", 120)
-Dim REALLY_OLD_DAYS: REALLY_OLD_DAYS = GetConfigSetting("Maintenance_RO_Closer", "ReallyOldDays", 60)
 
 ' --- Picky Match State ---
 Dim CriteriaA, CriteriaB, CriteriaC
@@ -270,7 +269,6 @@ Function ShouldProcessRoByBusinessRules(roNumber)
     ' RO Status        | Condition          | Action
     ' -----------------+--------------------+--------
     ' Any              | Blacklisted        | SKIP
-    ' Any              | Age >= 60 days     | CLOSE
     ' Any              | Footprint mismatch | SKIP
     ' READY TO POST    | (none)             | CLOSE
     ' Any other        | (none)             | SKIP
@@ -295,14 +293,7 @@ Function ShouldProcessRoByBusinessRules(roNumber)
         Exit Function
     End If
 
-    ' Gate 2: Really old — close regardless of footprint or status
-    If ageDays >= CInt(REALLY_OLD_DAYS) Then
-        LogResult "INFO", "RO " & roNumber & " | Age " & ageDays & " days >= ReallyOldDays (" & REALLY_OLD_DAYS & "). Closing."
-        ShouldProcessRoByBusinessRules = True
-        Exit Function
-    End If
-
-    ' Gate 3: Footprint must match
+    ' Gate 2: Footprint must match
     If Not isPickyMatch Then
         ShouldProcessRoByBusinessRules = False
         Exit Function
