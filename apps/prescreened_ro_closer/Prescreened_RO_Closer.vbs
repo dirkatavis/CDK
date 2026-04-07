@@ -60,6 +60,7 @@ End Function
 Dim STABILITY_PAUSE: STABILITY_PAUSE = GetConfigSetting("Prescreened_RO_Closer", "StabilityPause", 1000)
 Dim LOOP_PAUSE: LOOP_PAUSE = GetConfigSetting("Prescreened_RO_Closer", "LoopPause", 500)
 Dim REVIEW_PAUSE: REVIEW_PAUSE = GetConfigSetting("Prescreened_RO_Closer", "ReviewPause", 250)
+Dim BLACKLIST_TERMS: BLACKLIST_TERMS = GetConfigSetting("Prescreened_RO_Closer", "blacklist_terms", "")
 
 ' --- CDK Objects ---
 Dim bzhao: Set bzhao = CreateObject("BZWhll.WhllObj")
@@ -67,6 +68,7 @@ Dim bzhao: Set bzhao = CreateObject("BZWhll.WhllObj")
 ' --- Main ---
 Sub RunAutomation()
     Dim successfulCount: successfulCount = 0
+    Dim skippedCount: skippedCount = 0
 
     If Not g_fso.FileExists(INPUT_CSV_PATH) Then
         LogResult "ERROR", "Input CSV not found: " & INPUT_CSV_PATH
@@ -85,18 +87,18 @@ Sub RunAutomation()
     End If
     On Error GoTo 0
 
-    ProcessRoList successfulCount
+    ProcessRoList successfulCount, skippedCount
 
     On Error Resume Next
     If Not bzhao Is Nothing Then bzhao.Disconnect
     On Error GoTo 0
 
-    LogResult "INFO", "Automation complete. Total successful closures: " & successfulCount
-    MsgBox "Prescreened RO Closer Finished." & vbCrLf & "Successful Closures: " & successfulCount, vbInformation
+    LogResult "INFO", "Automation complete. Closed: " & successfulCount & " | Skipped: " & skippedCount
+    MsgBox "Prescreened RO Closer Finished." & vbCrLf & "Successful Closures: " & successfulCount & vbCrLf & "Skipped: " & skippedCount, vbInformation
 End Sub
 
 ' --- Process List ---
-Sub ProcessRoList(ByRef successfulCount)
+Sub ProcessRoList(ByRef successfulCount, ByRef skippedCount)
     Dim ts, strLine, roFromCsv, currentRo
 
     On Error Resume Next
@@ -132,6 +134,8 @@ Sub ProcessRoList(ByRef successfulCount)
                     Else
                         LogResult "ERROR", "Failed to complete review for RO: " & currentRo & " during Phase I."
                     End If
+                Else
+                    skippedCount = skippedCount + 1
                 End If
 
                 ReturnToMainPrompt
@@ -150,8 +154,18 @@ End Sub
 ' --- RO State Check ---
 Function IsRoProcessable(roNumber)
     Dim screenContent
+    ' Wait for the RO screen to fully load before reading state.
+    ' Any of these indicate the screen is ready — COMMAND: is the normal loaded state.
+    WaitForText "COMMAND:|NOT ON FILE|ALREADY CLOSED|is closed|ENTER SEQUENCE NUMBER|VARIABLE HAS NOT BEEN ASSIGNED"
     bzhao.Pause STABILITY_PAUSE
     bzhao.ReadScreen screenContent, 1920, 1, 1
+
+    Dim matchedBlacklistTerm: matchedBlacklistTerm = GetMatchedBlacklistTerm(BLACKLIST_TERMS, screenContent)
+    If matchedBlacklistTerm <> "" Then
+        LogResult "INFO", "RO " & roNumber & " | Blacklisted ('" & matchedBlacklistTerm & "'). Skipping."
+        IsRoProcessable = False
+        Exit Function
+    End If
 
     If InStr(1, screenContent, "NOT ON FILE", vbTextCompare) > 0 Then
         LogResult "INFO", "RO " & roNumber & " NOT ON FILE. Skipping."
@@ -490,6 +504,29 @@ Sub LogResult(logType, message)
         Set fso = Nothing
     End If
 End Sub
+
+Function GetMatchedBlacklistTerm(blacklistTermsCsv, screenContent)
+    Dim terms, i, term
+
+    If Trim(blacklistTermsCsv) = "" Then
+        GetMatchedBlacklistTerm = ""
+        Exit Function
+    End If
+
+    terms = Split(blacklistTermsCsv, ",")
+
+    For i = 0 To UBound(terms)
+        term = Trim(terms(i))
+        If term <> "" Then
+            If InStr(1, screenContent, term, vbTextCompare) > 0 Then
+                GetMatchedBlacklistTerm = term
+                Exit Function
+            End If
+        End If
+    Next
+
+    GetMatchedBlacklistTerm = ""
+End Function
 
 Sub TerminateScript(reason)
     LogResult "ERROR", "TERMINATING SCRIPT: " & reason
