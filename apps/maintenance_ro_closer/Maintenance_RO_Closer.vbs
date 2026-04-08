@@ -261,13 +261,13 @@ Function ShouldProcessRoByBusinessRules(roNumber)
     ' RO Status                    | Condition                        | Action
     ' -----------------------------+----------------------------------+--------
     ' Any                          | Blacklisted                      | SKIP
-    ' OPENED/OPEN/PREASSIGNED/etc. | Age >= AssumeClosedAfterDays     | CLOSE  (footprint bypassed)
+    ' Any (non-blacklisted)         | Age >= AssumeClosedAfterDays     | CLOSE  (overrides footprint)
     ' Any                          | Footprint mismatch               | SKIP
     ' READY TO POST                | (none)                           | CLOSE
     ' Any other                    | (none)                           | SKIP
     '
     ' Rules evaluated top to bottom. First match wins.
-    ' Age exception takes priority over footprint — old stale ROs close regardless of line config.
+    ' Age exception overrides footprint but not the blacklist.
     ' =================================================
     Dim ageDays, openedDateToken, isOldEnough
     Dim screenContent, isReadyToPost, matchedBlacklistTerm, isPickyMatch, currentStatus
@@ -281,16 +281,16 @@ Function ShouldProcessRoByBusinessRules(roNumber)
 
     LogResult "INFO", "RO " & roNumber & " | Footprint: " & BoolLabel(isPickyMatch) & " | Status: " & IIf(isReadyToPost, "READY TO POST", currentStatus) & " | Age: " & IIf(ageDays >= 0, ageDays & " days", "unknown")
 
-    ' Gate 1: Blacklist always wins
+    ' Gate 1: Blacklist
     If matchedBlacklistTerm <> "" Then
         LogResult "INFO", "RO " & roNumber & " | Blacklisted ('" & matchedBlacklistTerm & "'). Skipping."
         ShouldProcessRoByBusinessRules = False
         Exit Function
     End If
 
-    ' Gate 2: Age exception — bypasses footprint requirement, but only for eligible statuses
-    If isOldEnough And IsAgeExceptionEligibleStatus(currentStatus) Then
-        LogResult "INFO", "RO " & roNumber & " | Age exception: " & ageDays & " days old (threshold: " & OLD_RO_DAYS_THRESHOLD & "), status '" & currentStatus & "' eligible. Closing regardless of footprint."
+    ' Gate 2: Age exception — overrides footprint but not blacklist
+    If isOldEnough Then
+        LogResult "INFO", "RO " & roNumber & " | Age exception: " & ageDays & " days old (threshold: " & OLD_RO_DAYS_THRESHOLD & "). Closing regardless of footprint."
         ShouldProcessRoByBusinessRules = True
         Exit Function
     End If
