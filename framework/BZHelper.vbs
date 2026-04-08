@@ -190,7 +190,7 @@ Function WaitForPrompt(promptText, inputValue, sendEnter, timeoutMs, description
 
     If timeoutMs <= 0 Then timeoutMs = 5000
 
-    label = IIf(Len(Trim(description)) > 0, description, promptText)
+    If Len(Trim(description)) > 0 Then label = description Else label = promptText
     found = False
     waitStart = Timer
 
