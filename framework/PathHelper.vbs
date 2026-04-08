@@ -133,16 +133,3 @@ Function ReadIniValue(filePath, section, key)
     ts.Close
 End Function
 
-' ------------------------------------------------------------------------------
-' BuildLogPath - Helper to build a log file path with timestamp option
-' ------------------------------------------------------------------------------
-Function BuildLogPath(section, key)
-    BuildLogPath = GetConfigPath(section, key)
-End Function
-
-' ------------------------------------------------------------------------------
-' BuildCSVPath - Helper specifically for CSV files
-' ------------------------------------------------------------------------------
-Function BuildCSVPath(section, key)
-    BuildCSVPath = GetConfigPath(section, key)
-End Function

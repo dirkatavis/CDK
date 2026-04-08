@@ -20,8 +20,7 @@ ExecuteGlobal g_fso.OpenTextFile(g_fso.BuildPath(g_root, "framework\ValidateSetu
 
 ' Global script variables
 Dim CSV_FILE_PATH, LOG_FILE_PATH
-Dim fso, roNumber
-Dim bzhao
+Dim roNumber
 Dim lastRoResult
 Dim currentRODisplay
 Dim commonLibLoaded
@@ -874,7 +873,7 @@ End Function
 Function GetScreenLine(lineNum)
     Dim screenContentBuffer, lineText
     On Error Resume Next
-    bzhao.ReadScreen screenContentBuffer, 80, lineNum, 1
+    g_bzhao.ReadScreen screenContentBuffer, 80, lineNum, 1
     If Err.Number <> 0 Then
         GetScreenLine = ""
         Err.Clear
@@ -915,7 +914,7 @@ Function GetScreenLines(startLine, numLines)
     On Error Resume Next
     For lineNum = startLine To maxLine
         screenContentBuffer = ""
-        bzhao.ReadScreen screenContentBuffer, 80, lineNum, 1
+        g_bzhao.ReadScreen screenContentBuffer, 80, lineNum, 1
         If Err.Number = 0 Then
             lineContent = Trim(screenContentBuffer)
             If Len(lineContent) > 0 Then
@@ -1161,7 +1160,7 @@ Sub FastKey(keyValue)
     End If
     
     Call LogEvent("comm", "high", "FastKey: Sending '" & keyValue & "'", "FastKey", "", "")
-    bzhao.SendKey keyValue
+    g_bzhao.SendKey keyValue
     
     If Err.Number <> 0 Then
         Call LogEvent("maj", "med", "FastKey: Failed to send '" & keyValue & "'", "FastKey", "Error: " & Err.Description, "")
@@ -1182,7 +1181,7 @@ Sub FastText(textValue)
     End If
     
     Call LogEvent("comm", "high", "FastText: Sending '" & textValue & "'", "FastText", "", "")
-    bzhao.SendKey textValue
+    g_bzhao.SendKey textValue
     
     If Err.Number <> 0 Then
         Call LogEvent("maj", "med", "FastText: Failed to send '" & textValue & "'", "FastText", "Error: " & Err.Description, "")
@@ -1363,15 +1362,13 @@ Sub RunMainProcess()
 
     ' Cleanup
     ' Guard object cleanup with IsObject to avoid 'Object required' when variables are Empty
-    If IsObject(bzhao) Then
+    If IsObject(g_bzhao) Then
         On Error Resume Next
-        bzhao.Disconnect
-        Set bzhao = Nothing
+        g_bzhao.Disconnect
         Set g_bzhao = Nothing
         If Err.Number <> 0 Then Err.Clear
         On Error GoTo 0
     End If
-    If IsObject(fso) Then Set fso = Nothing
 End Sub
 
 '----------------------------------------------------
@@ -1612,7 +1609,6 @@ End Function
 ' detection and configuration loading.
 '-----------------------------------------------------------------------------------
 Sub InitializeObjects()
-    Set fso = CreateObject("Scripting.FileSystemObject")
     Call InitializeConfig
     Call DetermineDebugMode
     
@@ -1633,16 +1629,15 @@ Sub InitializeObjects()
     On Error GoTo 0
     
     If g_IsTestMode Then
-        ' Include and use mock bzhao for testing
+        ' Include and use mock g_bzhao for testing
         Dim mockPath
         mockPath = ResolvePath("MockBzhao.vbs", "", True)
         If IncludeFile(mockPath) Then
-            Set bzhao = New MockBzhao
-            Set g_bzhao = bzhao
+            Set g_bzhao = New MockBzhao
             Call LogEvent("comm", "med", "Using MockBzhao for testing", "InitializeObjects", "", "")
             
             ' Setup initial test scenario
-            bzhao.SetupTestScenario("basic_command_prompt")
+            g_bzhao.SetupTestScenario("basic_command_prompt")
         Else
             Call LogEvent("maj", "low", "Could not load MockBzhao.vbs for test mode", "InitializeObjects", "", "")
             g_IsTestMode = False
@@ -1650,8 +1645,7 @@ Sub InitializeObjects()
     End If
     
     If Not g_IsTestMode Then
-        Set bzhao = CreateObject("BZWhll.WhllObj")
-        Set g_bzhao = bzhao
+        Set g_bzhao = CreateObject("BZWhll.WhllObj")
         If Err.Number <> 0 Then
             Call LogEvent("crit", "med", "Failed to create BZWhll.WhllObj", "InitializeObjects", Err.Description, "")
             Err.Clear
@@ -1896,7 +1890,7 @@ End Sub
 ' 
 ' **FUNCTIONALITY:**
 ' Establishes a connection to the BlueZone terminal emulator session.
-' It uses the global bzhao object and attempts to connect to the default
+' It uses the global g_bzhao object and attempts to connect to the default
 ' session. It logs the outcome of the connection attempt.
 ' 
 ' 
@@ -1905,13 +1899,13 @@ End Sub
 '-----------------------------------------------------------------------------------
 Function ConnectBlueZone()
     On Error Resume Next
-    If bzhao Is Nothing Then
+    If g_bzhao Is Nothing Then
         Call LogEvent("crit", "low", "BlueZone object is not available", "ConnectBlueZone", "CreateObject failed", "")
         ConnectBlueZone = False
         Exit Function
     End If
     
-    bzhao.Connect ""
+    g_bzhao.Connect ""
     If Err.Number <> 0 Then
         Call LogEvent("crit", "med", "BlueZone connection failed", "ConnectBlueZone", Err.Description, "")
         Err.Clear
@@ -2880,8 +2874,8 @@ Sub SafeMsg(text, isCritical, title)
     ' Try to show a MsgBox only if MsgBox exists in this host (wrap to avoid errors)
     On Error Resume Next
     ' Prefer BlueZone host message if available
-    If Not bzhao Is Nothing Then
-        bzhao.MsgBox text
+    If Not g_bzhao Is Nothing Then
+        g_bzhao.MsgBox text
         If Err.Number = 0 Then
             On Error GoTo 0
             Exit Sub
@@ -2916,8 +2910,8 @@ End Sub
 ' (String) Returns the extracted RO number, or an empty string if not found.
 '-----------------------------------------------------------------------------------
 Function GetROFromScreen()
-    If bzhao Is Nothing Then
-        Call LogEvent("maj", "low", "bzhao object is not available", "GetROFromScreen", "", "")
+    If g_bzhao Is Nothing Then
+        Call LogEvent("maj", "low", "g_bzhao object is not available", "GetROFromScreen", "", "")
         GetROFromScreen = ""
         Exit Function
     End If
@@ -2940,7 +2934,7 @@ Function GetROFromScreen()
 
     For attempt = 1 To maxAttempts
         On Error Resume Next
-        bzhao.ReadScreen screenContentBuffer, screenLength, 1, 1
+        g_bzhao.ReadScreen screenContentBuffer, screenLength, 1, 1
         If Err.Number <> 0 Then
             Call LogEvent("maj", "med", "GetROFromScreen ReadScreen failed", "GetROFromScreen", Err.Description, "")
             Err.Clear
@@ -3072,7 +3066,7 @@ End Function
 Function IsStatusReady()
     ' Use GetRepairOrderStatus() to scrape the exact RO status from the screen
     ' Caller may choose to add waits before calling if needed
-    bzhao.pause 1000 ' brief pause to ensure screen is stable
+    g_bzhao.pause 1000 ' brief pause to ensure screen is stable
     Dim roStatus, validStatuses, i
     roStatus = GetRepairOrderStatus()
     validStatuses = GetValidCloseoutStatuses()
@@ -3128,8 +3122,8 @@ End Function
 '-----------------------------------------------------------------------------------
 Function GetRepairOrderStatus()
     On Error Resume Next
-    If bzhao Is Nothing Then
-        Call LogEvent("min", "med", "GetRepairOrderStatus: bzhao object not available", "GetRepairOrderStatus", "", "")
+    If g_bzhao Is Nothing Then
+        Call LogEvent("min", "med", "GetRepairOrderStatus: g_bzhao object not available", "GetRepairOrderStatus", "", "")
         GetRepairOrderStatus = ""
         Exit Function
     End If
@@ -3138,7 +3132,7 @@ Function GetRepairOrderStatus()
     lengthToRead = 30
     lineNum = 5
     colNum = 1
-    bzhao.ReadScreen buf, lengthToRead, lineNum, colNum
+    g_bzhao.ReadScreen buf, lengthToRead, lineNum, colNum
     If Err.Number <> 0 Then
         Call LogEvent("min", "med", "GetRepairOrderStatus: ReadScreen failed", "GetRepairOrderStatus", Err.Description, "")
         Err.Clear
@@ -3187,15 +3181,15 @@ End Function
 '-----------------------------------------------------------------------------------
 Function GetOpenedDate()
     On Error Resume Next
-    If bzhao Is Nothing Then
-        Call LogEvent("min", "med", "GetOpenedDate: bzhao object not available", "GetOpenedDate", "", "")
+    If g_bzhao Is Nothing Then
+        Call LogEvent("min", "med", "GetOpenedDate: g_bzhao object not available", "GetOpenedDate", "", "")
         GetOpenedDate = ""
         Exit Function
     End If
 
     ' Read rows 1-6 (480 chars) to capture the OPENED DATE field regardless of exact row
     Dim buf
-    bzhao.ReadScreen buf, 480, 1, 1
+    g_bzhao.ReadScreen buf, 480, 1, 1
     If Err.Number <> 0 Then
         Call LogEvent("min", "med", "GetOpenedDate: ReadScreen failed", "GetOpenedDate", Err.Description, "")
         Err.Clear
@@ -3424,7 +3418,7 @@ Sub LogScreenSnapshot(name)
     Dim screenContentBuffer, screenLength, snippet
     screenLength = DEBUG_SCREEN_LINES * 80
     On Error Resume Next
-    bzhao.ReadScreen screenContentBuffer, screenLength, 1, 1
+    g_bzhao.ReadScreen screenContentBuffer, screenLength, 1, 1
     If Err.Number <> 0 Then
         Call LogEvent("min", "med", "LogScreenSnapshot failed to read screen", "LogScreenSnapshot", Err.Description, "")
         Err.Clear
@@ -4099,8 +4093,8 @@ Function GetCloseoutErrorMap()
     '   "PressEnter"               -> press Enter key
     '   "PressKey:<key>"           -> PressKey with given key token (e.g. "<NumpadEnter>", "<Esc>")
     '   "Send:<text>"              -> EnterText (sends text then Enter)
-    '   "SendNoEnter:<text>"       -> bzhao.SendKey text (no Enter appended)
-    '   "Wait:<seconds>"           -> bzhao.Wait seconds
+    '   "SendNoEnter:<text>"       -> g_bzhao.SendKey text (no Enter appended)
+    '   "Wait:<seconds>"           -> g_bzhao.Wait seconds
     '   "Log:<message>"            -> LogInfo("CLOSEOUT", message)
     ' 
     '   "Log:<message>"            -> LogResult("CLOSEOUT", message)
@@ -4157,7 +4151,7 @@ Function ExtractMessageNear(key)
     ' Read full screen (24 rows x 80 cols)
     screenLength = 24 * 80
     On Error Resume Next
-    bzhao.ReadScreen screenContentBuffer, screenLength, 1, 1
+    g_bzhao.ReadScreen screenContentBuffer, screenLength, 1, 1
     If Err.Number <> 0 Then
         Err.Clear
         ExtractMessageNear = ""
@@ -4311,7 +4305,7 @@ Function GetRepairOrderEnhanced()
     Dim screenContent, screenLength, pos, startPos, ch, roNumber
     screenLength = 24 * 80
     
-    bzhao.ReadScreen screenContent, screenLength, 1, 1
+    g_bzhao.ReadScreen screenContent, screenLength, 1, 1
     pos = InStr(1, screenContent, "Created repair order ", vbTextCompare)
     
     If pos > 0 Then
