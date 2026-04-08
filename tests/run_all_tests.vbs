@@ -67,15 +67,23 @@ ExecuteTest "Detect Missing PathHelper.vbs", "Sub_NegMissingPathHelper"
 ExecuteTest "Detect Missing config.ini", "Sub_NegMissingConfig"
 ExecuteTest "Handle Corrupted config.ini", "Sub_NegCorruptConfig"
 
-' --- CATEGORY 5: EXTERNAL SUITES ---
+' --- CATEGORY 5: FRAMEWORK SMOKE TESTS ---
+WScript.Echo ""
+WScript.Echo "---------------------------------------------------------------------------"
+WScript.Echo "SECTION: Framework Smoke Tests"
+WScript.Echo "---------------------------------------------------------------------------"
+RunAppSuite "Framework Test: BZHelper", "tests\infrastructure\test_bzhelper.vbs"
+
+' --- CATEGORY 6: EXTERNAL SUITES ---
 WScript.Echo ""
 WScript.Echo "---------------------------------------------------------------------------"
 WScript.Echo "SECTION: External Application Suites"
 WScript.Echo "---------------------------------------------------------------------------"
-RunAppSuite "Migration Progress Tracker", "tests\run_migration_target_tests.vbs"
 RunAppSuite "App Test: Post Final Charges", "apps\post_final_charges\tests\run_all_tests.vbs"
 RunAppSuite "App Test: PFC Scrapper", "apps\pfc_scrapper\tests\test_pfc_scrapper.vbs"
 RunAppSuite "App Test: Validate RO List", "apps\validate_ro_list\tests\test_validate_ro_logic.vbs"
+RunAppSuite "Tool Test: Close Single RO", "tools\tests\test_close_single_ro.vbs"
+RunAppSuite "App Test: Open RO", "apps\repair_order\0_Open_RO\tests\run_all_tests.vbs"
 
 PrintOverallSummary()
 
@@ -217,10 +225,6 @@ Sub Sub_CleanupBackupFiles()
     CleanupFile g_fso.BuildPath(g_repoRoot, ".cdkroot.backup")
     CleanupFile g_fso.BuildPath(g_repoRoot, "framework\PathHelper.vbs.backup")
     CleanupFile g_fso.BuildPath(g_repoRoot, "config\config.ini.backup")
-    
-    ' Ensure mandatory directories for fallback logs exist
-    Dim tempPath: tempPath = g_fso.BuildPath(g_repoRoot, "Temp")
-    If Not g_fso.FolderExists(tempPath) Then g_fso.CreateFolder tempPath
 End Sub
 
 Sub Sub_RestoreFromBackups()
@@ -249,8 +253,17 @@ End Sub
 Sub Sub_CheckConfigFormat()
     Dim ts: Set ts = g_fso.OpenTextFile(g_fso.BuildPath(g_repoRoot, "config\config.ini"), 1)
     Dim content: content = ts.ReadAll: ts.Close
+    
+    ' Basic Format check
     If InStr(content, "[") = 0 Or InStr(content, "=") = 0 Then g_suiteFailures = g_suiteFailures + 1
+    
+    ' Integrity scan: Check for conflict markers or corruption
+    If InStr(content, "<<<<<<<") > 0 Or InStr(content, "=======") > 0 Or InStr(content, ">>>>>>>") > 0 Then
+        WScript.Echo "    " & String(40, ".") & " [FAIL] Conflict markers found"
+        g_suiteFailures = g_suiteFailures + 1
+    End If
 End Sub
+
 
 Sub Sub_CheckCriticalPaths()
     ' Minimal check for fresh install paths
