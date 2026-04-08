@@ -5,7 +5,7 @@
 **Last Updated:** April 2026  
 **Project Status:** Active development — sunset planned in 3–6 months  
 **Repository Location:** `C:\Temp_alt\CDK` (may vary by machine — see CDK_BASE below)  
-**Active Branch:** `feature/bzhelper-foundation`
+**Active Branch:** `feature/ws3-function-migration`
 
 ---
 
@@ -125,30 +125,36 @@ ExecuteGlobal g_fso.OpenTextFile(g_fso.BuildPath(g_root, "framework\BZHelper.vbs
 | `apps/maintenance_ro_closer/Maintenance_RO_Closer.vbs` | ✅ Done |
 | `apps/pfc_scrapper/PFC_Scrapper.vbs` | ✅ Done |
 | `apps/post_final_charges/Pfc_Summary.vbs` | ✅ Done |
-| `apps/post_final_charges/PostFinalCharges.vbs` | ⏳ **Pending — next session** |
+| `apps/post_final_charges/PostFinalCharges.vbs` | ✅ Done |
+| `apps/prescreened_ro_closer/Prescreened_RO_Closer.vbs` | ✅ Done |
 | `apps/repair_order/0_Open_RO/Open_RO.vbs` | ✅ Done |
 | `apps/repair_order/1_prepare_close_pt1/1_Prepare_Close_Pt1.vbs` | ✅ Done |
 | `apps/repair_order/prepare_close_pt1/2_Prepare_Close_Pt1.vbs` | ✅ Done |
+| `apps/repair_order/2_finalize_close_pt2/2_Finalize_Close_Pt2.vbs` | ✅ Done |
 | `apps/validate_ro_list/ValidateRoList.vbs` | ✅ Done |
 | `tools/mva_scrapper/get_mva_from_vin.vbs` | ✅ Done |
 | `tools/simpletest.vbs` | ✅ Done (g_fso/g_sh/g_root only — no PathHelper load needed) |
 
-### WaitForPrompt / IsTextPresent (local definitions)
+### WaitForPrompt / IsTextPresent / WaitMs (local definitions)
 | Script | Status |
 |---|---|
 | `apps/pfc_scrapper/PFC_Scrapper.vbs` | ✅ Removed — now uses BZHelper |
 | `apps/post_final_charges/Pfc_Summary.vbs` | ✅ Removed — now uses BZHelper |
+| `apps/repair_order/0_Open_RO/Open_RO.vbs` | ✅ Removed — migrated to BZHelper 5-arg signature |
+| `apps/repair_order/2_finalize_close_pt2/2_Finalize_Close_Pt2.vbs` | ✅ Removed (was dead code) |
 | `apps/post_final_charges/PostFinalCharges.vbs` | ⏳ **Pending — next session** |
-| `apps/repair_order/0_Open_RO/Open_RO.vbs` | ⏳ Has own 4-arg WaitForPrompt — defer to WS3 |
 | `apps/post_final_charges/tests/test_prompt_detection.vbs` | ⏳ Test file — defer |
 
-### Not yet assessed for full BZHelper migration (WS3)
+### WaitForAnyOf
+| Script | Status |
+|---|---|
+| `apps/pfc_scrapper/PFC_Scrapper.vbs` | ✅ Removed — now calls BZHelper; timeout updated to ms |
+
+### Not yet assessed for full BZHelper migration
 ```
 apps/post_final_charges/close_single_ro.vbs
 apps/post_final_charges/tests/test_blacklist_runtime_detection_gap.vbs
 apps/post_final_charges/tests/test_wch_skip_counter_runtime_regression.vbs
-apps/prescreened_ro_closer/Prescreened_RO_Closer.vbs
-apps/repair_order/2_finalize_close_pt2/2_Finalize_Close_Pt2.vbs
 tools/close_single_ro.vbs
 ```
 
@@ -157,19 +163,17 @@ tools/close_single_ro.vbs
 ## 5. Known Issues
 
 ### High Priority
-1. **`PostFinalCharges.vbs` bootstrap not yet migrated** — the largest and most complex script. Defer to next session with fresh context.
-
-2. **`Open_RO.vbs` has its own 4-arg `WaitForPrompt`** — signature differs from BZHelper canonical (5 args). Defer to Workstream 3 migration; don't remove local copy yet.
-
-3. **`WaitForAnyOf` in PFC_Scrapper** — local utility function not yet in BZHelper. Still needed; add to BZHelper in WS3.
+1. **`PostFinalCharges.vbs` WS3 migration pending** — largest and most complex script. Has local `WaitForPrompt`, `IsTextPresent`, `WaitMs`. Defer to next session with fresh context.
 
 ### Medium Priority
-4. **`BuildLogPath` and `BuildCSVPath` in PathHelper.vbs** — pure aliases for `GetConfigPath`. Candidates for removal.
+2. **`BuildLogPath` and `BuildCSVPath` in PathHelper.vbs** — pure aliases for `GetConfigPath`. Candidates for removal.
 
-5. **`LOG` sub in `Open_RO.vbs` creates new FSO on every call** — logging inside CSV loop creates/destroys COM objects each iteration. Replace with `g_fso`.
+3. **`LOG` sub in `Open_RO.vbs` creates new FSO on every call** — logging inside CSV loop creates/destroys COM objects each iteration. Replace with `g_fso`.
+
+4. **`Open_RO.vbs` WaitForPrompt 5th arg is `""`** — VBScript has no named parameters; empty string description is the idiomatic solution. Consider documenting the parameter contract in BZHelper comments.
 
 ### Low Priority
-6. **`.cdkroot` marker** — retain given sunset timeline.
+5. **`.cdkroot` marker** — retain given sunset timeline.
 
 ---
 
@@ -181,22 +185,25 @@ tools/close_single_ro.vbs
 
 **Drift analysis completed** — 4 different `WaitForPrompt` signatures found across the codebase. Canonical uses milliseconds (not seconds). Scripts previously using seconds-based calls updated at migration time.
 
-### Workstream 2 — Bootstrap Standardisation ⏳ 90% COMPLETE
-9 of 10 production scripts migrated. **One remaining: `PostFinalCharges.vbs`.**
+### Workstream 2 — Bootstrap Standardisation ✅ COMPLETE
+All 12 production scripts migrated to `g_fso`/`g_sh`/`g_root` pattern.
+`FindRepoRootForBootstrap` now appears only in PathHelper (canonical), test_hardcoded_paths, and simpletest.
 
-**Validation tool:** `tools\simpletest.vbs` — searches for duplicate function definitions (not call sites). Run after each migration. Expect `FindRepoRootForBootstrap` to show only PathHelper.vbs + test_hardcoded_paths.vbs + simpletest.vbs when complete.
+**Validation tool:** `tools\simpletest.vbs` — now cscript-friendly (`WScript.Echo`, no dialogs). Terms ordered by WS3 migration priority. Run via `cscript.exe //nologo tools\simpletest.vbs`.
 
 **Full test suite:** `tests\run_all.vbs` — run via `cscript.exe //nologo tests\run_all.vbs`. Last result: **98 pass / 0 fail / 0 error**.
 
-### Workstream 3 — Function Migration (NOT STARTED)
+### Workstream 3 — Function Migration ⏳ IN PROGRESS
 **Goal:** Replace local function bodies in production scripts with calls to BZHelper.
 
-**Approach:**
-1. Start with scripts already on BZHelper bootstrap (PFC_Scrapper, Pfc_Summary done)
-2. PostFinalCharges last — most complex, most risk
-3. Remove local `WaitForPrompt`/`IsTextPresent` one script at a time
-4. Run tests after each removal
-5. Add `WaitForAnyOf` to BZHelper before migrating PFC_Scrapper fully
+**Completed:**
+- `WaitForAnyOf` lifted from `PFC_Scrapper.vbs` into BZHelper; timeout updated from seconds to ms
+- `IsTextPresent` removed from `2_Finalize_Close_Pt2.vbs` (was dead code)
+- `Open_RO.vbs` — local `WaitForPrompt` (Sub, 4-arg), `IsTextPresent`, `WaitMs` all removed; 16 call sites updated to BZHelper 5-arg signature; BZHelper now loaded in bootstrap
+
+**Remaining:**
+- `PostFinalCharges.vbs` — local `WaitForPrompt`, `IsTextPresent`, `WaitMs` — **next session, highest risk**
+- Test files (`test_prompt_detection.vbs`, `test_blacklist_runtime_detection_gap.vbs`, `test_wch_skip_counter_runtime_regression.vbs`) — deferred
 
 ---
 
@@ -221,10 +228,10 @@ tools/close_single_ro.vbs
 **Starting a new chat:** Paste this entire document at the start of the conversation.
 
 **Next session priorities:**
-1. Migrate `PostFinalCharges.vbs` bootstrap (finish WS2)
-2. Run simpletest — expect only 3 entries for `FindRepoRootForBootstrap`
+1. Migrate `PostFinalCharges.vbs` WS3 — remove local `WaitForPrompt`, `IsTextPresent`, `WaitMs`; load BZHelper in bootstrap
+2. Run simpletest — expect `IsTextPresent` and `WaitForPrompt` in PostFinalCharges + test files only
 3. Run full test suite — expect 98+ pass
-4. Begin Workstream 3 — function migration starting with simpler scripts
+4. Consider test file migrations (lower priority given sunset timeline)
 
 **Section quick-reference:**
 - New to the project? Read sections 1, 2, 3
