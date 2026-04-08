@@ -25,6 +25,7 @@ Dim SCREEN_WAIT_DELAY: SCREEN_WAIT_DELAY = CInt(GetIniSetting("PFC_Scrapper", "S
 Dim START_SEQUENCE: START_SEQUENCE = CInt(GetIniSetting("PFC_Scrapper", "StartSequence", "1"))
 Dim SKIP_SEQUENCES: SKIP_SEQUENCES = GetIniSetting("PFC_Scrapper", "SkipSequences", "")
 Dim EMPLOYEE_NUMBER: EMPLOYEE_NUMBER = GetIniSetting("PFC_Scrapper", "EmployeeNumber", "")
+Dim EMPLOYEE_NAME_CONFIRM: EMPLOYEE_NAME_CONFIRM = GetIniSetting("PFC_Scrapper", "EmployeeNameConfirm", "")
 
 
 ' --- Main Script ---
@@ -345,47 +346,14 @@ End Function
 
 Function RecoverFromVehidError()
     RecoverFromVehidError = False
-    LogResult "INFO", "Recovery step 1: dismissing VEHID error, waiting for Function Code prompt."
-    g_bzhao.SendKey "<Enter>"
-    If Not WaitForPrompt("FUNCTION CODE", "", False, 5000, "") Then
-        LogResult "ERROR", "Recovery failed at step 1: FUNCTION CODE prompt not found."
+    If Not BZH_RecoverFromVehidError(EMPLOYEE_NUMBER, EMPLOYEE_NAME_CONFIRM, "2") Then
+        LogResult "ERROR", "Recovery failed: BZH_RecoverFromVehidError returned False."
         Exit Function
     End If
-
-    LogResult "INFO", "Recovery step 2: entering PFC."
-    g_bzhao.SendKey "PFC"
-    g_bzhao.Pause 100
-    g_bzhao.SendKey "<NumpadEnter>"
-    If Not WaitForPrompt("EMPLOYEE NUMBER", "", False, 10000, "") Then
-        LogResult "ERROR", "Recovery failed at step 2: EMPLOYEE NUMBER prompt not found."
+    If Not WaitForPrompt("COMMAND:(SEQ#", "", False, 10000, "sequence prompt after VEHID recovery") Then
+        LogResult "ERROR", "Recovery failed: sequence prompt not found after BZH_RecoverFromVehidError."
         Exit Function
     End If
-
-    LogResult "INFO", "Recovery step 3: entering employee number."
-    g_bzhao.SendKey EMPLOYEE_NUMBER
-    g_bzhao.Pause 100
-    g_bzhao.SendKey "<NumpadEnter>"
-    If Not WaitForAnyOf("CAMP|PASTEUR", 10000) Then
-        LogResult "ERROR", "Recovery failed at step 3: name confirmation prompt not found."
-        Exit Function
-    End If
-
-    LogResult "INFO", "Recovery step 4: confirming employee name."
-    g_bzhao.SendKey "<NumpadEnter>"
-    If Not WaitForPrompt("ENTER OPTION", "", False, 10000, "") Then
-        LogResult "ERROR", "Recovery failed at step 4: PFC menu not found after name confirm."
-        Exit Function
-    End If
-
-    LogResult "INFO", "Recovery step 5: selecting option 2."
-    g_bzhao.SendKey "2"
-    g_bzhao.Pause 100
-    g_bzhao.SendKey "<NumpadEnter>"
-    If Not WaitForPrompt("COMMAND:(SEQ#", "", False, 10000, "") Then
-        LogResult "ERROR", "Recovery failed at step 5: sequence prompt not found."
-        Exit Function
-    End If
-
     LogResult "INFO", "Recovery complete. Back at sequence prompt."
     RecoverFromVehidError = True
 End Function

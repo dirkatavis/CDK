@@ -305,4 +305,65 @@ Function WaitForAnyOf(targets, timeoutMs)
     Loop
 End Function
 
+'-------------------------------------------------------------------------------------
+' BZH_RecoverFromVehidError — Shared recovery for "VEHID not on file" errors.
+'
+' Called when the terminal shows "PRESS RETURN TO CONTINUE" after a VEHID lookup
+' failure. Navigates back to the PFC function menu and selects the caller-specified
+' option, leaving the terminal in a stable state for the caller to continue.
+'
+' Parameters:
+'   employeeNumber   — Employee ID string (e.g. "18351"), read from config
+'   nameConfirmText  — Pipe-delimited name fragment(s) to wait for on the
+'                      name confirmation screen (e.g. "CAMP|PASTEUR"), read from config
+'   menuOption       — Option to select at the PFC ENTER OPTION menu:
+'                        "1" = return to main RO screen (Maintenance_RO_Closer)
+'                        "2" = return to PFC sequence prompt (PFC_Scrapper)
+'
+' Returns True on success, False if any step times out.
+'-------------------------------------------------------------------------------------
+Function BZH_RecoverFromVehidError(employeeNumber, nameConfirmText, menuOption)
+    BZH_RecoverFromVehidError = False
+
+    BZH_Log "INFO", "BZHelper.BZH_RecoverFromVehidError: Step 1 - dismissing VEHID error."
+    g_bzhao.SendKey "<Enter>"
+    If Not WaitForPrompt("FUNCTION CODE", "", False, 5000, "FUNCTION CODE after VEHID dismiss") Then
+        BZH_Log "ERROR", "BZHelper.BZH_RecoverFromVehidError: Step 1 failed - FUNCTION CODE not found."
+        Exit Function
+    End If
+
+    BZH_Log "INFO", "BZHelper.BZH_RecoverFromVehidError: Step 2 - entering PFC."
+    g_bzhao.SendKey "PFC"
+    g_bzhao.Pause 100
+    g_bzhao.SendKey "<NumpadEnter>"
+    If Not WaitForPrompt("EMPLOYEE NUMBER", "", False, 10000, "EMPLOYEE NUMBER prompt") Then
+        BZH_Log "ERROR", "BZHelper.BZH_RecoverFromVehidError: Step 2 failed - EMPLOYEE NUMBER not found."
+        Exit Function
+    End If
+
+    BZH_Log "INFO", "BZHelper.BZH_RecoverFromVehidError: Step 3 - entering employee number."
+    g_bzhao.SendKey employeeNumber
+    g_bzhao.Pause 100
+    g_bzhao.SendKey "<NumpadEnter>"
+    If Not WaitForAnyOf(nameConfirmText, 10000) Then
+        BZH_Log "ERROR", "BZHelper.BZH_RecoverFromVehidError: Step 3 failed - name confirmation not found."
+        Exit Function
+    End If
+
+    BZH_Log "INFO", "BZHelper.BZH_RecoverFromVehidError: Step 4 - confirming employee name."
+    g_bzhao.SendKey "<NumpadEnter>"
+    If Not WaitForPrompt("ENTER OPTION", "", False, 10000, "ENTER OPTION menu") Then
+        BZH_Log "ERROR", "BZHelper.BZH_RecoverFromVehidError: Step 4 failed - ENTER OPTION menu not found."
+        Exit Function
+    End If
+
+    BZH_Log "INFO", "BZHelper.BZH_RecoverFromVehidError: Step 5 - selecting option " & menuOption & "."
+    g_bzhao.SendKey menuOption
+    g_bzhao.Pause 100
+    g_bzhao.SendKey "<NumpadEnter>"
+
+    BZH_Log "INFO", "BZHelper.BZH_RecoverFromVehidError: Recovery complete."
+    BZH_RecoverFromVehidError = True
+End Function
+
 End If ' g_BZHelper_Loaded load guard

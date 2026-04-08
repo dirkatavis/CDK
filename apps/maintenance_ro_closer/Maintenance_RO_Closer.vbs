@@ -14,6 +14,8 @@ Dim g_sh: Set g_sh = CreateObject("WScript.Shell")
 Dim g_root: g_root = g_sh.Environment("USER")("CDK_BASE")
 ExecuteGlobal g_fso.OpenTextFile(g_fso.BuildPath(g_root, "framework\PathHelper.vbs")).ReadAll
 ExecuteGlobal g_fso.OpenTextFile(g_fso.BuildPath(g_root, "framework\HostCompat.vbs")).ReadAll
+Dim g_bzhao
+ExecuteGlobal g_fso.OpenTextFile(g_fso.BuildPath(g_root, "framework\BZHelper.vbs")).ReadAll
 
 ' --- Execution Parameters ---
 Dim MAIN_PROMPT: MAIN_PROMPT = "R.O. NUMBER"
@@ -43,13 +45,16 @@ Dim LOOP_PAUSE: LOOP_PAUSE = GetConfigSetting("Maintenance_RO_Closer", "LoopPaus
 Dim REVIEW_PAUSE: REVIEW_PAUSE = GetConfigSetting("Maintenance_RO_Closer", "ReviewPause", 500)
 Dim BLACKLIST_TERMS: BLACKLIST_TERMS = GetConfigSetting("Maintenance_RO_Closer", "blacklist_terms", "")
 Dim OLD_RO_DAYS_THRESHOLD: OLD_RO_DAYS_THRESHOLD = GetConfigSetting("Maintenance_RO_Closer", "AssumeClosedAfterDays", 120)
+Dim AGE_EXCEPTION_STATUSES: AGE_EXCEPTION_STATUSES = GetConfigSetting("Maintenance_RO_Closer", "AgeExceptionStatuses", "OPENED,OPEN,PREASSIGNED,PRE-ASSIGNED")
+Dim EMPLOYEE_NUMBER: EMPLOYEE_NUMBER = GetConfigSetting("Maintenance_RO_Closer", "EmployeeNumber", "")
+Dim EMPLOYEE_NAME_CONFIRM: EMPLOYEE_NAME_CONFIRM = GetConfigSetting("Maintenance_RO_Closer", "EmployeeNameConfirm", "")
 
 ' --- Picky Match State ---
 Dim CriteriaA, CriteriaB, CriteriaC
 Dim g_SkipRoLookup
 
 ' --- CDK Objects ---
-Dim bzhao: Set bzhao = CreateObject("BZWhll.WhllObj")
+Set g_bzhao = CreateObject("BZWhll.WhllObj")
 
 ' --- Main Loop ---
 Sub RunAutomation()
@@ -77,7 +82,7 @@ Sub RunAutomation()
     
     ' Connect to terminal only after configuration and file existence are verified
     On Error Resume Next
-    bzhao.Connect ""
+    g_bzhao.Connect ""
     If Err.Number <> 0 Then
         LogResult "ERROR", "Failed to connect to BlueZone: " & Err.Description
         MsgBox "Failed to connect to BlueZone terminal session.", vbCritical
@@ -90,7 +95,7 @@ Sub RunAutomation()
     
     ' Final graceful disconnect
     On Error Resume Next
-    If Not bzhao Is Nothing Then bzhao.Disconnect
+    If Not g_bzhao Is Nothing Then g_bzhao.Disconnect
     On Error GoTo 0
 
     LogResult "INFO", "Automation complete. Total successful closures: " & successfulCount
@@ -215,12 +220,20 @@ End Function
 
 Function IsRoProcessable(roNumber)
     Dim screenContent
-    bzhao.Pause STABILITY_PAUSE
+    g_bzhao.Pause STABILITY_PAUSE
     ' Read screen starting from Row 2 down to Row 6 to catch status (Row 5) and RO info
     ' We also read more to catch system errors (Pick/BASIC errors)
-    bzhao.ReadScreen screenContent, 1920, 1, 1 
+    g_bzhao.ReadScreen screenContent, 1920, 1, 1 
     
-    If InStr(1, screenContent, "NOT ON FILE", vbTextCompare) > 0 Then
+    If InStr(1, screenContent, "PRESS RETURN TO CONTINUE", vbTextCompare) > 0 Then
+        LogResult "INFO", "RO " & roNumber & " VEHID not on file. Attempting recovery."
+        If Not BZH_RecoverFromVehidError(EMPLOYEE_NUMBER, EMPLOYEE_NAME_CONFIRM, "1") Then
+            LogResult "ERROR", "RO " & roNumber & " VEHID recovery failed. Terminal state unknown — stopping to avoid incorrect keystrokes."
+            TerminateScript "VEHID recovery failed for RO " & roNumber & ". Manual intervention required."
+        End If
+        IsRoProcessable = False
+        Exit Function
+    ElseIf InStr(1, screenContent, "NOT ON FILE", vbTextCompare) > 0 Then
         LogResult "INFO", "RO " & roNumber & " NOT ON FILE. Skipping."
         IsRoProcessable = False
         Exit Function
@@ -245,25 +258,28 @@ End Function
 Function ShouldProcessRoByBusinessRules(roNumber)
     ' === Business Rules: Close/Skip Decision Table ===
     '
-    ' RO Status        | Condition          | Action
-    ' -----------------+--------------------+--------
-    ' Any              | Blacklisted        | SKIP
-    ' Any              | Footprint mismatch | SKIP
-    ' READY TO POST    | (none)             | CLOSE
-    ' Any other        | (none)             | SKIP
+    ' RO Status                    | Condition                        | Action
+    ' -----------------------------+----------------------------------+--------
+    ' Any                          | Blacklisted                      | SKIP
+    ' OPENED/OPEN/PREASSIGNED/etc. | Age >= AssumeClosedAfterDays     | CLOSE  (footprint bypassed)
+    ' Any                          | Footprint mismatch               | SKIP
+    ' READY TO POST                | (none)                           | CLOSE
+    ' Any other                    | (none)                           | SKIP
     '
     ' Rules evaluated top to bottom. First match wins.
+    ' Age exception takes priority over footprint — old stale ROs close regardless of line config.
     ' =================================================
-    Dim ageDays, openedDateToken
-    Dim screenContent, isReadyToPost, matchedBlacklistTerm, isPickyMatch
+    Dim ageDays, openedDateToken, isOldEnough
+    Dim screenContent, isReadyToPost, matchedBlacklistTerm, isPickyMatch, currentStatus
 
     screenContent = GetCurrentScreenContent()
     isReadyToPost = (InStr(1, screenContent, "READY TO POST", vbTextCompare) > 0)
-    IsRoOldEnoughForOverride ageDays, openedDateToken ' return value unused; ageDays populated ByRef
+    isOldEnough = IsRoOldEnoughForOverride(ageDays, openedDateToken)
+    currentStatus = ExtractStatusText(screenContent)
     matchedBlacklistTerm = GetMatchedBlacklistTerm(BLACKLIST_TERMS, screenContent)
     isPickyMatch = CheckPickyMatch()
 
-    LogResult "INFO", "RO " & roNumber & " | Footprint: " & BoolLabel(isPickyMatch) & " | Status: " & IIf(isReadyToPost, "READY TO POST", "Not Ready") & " | Age: " & IIf(ageDays >= 0, ageDays & " days", "unknown")
+    LogResult "INFO", "RO " & roNumber & " | Footprint: " & BoolLabel(isPickyMatch) & " | Status: " & IIf(isReadyToPost, "READY TO POST", currentStatus) & " | Age: " & IIf(ageDays >= 0, ageDays & " days", "unknown")
 
     ' Gate 1: Blacklist always wins
     If matchedBlacklistTerm <> "" Then
@@ -272,7 +288,14 @@ Function ShouldProcessRoByBusinessRules(roNumber)
         Exit Function
     End If
 
-    ' Gate 2: Footprint must match
+    ' Gate 2: Age exception — bypasses footprint requirement, but only for eligible statuses
+    If isOldEnough And IsAgeExceptionEligibleStatus(currentStatus) Then
+        LogResult "INFO", "RO " & roNumber & " | Age exception: " & ageDays & " days old (threshold: " & OLD_RO_DAYS_THRESHOLD & "), status '" & currentStatus & "' eligible. Closing regardless of footprint."
+        ShouldProcessRoByBusinessRules = True
+        Exit Function
+    End If
+
+    ' Gate 3: Footprint must match
     If Not isPickyMatch Then
         ShouldProcessRoByBusinessRules = False
         Exit Function
@@ -308,7 +331,7 @@ End Function
 
 Function GetCurrentScreenContent()
     Dim screenContent
-    bzhao.ReadScreen screenContent, 1920, 1, 1
+    g_bzhao.ReadScreen screenContent, 1920, 1, 1
     GetCurrentScreenContent = screenContent
 End Function
 
@@ -331,8 +354,13 @@ Function IsRoOldEnoughForOverride(ByRef ageDays, ByRef openedDateToken)
         Exit Function
     End If
 
+    If CInt(OLD_RO_DAYS_THRESHOLD) <= 0 Then
+        IsRoOldEnoughForOverride = False
+        Exit Function
+    End If
+
     ageDays = DateDiff("d", parsedDate, Date)
-    IsRoOldEnoughForOverride = (ageDays > CInt(OLD_RO_DAYS_THRESHOLD))
+    IsRoOldEnoughForOverride = (ageDays >= CInt(OLD_RO_DAYS_THRESHOLD))
 End Function
 
 Function ExtractOpenedDateToken(screenContent)
@@ -445,6 +473,34 @@ Function GetStatusSnip(screenContent)
     End If
 End Function
 
+Function ExtractStatusText(screenContent)
+    Dim pos, snip
+    pos = InStr(1, screenContent, "STATUS:", vbTextCompare)
+    If pos = 0 Then
+        ExtractStatusText = ""
+        Exit Function
+    End If
+    snip = Trim(Mid(screenContent, pos + 7, 25))
+    ' Trim at next field boundary (double space or end)
+    Dim spPos: spPos = InStr(snip, "  ")
+    If spPos > 0 Then snip = Left(snip, spPos - 1)
+    ExtractStatusText = Trim(snip)
+End Function
+
+Function IsAgeExceptionEligibleStatus(statusText)
+    Dim terms, i
+    IsAgeExceptionEligibleStatus = False
+    If Trim(AGE_EXCEPTION_STATUSES) = "" Then Exit Function
+    terms = Split(AGE_EXCEPTION_STATUSES, ",")
+    Dim normalized: normalized = UCase(Trim(statusText))
+    For i = 0 To UBound(terms)
+        If normalized = UCase(Trim(terms(i))) Then
+            IsAgeExceptionEligibleStatus = True
+            Exit Function
+        End If
+    Next
+End Function
+
 Function GetMatchedBlacklistTerm(blacklistTermsCsv, screenContent)
     Dim terms, i, term
 
@@ -489,7 +545,7 @@ Function DiscoverLineLetters()
         readLength = 1 ' Read just 1 character (the line letter)
         
         On Error Resume Next
-        bzhao.ReadScreen screenContentBuffer, readLength, startReadRow, startReadColumn
+        g_bzhao.ReadScreen screenContentBuffer, readLength, startReadRow, startReadColumn
         If Err.Number <> 0 Then
             Err.Clear
             Exit For
@@ -503,7 +559,7 @@ Function DiscoverLineLetters()
                 ' Peek column 2 to ensure this is a line letter (typical form: "A  DESCRIPTION")
                 nextColChar = ""
                 On Error Resume Next
-                bzhao.ReadScreen nextColChar, 1, startReadRow, startReadColumn + 1
+                g_bzhao.ReadScreen nextColChar, 1, startReadRow, startReadColumn + 1
                 If Err.Number <> 0 Then
                     Err.Clear
                     nextColChar = ""
@@ -569,10 +625,10 @@ Function CheckPickyMatch()
         
         ' Find the row for this letter
         For row = 7 To 22
-            bzhao.ReadScreen screenContent, 1, row, 1
+            g_bzhao.ReadScreen screenContent, 1, row, 1
             If UCase(Trim(screenContent)) = targetLetter Then
                 ' Verify description at this row
-                bzhao.ReadScreen screenContent, 50, row, 4
+                g_bzhao.ReadScreen screenContent, 50, row, 4
                 If MatchesAnyVariant(screenContent, criteria) Then
                     LogResult "INFO", "Line " & targetLetter & " verified at Row " & row
                     letterFound = True
@@ -595,7 +651,7 @@ Function CheckPickyMatch()
     
     ' Phase 3: Exclusion Check - Skip if Line D exists
     For row = 7 To 22
-        bzhao.ReadScreen screenContent, 1, row, 1
+        g_bzhao.ReadScreen screenContent, 1, row, 1
         If UCase(Trim(screenContent)) = "D" Then
             LogResult "INFO", "Exclusion match failed: Line 'D' detected at Row " & row & ". Too many service lines. Skipping."
             CheckPickyMatch = False
@@ -658,7 +714,7 @@ Sub LoadMatchCriteria()
     ' Validate we have all required lines
     If Not IsArray(CriteriaA) Or Not IsArray(CriteriaB) Or Not IsArray(CriteriaC) Then
         LogResult "ERROR", "CRITICAL ERROR: Config file incomplete or corrupted (Lines A, B, and C required)."
-        bzhao.StopScript
+        g_bzhao.StopScript
     End If
 End Sub
 
@@ -724,9 +780,9 @@ Function HandleReviewPrompts(lineLetter)
     startTime = Timer
     
     Do
-        bzhao.Pause REVIEW_PAUSE ' Use faster review pause
+        g_bzhao.Pause REVIEW_PAUSE ' Use faster review pause
         ' Read the entire screen to handle prompts that might appear mid-screen
-        bzhao.ReadScreen screenContent, 1920, 1, 1
+        g_bzhao.ReadScreen screenContent, 1920, 1, 1
         
         ' Exit condition: Back to COMMAND prompt
         If InStr(1, screenContent, "COMMAND:", vbTextCompare) > 0 Then
@@ -771,10 +827,10 @@ End Function
 
 Sub EnterReviewPrompt(text)
     ' Fast entry for review fields that don't trigger large screen transitions
-    If text <> "" Then bzhao.SendKey CStr(text)
-    bzhao.Pause 50
-    bzhao.SendKey "<NumpadEnter>"
-    bzhao.Pause REVIEW_PAUSE ' Use faster review pause instead of stability pause
+    If text <> "" Then g_bzhao.SendKey CStr(text)
+    g_bzhao.Pause 50
+    g_bzhao.SendKey "<NumpadEnter>"
+    g_bzhao.Pause REVIEW_PAUSE ' Use faster review pause instead of stability pause
 End Sub
 
 Function TestPrompt(regEx, text, pattern)
@@ -797,7 +853,7 @@ Function CloseRoFinal()
     ' MILEAGE / MILES OUT
     ' Search rows 1-6 for "MILEAGE:" to extract the value robustly
     mileage = ""
-    bzhao.ReadScreen screenContent, 480, 1, 1 ' Read Rows 1-6
+    g_bzhao.ReadScreen screenContent, 480, 1, 1 ' Read Rows 1-6
     pos = InStr(1, screenContent, "MILEAGE:", vbTextCompare)
     If pos > 0 Then
         mileage = Trim(Mid(screenContent, pos + 8, 10))
@@ -816,8 +872,8 @@ Function CloseRoFinal()
     
     startTime = Timer
     Do
-        bzhao.Pause LOOP_PAUSE
-        bzhao.ReadScreen screenContent, 1920, 1, 1
+        g_bzhao.Pause LOOP_PAUSE
+        g_bzhao.ReadScreen screenContent, 1920, 1, 1
         screenContent = UCase(screenContent)
         
         ' Success fallback: some flows can return directly to command/main without showing all closeout prompts
@@ -873,8 +929,8 @@ Sub ReturnToMainPrompt()
     ' Phase 1: Patience. Wait for the terminal to land on the prompt naturally.
     ' This prevents sending "E" during slow transitions (the "E" bug).
     For waitStep = 1 To 10 ' Wait up to 5 seconds total (10 * 500ms)
-        bzhao.Pause LOOP_PAUSE
-        bzhao.ReadScreen screenContent, 1920, 1, 1
+        g_bzhao.Pause LOOP_PAUSE
+        g_bzhao.ReadScreen screenContent, 1920, 1, 1
         
         For j = 0 To UBound(targets)
             If InStr(1, screenContent, targets(j), vbTextCompare) > 0 Then
@@ -887,13 +943,13 @@ Sub ReturnToMainPrompt()
     ' Phase 2: Recovery. If still lost, try to exit/clear using "E".
     For i = 1 To 3
         LogResult "INFO", "ReturnToMainPrompt: Still not at target. Attempting recovery 'E' (" & i & "/3)..."
-        bzhao.SendKey "E"
-        bzhao.SendKey "<NumpadEnter>"
+        g_bzhao.SendKey "E"
+        g_bzhao.SendKey "<NumpadEnter>"
         
         ' Wait for response after sending E
         For waitStep = 1 To 4 ' Wait up to 2 seconds
-            bzhao.Pause LOOP_PAUSE
-            bzhao.ReadScreen screenContent, 1920, 1, 1
+            g_bzhao.Pause LOOP_PAUSE
+            g_bzhao.ReadScreen screenContent, 1920, 1, 1
             
             For j = 0 To UBound(targets)
                 If InStr(1, screenContent, targets(j), vbTextCompare) > 0 Then
@@ -914,10 +970,10 @@ Sub WaitForText(targetText)
     isMainPrompt = (InStr(1, targetText, MAIN_PROMPT, vbTextCompare) > 0)
     
     Do
-        bzhao.Pause LOOP_PAUSE
+        g_bzhao.Pause LOOP_PAUSE
         elapsed = elapsed + LOOP_PAUSE
         
-        bzhao.ReadScreen screenContent, 1920, 1, 1
+        g_bzhao.ReadScreen screenContent, 1920, 1, 1
         
         found = False
         For i = 0 To UBound(targets)
@@ -933,9 +989,9 @@ Sub WaitForText(targetText)
         If isMainPrompt And elapsed >= 5000 Then
             If elapsed Mod 5000 = 0 Then 
                 LogResult "INFO", "Seeking main prompt. Sending 'E' to clear screen."
-                bzhao.SendKey "E"
-                bzhao.SendKey "<NumpadEnter>"
-                bzhao.Pause LOOP_PAUSE
+                g_bzhao.SendKey "E"
+                g_bzhao.SendKey "<NumpadEnter>"
+                g_bzhao.Pause LOOP_PAUSE
             End If
         End If
 
@@ -948,10 +1004,10 @@ End Sub
 
 Sub EnterTextWithStability(text)
     LogResult "INFO", "Input State: Sending text '" & text & "' to terminal."
-    bzhao.SendKey CStr(text)
-    bzhao.Pause 150
-    bzhao.SendKey "<NumpadEnter>"
-    bzhao.Pause STABILITY_PAUSE ' Configurable stability pause
+    g_bzhao.SendKey CStr(text)
+    g_bzhao.Pause 150
+    g_bzhao.SendKey "<NumpadEnter>"
+    g_bzhao.Pause STABILITY_PAUSE ' Configurable stability pause
 End Sub
 
 Sub LogResult(logType, message)
@@ -979,9 +1035,9 @@ End Sub
 Sub TerminateScript(reason)
     LogResult "ERROR", "TERMINATING SCRIPT: " & reason
     On Error Resume Next
-    If Not bzhao Is Nothing Then
-        bzhao.Disconnect
-        bzhao.StopScript
+    If Not g_bzhao Is Nothing Then
+        g_bzhao.Disconnect
+        g_bzhao.StopScript
     End If
     On Error GoTo 0
     Host_Quit
