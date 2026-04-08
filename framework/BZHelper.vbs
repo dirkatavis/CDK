@@ -10,8 +10,19 @@
 '   Load after PathHelper.vbs via ExecuteGlobal:
 '     ExecuteGlobal g_fso.OpenTextFile(g_fso.BuildPath(g_root, "framework\BZHelper.vbs")).ReadAll
 '
-'   The calling script must declare and instantiate g_bzhao BEFORE loading this file:
+'   The calling script must DECLARE g_bzhao before loading this file (required by
+'   Option Explicit). It must be SET before any BZHelper function is first called,
+'   but does not need to be set at load time — loading with g_bzhao = Nothing is safe.
+'
+'   Typical bootstrap (g_bzhao set immediately):
 '     Dim g_bzhao: Set g_bzhao = CreateObject("BZWhll.WhllObj")
+'     ExecuteGlobal g_fso.OpenTextFile(...BZHelper.vbs).ReadAll
+'
+'   Deferred assignment (e.g. test-mode scripts that conditionally use MockBzhao):
+'     Dim g_bzhao
+'     ExecuteGlobal g_fso.OpenTextFile(...BZHelper.vbs).ReadAll
+'     ' ... later, before any BZHelper function is called:
+'     Set g_bzhao = CreateObject("BZWhll.WhllObj")  ' or Set g_bzhao = New MockBzhao
 '
 '   This library does NOT instantiate g_bzhao. Each script owns its own connection
 '   object so that multiple scripts can run independently without session conflicts.
@@ -190,7 +201,7 @@ Function WaitForPrompt(promptText, inputValue, sendEnter, timeoutMs, description
 
     If timeoutMs <= 0 Then timeoutMs = 5000
 
-    label = IIf(Len(Trim(description)) > 0, description, promptText)
+    If Len(Trim(description)) > 0 Then label = description Else label = promptText
     found = False
     waitStart = Timer
 

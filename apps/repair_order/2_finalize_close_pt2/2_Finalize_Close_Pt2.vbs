@@ -1,17 +1,14 @@
 Option Explicit
 
-' --- Load PathHelper for centralized path management ---
-' We use a minimal bootstrap here to load the shared framework
-Dim fso: Set fso = CreateObject("Scripting.FileSystemObject")
-Dim sh: Set sh = CreateObject("WScript.Shell")
-Dim basePath: basePath = sh.Environment("USER")("CDK_BASE")
-If basePath = "" Or Not fso.FolderExists(basePath) Then
+' --- Bootstrap ---
+Dim g_fso: Set g_fso = CreateObject("Scripting.FileSystemObject")
+Dim g_sh: Set g_sh = CreateObject("WScript.Shell")
+Dim g_root: g_root = g_sh.Environment("USER")("CDK_BASE")
+If g_root = "" Or Not g_fso.FolderExists(g_root) Then
     MsgBox "Error: CDK_BASE environment variable not set or path does not exist.", vbCritical
     WScript.Quit
 End If
-
-Dim helperPath: helperPath = fso.BuildPath(basePath, "framework\PathHelper.vbs")
-ExecuteGlobal fso.OpenTextFile(helperPath).ReadAll
+ExecuteGlobal g_fso.OpenTextFile(g_fso.BuildPath(g_root, "framework\PathHelper.vbs")).ReadAll
 
 Dim POLL_INTERVAL: POLL_INTERVAL = 1 ' 1 second polling interval for development
 Dim CSV_FILE_PATH: CSV_FILE_PATH = GetConfigPath("Prepare_Close_Pt1", "CSV")
@@ -25,14 +22,14 @@ Dim bzhao: Set bzhao = CreateObject("BZWhll.WhllObj")
 '-----------------------------------------------------------
 ' Main script execution loop
 '-----------------------------------------------------------
-If fso.FileExists(CSV_FILE_PATH) Then
+If g_fso.FileExists(CSV_FILE_PATH) Then
     Dim connResult: connResult = bzhao.Connect("")
     If connResult <> 0 Then
         MsgBox "Error: Could not connect to BlueZone session. Ensure BlueZone is open and active.", vbCritical, "Connection Failed"
         WScript.Quit 1
     End If
     
-    Set ts = fso.OpenTextFile(CSV_FILE_PATH, 1)
+    Set ts = g_fso.OpenTextFile(CSV_FILE_PATH, 1)
     ts.ReadLine   ' Skip header row if present
 
     Do While Not ts.AtEndOfStream
@@ -368,16 +365,6 @@ Sub WaitForTextAtBottom(targetText)
         End If
     Loop
 End Sub
-
-'-----------------------------------------------------------
-' Helper functions and subroutines
-'-----------------------------------------------------------
-Function IsTextPresent(textToFind)
-    Dim screenContentBuffer, screenLength
-    screenLength = 24 * 80
-    bzhao.ReadScreen screenContentBuffer, screenLength, 1, 1
-    IsTextPresent = (InStr(1, screenContentBuffer, textToFind, vbTextCompare) > 0)
-End Function
 
 '-----------------------------------------------------------
 ' EnterTextAndWait subroutine

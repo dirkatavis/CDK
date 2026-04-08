@@ -58,6 +58,13 @@ ExecuteTest "Detect Missing PathHelper.vbs", "Sub_NegMissingPathHelper"
 ExecuteTest "Detect Missing config.ini", "Sub_NegMissingConfig"
 ExecuteTest "Handle Corrupted config.ini", "Sub_NegCorruptConfig"
 
+' --- CATEGORY 4B: FRAMEWORK SMOKE TESTS ---
+WScript.Echo ""
+WScript.Echo "---------------------------------------------------------------------------"
+WScript.Echo "SECTION: Framework Smoke Tests"
+WScript.Echo "---------------------------------------------------------------------------"
+RunAppSuite "Framework Test: BZHelper", "tests\infrastructure\test_bzhelper.vbs"
+
 ' --- CATEGORY 5: EXTERNAL SUITES ---
 WScript.Echo ""
 WScript.Echo "---------------------------------------------------------------------------"
