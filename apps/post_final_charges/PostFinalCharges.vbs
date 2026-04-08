@@ -1631,7 +1631,7 @@ Sub InitializeObjects()
     If g_IsTestMode Then
         ' Include and use mock g_bzhao for testing
         Dim mockPath
-        mockPath = ResolvePath("MockBzhao.vbs", "", True)
+        mockPath = ResolvePath("mocks\MockBzhao.vbs", "", True)
         If IncludeFile(mockPath) Then
             Set g_bzhao = New MockBzhao
             Call LogEvent("comm", "med", "Using MockBzhao for testing", "InitializeObjects", "", "")
