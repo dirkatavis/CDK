@@ -371,18 +371,17 @@ End Sub
 ' Subroutine: LOG - lightweight logger used by this archived script
 '--------------------------------------------------------------------
 Sub LOG(msg, level)
-    Dim lfs, lfile, errorNum, errorDesc
+    Dim lfile, errorNum, errorDesc
 
     If Not ShouldLog(level) Then Exit Sub
 
     On Error Resume Next
-    Set lfs = CreateObject("Scripting.FileSystemObject")
-    
+
     ' Try to create log entry
-    Set lfile = lfs.OpenTextFile(LOG_FILE_PATH, 8, True)
+    Set lfile = g_fso.OpenTextFile(LOG_FILE_PATH, 8, True)
     errorNum = Err.Number
     errorDesc = Err.Description
-    
+
     If errorNum = 0 Then
         lfile.WriteLine Now & " - " & CStr(msg)
         lfile.Close
@@ -390,7 +389,7 @@ Sub LOG(msg, level)
         ' If main log fails, try creating a fallback log with error info
         Dim fallbackPath
         fallbackPath = GetConfigPath("Open_RO", "FallbackLog")
-        Set lfile = lfs.OpenTextFile(fallbackPath, 8, True)
+        Set lfile = g_fso.OpenTextFile(fallbackPath, 8, True)
         If Err.Number = 0 Then
             lfile.WriteLine Now & " - LOG ERROR: " & errorNum & " - " & errorDesc
             lfile.WriteLine Now & " - Failed LOG_FILE_PATH: " & LOG_FILE_PATH
@@ -398,9 +397,8 @@ Sub LOG(msg, level)
             lfile.Close
         End If
     End If
-    
+
     Set lfile = Nothing
-    Set lfs = Nothing
     If Err.Number <> 0 Then Err.Clear
     On Error GoTo 0
 End Sub
