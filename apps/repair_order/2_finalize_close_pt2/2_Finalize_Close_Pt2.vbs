@@ -4,11 +4,11 @@ Option Explicit
 Dim g_fso: Set g_fso = CreateObject("Scripting.FileSystemObject")
 Dim g_sh: Set g_sh = CreateObject("WScript.Shell")
 Dim g_root: g_root = g_sh.Environment("USER")("CDK_BASE")
-If g_root = "" Or Not g_g_fso.FolderExists(g_root) Then
+If g_root = "" Or Not g_fso.FolderExists(g_root) Then
     MsgBox "Error: CDK_BASE environment variable not set or path does not exist.", vbCritical
     WScript.Quit
 End If
-ExecuteGlobal g_g_fso.OpenTextFile(g_g_fso.BuildPath(g_root, "framework\PathHelper.vbs")).ReadAll
+ExecuteGlobal g_fso.OpenTextFile(g_fso.BuildPath(g_root, "framework\PathHelper.vbs")).ReadAll
 
 Dim POLL_INTERVAL: POLL_INTERVAL = 1 ' 1 second polling interval for development
 Dim CSV_FILE_PATH: CSV_FILE_PATH = GetConfigPath("Prepare_Close_Pt1", "CSV")

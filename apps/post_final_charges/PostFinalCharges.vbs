@@ -12,7 +12,7 @@ If Not g_fso.FileExists(g_fso.BuildPath(g_root, ".cdkroot")) Then
     Err.Raise 53, "Bootstrap", "Cannot find .cdkroot in base path:" & vbCrLf & g_root
 End If
 ExecuteGlobal g_fso.OpenTextFile(g_fso.BuildPath(g_root, "framework\PathHelper.vbs")).ReadAll
-Dim g_bzhao
+Dim g_bzhao  ' Declared here for Option Explicit; assigned in InitializeObjects (supports MockBzhao test mode)
 ExecuteGlobal g_fso.OpenTextFile(g_fso.BuildPath(g_root, "framework\BZHelper.vbs")).ReadAll
 
 ' --- Load ValidateSetup for dependency checking ---
