@@ -8,6 +8,6 @@
 powershell -ExecutionPolicy Bypass upsert_pr_with_body.ps1 -Title "..." -BodyFile "tools\<body_file>.md"
 ```
 
-Write the PR body to a `.md` file in `tools\` first, then pass it to the script.
+Write the PR body to `%TEMP%\pr_body.md` (not into the repo), then pass it to the script.
 The script handles both create and update (upsert) automatically.
 `upsert_pr_with_body.ps1` is on the user PATH via `C:\code\Scripts\`. A local copy also exists in `tools\` as a fallback.
