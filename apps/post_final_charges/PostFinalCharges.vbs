@@ -20,7 +20,7 @@ ExecuteGlobal g_fso.OpenTextFile(g_fso.BuildPath(g_root, "framework\ValidateSetu
 
 ' Global script variables
 Dim CSV_FILE_PATH, LOG_FILE_PATH
-Dim fso, roNumber
+Dim roNumber
 Dim bzhao
 Dim lastRoResult
 Dim currentRODisplay
@@ -1371,7 +1371,6 @@ Sub RunMainProcess()
         If Err.Number <> 0 Then Err.Clear
         On Error GoTo 0
     End If
-    If IsObject(fso) Then Set fso = Nothing
 End Sub
 
 '----------------------------------------------------
@@ -1612,7 +1611,6 @@ End Function
 ' detection and configuration loading.
 '-----------------------------------------------------------------------------------
 Sub InitializeObjects()
-    Set fso = CreateObject("Scripting.FileSystemObject")
     Call InitializeConfig
     Call DetermineDebugMode
     

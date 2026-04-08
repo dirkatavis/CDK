@@ -177,7 +177,7 @@ _(none — WS3 migration of all production scripts is complete)_
 
 6. **`PostFinalCharges.vbs` — global `fso` appears to be dead code** — `Dim fso` is declared globally and set in `InitializeObjects`, but every consumer either uses `g_fso` (bootstrap) or its own local `Dim fso`. The global is set and cleared but never read. Candidate for removal. **Address separately from WS3 refactor.**
 
-7. **`PostFinalCharges.vbs` — `commonLibLoaded` is a dead global** — `Dim commonLibLoaded` (near top of file) is never written or read. Leftover from an earlier architecture. Remove. **Address separately from WS3 refactor.**
+7. ~~**`PostFinalCharges.vbs` — `commonLibLoaded` is a dead global**~~ — Incorrect assessment. `commonLibLoaded` is written in `StartScript` and read in `RunMainProcess` to log whether `CommonLib.vbs` loaded. **Not dead — no action.**
 
 8. **`PostFinalCharges.vbs` — `bzhao`/`g_bzhao` alias pattern is technical debt** — WS3 migration aliased `g_bzhao = bzhao` rather than renaming ~40 direct `bzhao.*` call sites. Both names refer to the same object. Future work should use `g_bzhao` for BZHelper-routed calls; `bzhao` remains for direct calls (`bzhao.MsgBox`, `bzhao.pause`, etc.) not covered by BZHelper. Full rename is a separate cleanup task. **Address separately from WS3 refactor.**
 
