@@ -9,10 +9,10 @@ g_root = g_sh.Environment("USER")("CDK_BASE")
 ' Expected: each term should appear ONLY in its canonical home (BZHelper / PathHelper).
 ' BZWhll.WhllObj is searched as-is — any occurrence is a production instantiation.
 Dim terms(4)
-terms(0) = "WaitForPrompt"
+terms(0) = "WaitForAnyOf"
 terms(1) = "IsTextPresent"
-terms(2) = "FindRepoRootForBootstrap"
-terms(3) = "WaitForAnyOf"
+terms(2) = "WaitForPrompt"
+terms(3) = "FindRepoRootForBootstrap"
 terms(4) = "BZWhll.WhllObj"
 
 Dim i
