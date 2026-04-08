@@ -9,7 +9,11 @@ Option Explicit
 Dim g_fso: Set g_fso = CreateObject("Scripting.FileSystemObject")
 Dim g_sh: Set g_sh = CreateObject("WScript.Shell")
 Dim g_root: g_root = g_sh.Environment("USER")("CDK_BASE")
-ExecuteGlobal g_g_fso.OpenTextFile(g_g_fso.BuildPath(g_root, "framework\PathHelper.vbs")).ReadAll
+ExecuteGlobal g_fso.OpenTextFile(g_fso.BuildPath(g_root, "framework\PathHelper.vbs")).ReadAll
+
+' --- CDK Terminal Object (must be declared before loading BZHelper) ---
+Dim g_bzhao: Set g_bzhao = CreateObject("BZWhll.WhllObj")
+ExecuteGlobal g_fso.OpenTextFile(g_fso.BuildPath(g_root, "framework\BZHelper.vbs")).ReadAll
 
 ' --- Configuration Constants ---
 Const POLL_INTERVAL = 1000   ' Check every 1000ms (1 time per second)
@@ -51,14 +55,6 @@ Set csvOut = Nothing
 LOG "Script started - Log file path: " & LOG_FILE_PATH, "med"
 LOG "Initialized output CSV (overwritten): " & OUTPUT_CSV_PATH, "med"
 
-Dim g_bzhao
-On Error Resume Next
-Set g_bzhao = CreateObject("BZWhll.WhllObj")
-If Err.Number <> 0 Then
-    ' Will report at connect time; clear for now
-    Err.Clear
-End If
-On Error GoTo 0
 
 If g_fso.FileExists(CSV_FILE_PATH) Then
     LOG "CSV file found: " & CSV_FILE_PATH, "low"
@@ -94,7 +90,7 @@ Sub Main(mva, mileage)
     '==== INPUT POINT 1: BEFORE ENTERING MVA ====
     ' NEED TO IDENTIFY: What prompt appears when CDK is ready for Vehicle ID?
     ' CURRENT: Using "Vehid....." - NEEDS VERIFICATION
-    Call WaitForPrompt("Vehid.....", mva, true, PROMPT_TIMEOUT_MS)
+    WaitForPrompt "Vehid.....", mva, True, PROMPT_TIMEOUT_MS, ""
     ' g_bzhao.Pause 1000
 
 
@@ -103,86 +99,86 @@ Sub Main(mva, mileage)
 
     '==== INPUT POINT 1B: SEQUENCE NUMBER SELECTION ====
     ' Handles "CHOOSE ONE" or "SEQUENCE NUMBER" prompt - select option #1
-    Call WaitForPrompt("CHOOSE ONE|SEQUENCE NUMBER", "1", true, PROMPT_TIMEOUT_MS)
+    WaitForPrompt "CHOOSE ONE|SEQUENCE NUMBER", "1", True, PROMPT_TIMEOUT_MS, ""
 
     '==== INPUT POINT 2: BEFORE ENTERING COMMAND SELECTION ====
     ' NEED TO IDENTIFY: What menu/prompt shows before selecting command?
     ' CURRENT: Looking for "Command?" - NEEDS VERIFICATION
-    Call WaitForPrompt("Command?", "<NumpadEnter>", False, PROMPT_TIMEOUT_MS)
+    WaitForPrompt "Command?", "<NumpadEnter>", False, PROMPT_TIMEOUT_MS, ""
     
 
 
     '==== INPUT POINT 4: BEFORE ENTERING MILEAGE ====
     ' NEED TO IDENTIFY: What prompt shows when mileage field is ready?
     ' CURRENT: Using "Miles In...:" - NEEDS VERIFICATION
-    Call WaitForPrompt("Miles In", mileage, true, PROMPT_TIMEOUT_MS)
+    WaitForPrompt "Miles In", mileage, True, PROMPT_TIMEOUT_MS, ""
     
 
     '==== INPUT POINT 6: BEFORE ENTERING TAG ====
     ' NEED TO IDENTIFY: What field label appears for tag entry?
     ' CURRENT: Using "Tag......" - NEEDS VERIFICATION
-    Call WaitForPrompt("Tag......", mva, true, PROMPT_TIMEOUT_MS)
+    WaitForPrompt "Tag......", mva, True, PROMPT_TIMEOUT_MS, ""
     ' g_bzhao.Pause 1000
 
     '==== INPUT POINT 7: BEFORE ENTERING VENDOR ====
     ' NEED TO IDENTIFY: What prompt shows for vendor field?
     ' CURRENT: Using "PMVEND" - NEEDS VERIFICATION
-    Call WaitForPrompt("Quick Codes", "PMVEND", True, PROMPT_TIMEOUT_MS)
+    WaitForPrompt "Quick Codes", "PMVEND", True, PROMPT_TIMEOUT_MS, ""
     ' g_bzhao.Pause 1000
 
     '==== INPUT POINT 8: BEFORE F3 KEY ====
     ' NEED TO IDENTIFY: What screen/text indicates ready for F3?
     ' CURRENT: No verification - NEEDS PROMPT DETECTION
-    Call WaitForPrompt("Quick Code Description", "<F3>", False, PROMPT_TIMEOUT_MS)
+    WaitForPrompt "Quick Code Description", "<F3>", False, PROMPT_TIMEOUT_MS, ""
     ' g_bzhao.Pause 1000
 
     '==== INPUT POINT 9: BEFORE F8 KEY ====
     ' NEED to IDENTIFY: What screen/text indicates ready for F8?
     ' CURRENT: No verification - NEEDS PROMPT DETECTION
-    Call WaitForPrompt("Quick Codes", "<F8>", False, PROMPT_TIMEOUT_MS)
+    WaitForPrompt "Quick Codes", "<F8>", False, PROMPT_TIMEOUT_MS, ""
     ' g_bzhao.Pause 1000
     
     '==== INPUT POINT 10: BEFORE ENTERING "99" ====
     ' NEED TO IDENTIFY: What prompt shows for "99" entry?
     ' CURRENT: No verification - NEEDS PROMPT DETECTION
-    Call WaitForPrompt("Tech", "99", False, PROMPT_TIMEOUT_MS)
+    WaitForPrompt "Tech", "99", False, PROMPT_TIMEOUT_MS, ""
     ' g_bzhao.Pause 1000
     
     '==== INPUT POINT 11: BEFORE SECOND F3 ====
     ' NEED TO IDENTIFY: What indicates ready for second F3?
     ' CURRENT: No verification - NEEDS PROMPT DETECTION
-    Call WaitForPrompt("Tech", "<F3>", False, PROMPT_TIMEOUT_MS)
+    WaitForPrompt "Tech", "<F3>", False, PROMPT_TIMEOUT_MS, ""
     ' g_bzhao.Pause 1000
     
     '==== INPUT POINT 12: BEFORE THIRD F3 ====
     ' NEED TO IDENTIFY: What indicates ready for third F3?
     ' CURRENT: No verification - NEEDS PROMPT DETECTION
-    Call WaitForPrompt("Quick Codes", "<F3>", False, PROMPT_TIMEOUT_MS)
+    WaitForPrompt "Quick Codes", "<F3>", False, PROMPT_TIMEOUT_MS, ""
     ' g_bzhao.Pause 1000    
     
     '==== INPUT POINT 13: BEFORE FIRST ENTER KEY ====
     ' NEED TO IDENTIFY: What text shows system is ready for Enter?
     ' CURRENT: No verification - NEEDS PROMPT DETECTION
-    Call WaitForPrompt("Choose an option", "<NumpadEnter>", False, PROMPT_TIMEOUT_MS)
+    WaitForPrompt "Choose an option", "<NumpadEnter>", False, PROMPT_TIMEOUT_MS, ""
     ' g_bzhao.Pause 1000
     
     '==== INPUT POINT 14: BEFORE SECOND ENTER KEY ====
     ' NEED TO IDENTIFY: What prompt appears before second Enter?
     ' CURRENT: No verification - NEEDS PROMPT DETECTION
-    Call WaitForPrompt("MILEAGE OUT", "<NumpadEnter>", False, 30000)
+    WaitForPrompt "MILEAGE OUT", "<NumpadEnter>", False, 30000, ""
     ' g_bzhao.Pause 1000
     
     '==== INPUT POINT 15: BEFORE THIRD ENTER KEY ====
     ' NEED TO IDENTIFY: What prompt appears before third Enter?
     ' CURRENT: No verification - NEEDS PROMPT DETECTION
 
-    Call WaitForPrompt("MILEAGE IN", "<NumpadEnter>", False, 10000)
+    WaitForPrompt "MILEAGE IN", "<NumpadEnter>", False, 10000, ""
     ' g_bzhao.Pause 1000
     
     '==== INPUT POINT 16: BEFORE ENTERING FINAL "N" ====
     ' NEED TO IDENTIFY: What question/prompt is asking for N response?
     ' CURRENT: No verification - NEEDS PROMPT DETECTION
-    Call WaitForPrompt("O.K. TO CLOSE RO", "N", true, 30000)
+    WaitForPrompt "O.K. TO CLOSE RO", "N", True, 30000, ""
     ' g_bzhao.Pause 1000
 
     ' Scrape and log
@@ -195,78 +191,11 @@ Sub Main(mva, mileage)
     '==== INPUT POINT 17: BEFORE FINAL F3 ====
     ' NEED TO IDENTIFY: What indicates ready for final F3?
     ' CURRENT: No verification - NEEDS PROMPT DETECTION
-    Call WaitForPrompt("Created repair order|R.O. NUMBER", "<F3>", False, 10000)
+    WaitForPrompt "Created repair order|R.O. NUMBER", "<F3>", False, 10000, ""
 End Sub
 
 
 
-'--------------------------------------------------------------------
-' Subroutine: WaitForPrompt - Requires 4 parameters: promptText, valueToEnter, sendEnter, timeoutMs
-'--------------------------------------------------------------------
-Sub WaitForPrompt(promptText, valueToEnter, sendEnter, timeoutMs)
-    
-    LOG "WaitForPrompt called - Looking for: [" & promptText & "] Value: [" & valueToEnter & "] SendEnter: " & sendEnter & " Timeout: " & timeoutMs & "ms", "high"
-    Dim startTime, currentTime, elapsedMs, promptFound
-    
-    startTime = Timer
-    promptFound = False
-    
-    Do
-        ' Check for the prompt text first
-        If IsTextPresent(promptText) Then
-            LOG "Detected prompt: " & promptText, "high"
-            promptFound = True
-            Exit Do
-        End If
-        
-        ' Wait a bit before checking again
-        Call WaitMs(POLL_INTERVAL)
-        
-        ' Calculate elapsed time and check timeout
-        currentTime = Timer
-        If currentTime < startTime Then currentTime = currentTime + 86400
-        elapsedMs = (currentTime - startTime) * 1000
-        
-        ' Exit if timeout reached
-        If elapsedMs >= timeoutMs Then
-            LOG "Timeout waiting for prompt: " & promptText, "med"
-            If InStr(1, UCase(promptText), "MILEAGE OUT", vbTextCompare) > 0 Then
-                Dim timeoutScreen, timeoutRow23, timeoutRow24
-                g_bzhao.ReadScreen timeoutScreen, 160, 23, 1
-                timeoutRow23 = Left(timeoutScreen, 80)
-                timeoutRow24 = Mid(timeoutScreen, 81, 80)
-                MsgBox "Timeout waiting for prompt: " & promptText & vbCrLf & vbCrLf & _
-                       "Row 23: " & timeoutRow23 & vbCrLf & _
-                       "Row 24: " & timeoutRow24, vbExclamation, "Initialize RO Timeout"
-            End If
-            Exit Do
-        End If
-        LOG elapsedMs & "ms elapsed waiting for prompt: ", "high"
-    Loop
-    
-    ' Only send input if prompt was actually found
-    If promptFound Then
-        ' Apply slow mode delay if enabled
-        If IsSlowModeEnabled() Then Call WaitMs(1000)
-        
-        ' Check if the value is a special key command
-        g_bzhao.Pause 1000
-        If InStr(1, valueToEnter, "<") > 0 And InStr(1, valueToEnter, ">") > 0 Then
-            LOG "Sending key command: " & valueToEnter, "high"
-            Call FastKey(valueToEnter)
-        Else
-            Call FastText(valueToEnter)
-        End If
-        
-        If sendEnter Then
-            Call FastKey("<NumpadEnter>")
-        End If
-        
-        Call WaitMs(POST_ENTRY_WAIT)
-    Else
-        LOG "Prompt not found - skipping input", "med"
-    End If
-End Sub
 
 
 '--------------------------------------------------------------------
@@ -345,28 +274,6 @@ Function GetRepairOrderEnhanced()
     End If
 End Function
 
-'--------------------------------------------------------------------
-' Function: IsTextPresent - Fast screen reading
-'--------------------------------------------------------------------
-Function IsTextPresent(textToFind)
-    Dim screenContentBuffer
-    Dim screenLength
-    Dim targets, i
-    screenLength = 24 * 80 
-    g_bzhao.ReadScreen screenContentBuffer, screenLength, 1, 1
-
-    targets = Split(textToFind, "|")
-    IsTextPresent = False
-    For i = 0 To UBound(targets)
-        If InStr(1, screenContentBuffer, Trim(targets(i)), vbTextCompare) > 0 Then
-            IsTextPresent = True
-            Exit For
-        End If
-    Next
-
-    LOG "Screen content checked for: " & textToFind, "high"
-    LOG "Text presence result: " & IsTextPresent, "high"
-End Function
 
 '--------------------------------------------------------------------
 ' Function: ResolveLogVerbosity
@@ -374,7 +281,7 @@ End Function
 '--------------------------------------------------------------------
 Function ResolveLogVerbosity()
     Dim configPath, rawValue, normalized
-    configPath = g_g_fso.BuildPath(GetRepoRoot(), "config\config.ini")
+    configPath = g_fso.BuildPath(GetRepoRoot(), "config\config.ini")
     rawValue = ReadIniValue(configPath, "Open_RO", "Verbosity")
 
     If Len(Trim(rawValue)) = 0 Then rawValue = "Med"
@@ -459,26 +366,6 @@ Sub LogEntryWithRO(mva, roNumber)
     Set logFSO = Nothing
 End Sub
 
-'--------------------------------------------------------------------
-' Subroutine: WaitMs - Optimized waiting
-'--------------------------------------------------------------------
-Sub WaitMs(ms)
-    If ms <= 0 Then Exit Sub
-    
-    Dim startTime, endTime, waitSeconds
-    waitSeconds = ms / 1000
-    startTime = Timer
-    endTime = startTime + waitSeconds
-
-    If endTime > 86400 Then
-        endTime = endTime - 86400
-        Do While Timer >= startTime Or Timer < endTime
-        Loop
-    Else
-        Do While Timer < endTime
-        Loop
-    End If
-End Sub
 
 '--------------------------------------------------------------------
 ' Subroutine: LOG - lightweight logger used by this archived script
