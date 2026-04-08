@@ -2,6 +2,11 @@ Dim fso: Set fso = CreateObject("Scripting.FileSystemObject")
 Dim sh: Set sh = CreateObject("WScript.Shell")
 Dim baseDir: baseDir = sh.Environment("USER")("CDK_BASE")
 
+If baseDir = "" Or Not fso.FolderExists(baseDir) Then
+    WScript.Echo "ERROR: CDK_BASE is not set or does not exist. Set the CDK_BASE user environment variable to the repo root and retry."
+    WScript.Quit 1
+End If
+
 ScanFolder baseDir
 
 Sub ScanFolder(folderPath)

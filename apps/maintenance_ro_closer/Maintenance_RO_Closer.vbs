@@ -227,7 +227,10 @@ Function IsRoProcessable(roNumber)
     
     If InStr(1, screenContent, "PRESS RETURN TO CONTINUE", vbTextCompare) > 0 Then
         LogResult "INFO", "RO " & roNumber & " VEHID not on file. Attempting recovery."
-        BZH_RecoverFromVehidError EMPLOYEE_NUMBER, EMPLOYEE_NAME_CONFIRM, "1"
+        If Not BZH_RecoverFromVehidError(EMPLOYEE_NUMBER, EMPLOYEE_NAME_CONFIRM, "1") Then
+            LogResult "ERROR", "RO " & roNumber & " VEHID recovery failed. Terminal state unknown — stopping to avoid incorrect keystrokes."
+            TerminateScript "VEHID recovery failed for RO " & roNumber & ". Manual intervention required."
+        End If
         IsRoProcessable = False
         Exit Function
     ElseIf InStr(1, screenContent, "NOT ON FILE", vbTextCompare) > 0 Then
@@ -285,9 +288,9 @@ Function ShouldProcessRoByBusinessRules(roNumber)
         Exit Function
     End If
 
-    ' Gate 2: Age exception — bypasses footprint requirement
-    If isOldEnough Then
-        LogResult "INFO", "RO " & roNumber & " | Age exception: " & ageDays & " days old (threshold: " & OLD_RO_DAYS_THRESHOLD & "). Closing regardless of footprint."
+    ' Gate 2: Age exception — bypasses footprint requirement, but only for eligible statuses
+    If isOldEnough And IsAgeExceptionEligibleStatus(currentStatus) Then
+        LogResult "INFO", "RO " & roNumber & " | Age exception: " & ageDays & " days old (threshold: " & OLD_RO_DAYS_THRESHOLD & "), status '" & currentStatus & "' eligible. Closing regardless of footprint."
         ShouldProcessRoByBusinessRules = True
         Exit Function
     End If
@@ -351,8 +354,13 @@ Function IsRoOldEnoughForOverride(ByRef ageDays, ByRef openedDateToken)
         Exit Function
     End If
 
+    If CInt(OLD_RO_DAYS_THRESHOLD) <= 0 Then
+        IsRoOldEnoughForOverride = False
+        Exit Function
+    End If
+
     ageDays = DateDiff("d", parsedDate, Date)
-    IsRoOldEnoughForOverride = (ageDays > CInt(OLD_RO_DAYS_THRESHOLD))
+    IsRoOldEnoughForOverride = (ageDays >= CInt(OLD_RO_DAYS_THRESHOLD))
 End Function
 
 Function ExtractOpenedDateToken(screenContent)
