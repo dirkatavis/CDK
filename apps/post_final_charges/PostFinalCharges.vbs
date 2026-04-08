@@ -12,6 +12,8 @@ If Not g_fso.FileExists(g_fso.BuildPath(g_root, ".cdkroot")) Then
     Err.Raise 53, "Bootstrap", "Cannot find .cdkroot in base path:" & vbCrLf & g_root
 End If
 ExecuteGlobal g_fso.OpenTextFile(g_fso.BuildPath(g_root, "framework\PathHelper.vbs")).ReadAll
+Dim g_bzhao
+ExecuteGlobal g_fso.OpenTextFile(g_fso.BuildPath(g_root, "framework\BZHelper.vbs")).ReadAll
 
 ' --- Load ValidateSetup for dependency checking ---
 ExecuteGlobal g_fso.OpenTextFile(g_fso.BuildPath(g_root, "framework\ValidateSetup.vbs")).ReadAll
@@ -950,47 +952,7 @@ Function GetScreenSnapshot(numLines)
     GetScreenSnapshot = GetScreenLines(1, numLines)
 End Function
 
-'-----------------------------------------------------------------------------------
-' **FUNCTION NAME:** IsTextPresent
-' **DATE CREATED:** 2026-02-13
-' **AUTHOR:** GitHub Copilot
-' 
-' **FUNCTIONALITY:**
-' Check if specific text is visible anywhere on the current BlueZone screen.
-' Scans all screen lines looking for the target text (case-insensitive).
-' 
-' **PARAMETERS:**
-' searchText (String): The text to search for on screen
-' 
-' **RETURN VALUE:**
-' (Boolean) Returns True if text is found, False otherwise
-'-----------------------------------------------------------------------------------
-Function IsTextPresent(searchText)
-    Dim lineNum, screenContentBuffer, lineContent
-    Dim maxLines
-    
-    IsTextPresent = False
-    
-    If Len(searchText) = 0 Then Exit Function
-    
-    maxLines = 24 ' Standard terminal height
-    
-    On Error Resume Next
-    For lineNum = 1 To maxLines
-        screenContentBuffer = ""
-        bzhao.ReadScreen screenContentBuffer, 80, lineNum, 1
-        If Err.Number = 0 Then
-            lineContent = Trim(screenContentBuffer)
-            ' Case-insensitive search
-            If InStr(1, lineContent, searchText, vbTextCompare) > 0 Then
-                IsTextPresent = True
-                Exit For
-            End If
-        End If
-        Err.Clear
-    Next
-    On Error GoTo 0
-End Function
+' IsTextPresent — provided by framework\BZHelper.vbs
 
 '-----------------------------------------------------------------------------------
 ' **FUNCTION NAME:** GetMatchedBlacklistTerm
@@ -1184,111 +1146,9 @@ Function ShouldSkipRo(roValue)
     End If
 End Function
 
-'-----------------------------------------------------------------------------------
-' **FUNCTION NAME:** WaitMs
-' **DATE CREATED:** 2026-02-13
-' **AUTHOR:** GitHub Copilot
-' 
-' **FUNCTIONALITY:**
-' Simple utility to wait/sleep for a specified number of milliseconds.
-' Provides a standard way to pause script execution.
-' 
-' **PARAMETERS:**
-' milliseconds (Integer): Number of milliseconds to wait
-' 
-' **RETURN VALUE:**
-' None
-'-----------------------------------------------------------------------------------
-Sub WaitMs(milliseconds)
-    If milliseconds <= 0 Then Exit Sub
-    
-    Dim endTime
-    endTime = Timer + (milliseconds / 1000)
-    
-    Do While Timer < endTime
-        ' Yield control to system to prevent blocking
-        ' DoEvents is not supported in WSH, using a small sleep if possible
-    Loop
-End Sub
+' WaitMs — provided by framework\BZHelper.vbs
 
-'-----------------------------------------------------------------------------------
-' **FUNCTION NAME:** WaitForPrompt
-' **DATE CREATED:** 2026-02-13
-' **AUTHOR:** GitHub Copilot
-' 
-' **FUNCTIONALITY:**
-' Wait for a prompt to appear on screen, send input if provided, and optionally send Enter.
-' This is a legacy compatibility function for scripts that call it directly.
-' Wraps the lower-level BlueZone operations.
-' 
-' **PARAMETERS:**
-' promptText (String): The prompt text to wait for (e.g., "COMMAND:")
-' inputValue (String): The text to send as input (empty string = send nothing)
-' sendEnter (Boolean): Whether to send Enter after the input
-' timeoutMs (Integer): Maximum time to wait in milliseconds
-' description (String): Description for logging (currently unused but kept for compatibility)
-' 
-' **RETURN VALUE:**
-' (Boolean) Returns True if the prompt was found and actions completed, False if timeout
-'-----------------------------------------------------------------------------------
-Function WaitForPrompt(promptText, inputValue, sendEnter, timeoutMs, description)
-    Dim found, waitStart, waitElapsed
-    
-    If timeoutMs <= 0 Then timeoutMs = 5000 ' Default 5 second timeout
-    
-    found = False
-    waitStart = Timer
-    
-    Call LogEvent("comm", "high", "WaitForPrompt: Waiting for prompt", "WaitForPrompt", "Prompt: '" & promptText & "' | Input: '" & inputValue & "' | SendEnter: " & sendEnter, "")
-    
-    ' Wait for the prompt to appear
-    Do
-        If IsTextPresent(promptText) Then
-            found = True
-            Call LogEvent("comm", "high", "WaitForPrompt: Prompt found", "WaitForPrompt", "Found: '" & promptText & "'", "")
-            
-            ' Send input if provided
-            If Len(inputValue) > 0 Then
-                On Error Resume Next
-                bzhao.SendKey inputValue
-                If Err.Number <> 0 Then
-                    Call LogEvent("maj", "med", "WaitForPrompt: Failed to send input", "WaitForPrompt", "Error: " & Err.Description, "Input: '" & inputValue & "'")
-                    Err.Clear
-                Else
-                    Call LogEvent("comm", "high", "WaitForPrompt: Input sent", "WaitForPrompt", "Sent: '" & inputValue & "'", "")
-                End If
-                On Error GoTo 0
-                Call WaitMs(100) ' Brief pause after sending input
-            End If
-            
-            ' Send Enter if requested
-            If sendEnter Then
-                On Error Resume Next
-                bzhao.SendKey chr(13)  ' ASCII 13 = Enter
-                If Err.Number <> 0 Then
-                    Call LogEvent("maj", "med", "WaitForPrompt: Failed to send Enter", "WaitForPrompt", "Error: " & Err.Description, "")
-                    Err.Clear
-                Else
-                    Call LogEvent("comm", "high", "WaitForPrompt: Enter sent", "WaitForPrompt", "", "")
-                End If
-                On Error GoTo 0
-                Call WaitMs(100) ' Brief pause after sending Enter
-            End If
-            
-            Exit Do
-        End If
-        
-        Call WaitMs(50) ' Fast polling
-        waitElapsed = (Timer - waitStart) * 1000
-        
-        If waitElapsed > timeoutMs Then
-            Call LogEvent("min", "med", "WaitForPrompt: Timeout", "WaitForPrompt", "After " & timeoutMs & "ms looking for: '" & promptText & "'", "")
-            Exit Do
-        End If
-    Loop
-    
-    WaitForPrompt = found
-End Function
+' WaitForPrompt — provided by framework\BZHelper.vbs
 
 ' FastKey - Send a key press to the terminal
 ' Supports special keys like <NumpadEnter>, <Enter>, or regular characters
@@ -1507,6 +1367,7 @@ Sub RunMainProcess()
         On Error Resume Next
         bzhao.Disconnect
         Set bzhao = Nothing
+        Set g_bzhao = Nothing
         If Err.Number <> 0 Then Err.Clear
         On Error GoTo 0
     End If
@@ -1777,6 +1638,7 @@ Sub InitializeObjects()
         mockPath = ResolvePath("MockBzhao.vbs", "", True)
         If IncludeFile(mockPath) Then
             Set bzhao = New MockBzhao
+            Set g_bzhao = bzhao
             Call LogEvent("comm", "med", "Using MockBzhao for testing", "InitializeObjects", "", "")
             
             ' Setup initial test scenario
@@ -1789,6 +1651,7 @@ Sub InitializeObjects()
     
     If Not g_IsTestMode Then
         Set bzhao = CreateObject("BZWhll.WhllObj")
+        Set g_bzhao = bzhao
         If Err.Number <> 0 Then
             Call LogEvent("crit", "med", "Failed to create BZWhll.WhllObj", "InitializeObjects", Err.Description, "")
             Err.Clear
@@ -3027,8 +2890,9 @@ Sub SafeMsg(text, isCritical, title)
         End If
     End If
 
-    Dim tmp
-    tmp = MsgBox(text, IIf(isCritical, vbCritical, vbOKOnly), title)
+    Dim tmp, msgStyle
+    If isCritical Then msgStyle = vbCritical Else msgStyle = vbOKOnly
+    tmp = MsgBox(text, msgStyle, title)
     If Err.Number <> 0 Then Err.Clear
     On Error GoTo 0
 End Sub

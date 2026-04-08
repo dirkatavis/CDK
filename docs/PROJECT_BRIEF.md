@@ -142,7 +142,7 @@ ExecuteGlobal g_fso.OpenTextFile(g_fso.BuildPath(g_root, "framework\BZHelper.vbs
 | `apps/post_final_charges/Pfc_Summary.vbs` | ✅ Removed — now uses BZHelper |
 | `apps/repair_order/0_Open_RO/Open_RO.vbs` | ✅ Removed — migrated to BZHelper 5-arg signature |
 | `apps/repair_order/2_finalize_close_pt2/2_Finalize_Close_Pt2.vbs` | ✅ Removed (was dead code) |
-| `apps/post_final_charges/PostFinalCharges.vbs` | ⏳ **Pending — next session** |
+| `apps/post_final_charges/PostFinalCharges.vbs` | ✅ Removed — now uses BZHelper |
 | `apps/post_final_charges/tests/test_prompt_detection.vbs` | ⏳ Test file — defer |
 
 ### WaitForAnyOf
@@ -163,7 +163,7 @@ tools/close_single_ro.vbs
 ## 5. Known Issues
 
 ### High Priority
-1. **`PostFinalCharges.vbs` WS3 migration pending** — largest and most complex script. Has local `WaitForPrompt`, `IsTextPresent`, `WaitMs`. Defer to next session with fresh context.
+_(none — WS3 migration of all production scripts is complete)_
 
 ### Medium Priority
 2. **`BuildLogPath` and `BuildCSVPath` in PathHelper.vbs** — pure aliases for `GetConfigPath`. Candidates for removal.
@@ -174,6 +174,14 @@ tools/close_single_ro.vbs
 
 ### Low Priority
 5. **`.cdkroot` marker** — retain given sunset timeline.
+
+6. **`PostFinalCharges.vbs` — global `fso` appears to be dead code** — `Dim fso` is declared globally and set in `InitializeObjects`, but every consumer either uses `g_fso` (bootstrap) or its own local `Dim fso`. The global is set and cleared but never read. Candidate for removal. **Address separately from WS3 refactor.**
+
+7. **`PostFinalCharges.vbs` — `commonLibLoaded` is a dead global** — `Dim commonLibLoaded` (near top of file) is never written or read. Leftover from an earlier architecture. Remove. **Address separately from WS3 refactor.**
+
+8. **`PostFinalCharges.vbs` — `bzhao`/`g_bzhao` alias pattern is technical debt** — WS3 migration aliased `g_bzhao = bzhao` rather than renaming ~40 direct `bzhao.*` call sites. Both names refer to the same object. Future work should use `g_bzhao` for BZHelper-routed calls; `bzhao` remains for direct calls (`bzhao.MsgBox`, `bzhao.pause`, etc.) not covered by BZHelper. Full rename is a separate cleanup task. **Address separately from WS3 refactor.**
+
+9. **`PostFinalCharges.vbs` — `<NumpadEnter>` vs `chr(13)` behaviour change** — WS3 migration replaced the local `WaitForPrompt` (which sent `chr(13)`) with BZHelper (which sends `<NumpadEnter>`). Functionally equivalent on all tested CDK screens, and consistent with all other migrated scripts. Monitor in production; if any prompt misbehaves this is the first thing to check. **No action needed unless symptoms appear.**
 
 ---
 
@@ -202,8 +210,7 @@ All 12 production scripts migrated to `g_fso`/`g_sh`/`g_root` pattern.
 - `Open_RO.vbs` — local `WaitForPrompt` (Sub, 4-arg), `IsTextPresent`, `WaitMs` all removed; 16 call sites updated to BZHelper 5-arg signature; BZHelper now loaded in bootstrap
 
 **Remaining:**
-- `PostFinalCharges.vbs` — local `WaitForPrompt`, `IsTextPresent`, `WaitMs` — **next session, highest risk**
-- Test files (`test_prompt_detection.vbs`, `test_blacklist_runtime_detection_gap.vbs`, `test_wch_skip_counter_runtime_regression.vbs`) — deferred
+- Test files (`test_prompt_detection.vbs`, `test_blacklist_runtime_detection_gap.vbs`, `test_wch_skip_counter_runtime_regression.vbs`) — deferred (low priority given sunset timeline)
 
 ---
 
@@ -228,10 +235,10 @@ All 12 production scripts migrated to `g_fso`/`g_sh`/`g_root` pattern.
 **Starting a new chat:** Paste this entire document at the start of the conversation.
 
 **Next session priorities:**
-1. Migrate `PostFinalCharges.vbs` WS3 — remove local `WaitForPrompt`, `IsTextPresent`, `WaitMs`; load BZHelper in bootstrap
-2. Run simpletest — expect `IsTextPresent` and `WaitForPrompt` in PostFinalCharges + test files only
-3. Run full test suite — expect 98+ pass
-4. Consider test file migrations (lower priority given sunset timeline)
+1. Consider test file migrations (`test_prompt_detection.vbs` etc.) — low priority given sunset timeline
+2. Assess `close_single_ro.vbs` (both `apps/post_final_charges/` and `tools/`) for BZHelper migration
+3. Run simpletest — `IsTextPresent`/`WaitForPrompt` should now appear only in test files and framework
+4. Run full test suite — expect 98+ pass
 
 **Section quick-reference:**
 - New to the project? Read sections 1, 2, 3
