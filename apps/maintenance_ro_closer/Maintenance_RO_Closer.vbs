@@ -45,7 +45,6 @@ Dim LOOP_PAUSE: LOOP_PAUSE = GetConfigSetting("Maintenance_RO_Closer", "LoopPaus
 Dim REVIEW_PAUSE: REVIEW_PAUSE = GetConfigSetting("Maintenance_RO_Closer", "ReviewPause", 500)
 Dim BLACKLIST_TERMS: BLACKLIST_TERMS = GetConfigSetting("Maintenance_RO_Closer", "blacklist_terms", "")
 Dim OLD_RO_DAYS_THRESHOLD: OLD_RO_DAYS_THRESHOLD = GetConfigSetting("Maintenance_RO_Closer", "AssumeClosedAfterDays", 120)
-Dim AGE_EXCEPTION_STATUSES: AGE_EXCEPTION_STATUSES = GetConfigSetting("Maintenance_RO_Closer", "AgeExceptionStatuses", "OPENED,OPEN,PREASSIGNED,PRE-ASSIGNED")
 Dim EMPLOYEE_NUMBER: EMPLOYEE_NUMBER = GetConfigSetting("Maintenance_RO_Closer", "EmployeeNumber", "")
 Dim EMPLOYEE_NAME_CONFIRM: EMPLOYEE_NAME_CONFIRM = GetConfigSetting("Maintenance_RO_Closer", "EmployeeNameConfirm", "")
 
@@ -485,20 +484,6 @@ Function ExtractStatusText(screenContent)
     Dim spPos: spPos = InStr(snip, "  ")
     If spPos > 0 Then snip = Left(snip, spPos - 1)
     ExtractStatusText = Trim(snip)
-End Function
-
-Function IsAgeExceptionEligibleStatus(statusText)
-    Dim terms, i
-    IsAgeExceptionEligibleStatus = False
-    If Trim(AGE_EXCEPTION_STATUSES) = "" Then Exit Function
-    terms = Split(AGE_EXCEPTION_STATUSES, ",")
-    Dim normalized: normalized = UCase(Trim(statusText))
-    For i = 0 To UBound(terms)
-        If normalized = UCase(Trim(terms(i))) Then
-            IsAgeExceptionEligibleStatus = True
-            Exit Function
-        End If
-    Next
 End Function
 
 Function GetMatchedBlacklistTerm(blacklistTermsCsv, screenContent)
