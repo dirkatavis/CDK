@@ -2174,7 +2174,7 @@ Sub Main(roNumber)
 
                     Call WaitMs(120)
                     recheckElapsed = (Timer - recheckStart) * 1000
-                Loop While recheckElapsed < 3000
+                Loop While recheckElapsed < 9000
 
                 If normalizedCurrentRo = g_PreviousNormalizedRo And CStr(roNumber) <> CStr(g_PreviousSequenceNumber) Then
                     lastRoResult = "Error - Current RO matched previous sequence RO"
