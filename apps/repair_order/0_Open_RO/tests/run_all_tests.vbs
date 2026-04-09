@@ -16,6 +16,7 @@ WScript.Echo "=== Open_RO Test Suite ==="
 WScript.Echo ""
 
 RunTestFile "test_log_level_parser_contract.vbs"
+RunTestFile "test_ro_scrape_timing_regression.vbs"
 
 ' ----------------------------------------------------------------------------
 Sub RunTestFile(filename)

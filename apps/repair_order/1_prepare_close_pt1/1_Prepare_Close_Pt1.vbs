@@ -31,7 +31,7 @@ Dim RoNumber
 ' --- Main Execution ---
 ' Connect to BlueZone
 Set g_bzhao = CreateObject("BZWhll.WhllObj")
-Dim connResult: connResult = g_g_bzhao.Connect("")
+Dim connResult: connResult = g_bzhao.Connect("")
 If connResult <> 0 Then
     MsgBox "Error: Could not connect to BlueZone session. Ensure BlueZone is open and active.", vbCritical, "Connection Failed"
     WScript.Quit 1
@@ -40,16 +40,17 @@ End If
 ' Check and Open Input File
 If g_fso.FileExists(CSV_FILE) Then
     Set tsInput = g_fso.OpenTextFile(CSV_FILE, 1) ' 1=ForReading
+    tsInput.ReadLine ' Skip header row
 Else
     MsgBox "Error: Input file not found at " & CSV_FILE, vbCritical
-        g_bzhao.StopScript
+        WScript.Quit 1
 End If
 
 ' Process Records
 Do While Not tsInput.AtEndOfStream
     strLine = tsInput.ReadLine
     RoNumber = Trim(strLine)
-    If Len(RoNumber) = 6 And IsNumeric(RoNumber) Then
+    If Len(RoNumber) >= 6 And Len(RoNumber) <= 8 And IsNumeric(RoNumber) Then
         Call ProcessRo(RoNumber)
     End If
 Loop
@@ -284,7 +285,7 @@ Sub WaitForTextState(targetText, pollInterval, timeout, wantPresent, errorMsg, s
         End If
         If elapsed >= timeout Then
             MsgBox "ERROR: " & errorMsg & ". Script will exit.", vbCritical
-            g_bzhao.StopScript
+            WScript.Quit 1
         End If
     Loop
 End Sub
