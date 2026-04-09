@@ -39,11 +39,18 @@ If Trim(KEYWORDS_RAW) = "" Then
     KEYWORDS_ARR   = Array()
     KEYWORDS_COUNT = 0
 Else
-    KEYWORDS_ARR = Split(KEYWORDS_RAW, ",")
-    For KEYWORDS_IDX = 0 To UBound(KEYWORDS_ARR)
-        KEYWORDS_ARR(KEYWORDS_IDX) = Trim(KEYWORDS_ARR(KEYWORDS_IDX))
+    Dim KEYWORDS_RAW_ARR: KEYWORDS_RAW_ARR = Split(KEYWORDS_RAW, ",")
+    Dim KEYWORDS_CLEAN(): ReDim KEYWORDS_CLEAN(UBound(KEYWORDS_RAW_ARR))
+    KEYWORDS_COUNT = 0
+    For KEYWORDS_IDX = 0 To UBound(KEYWORDS_RAW_ARR)
+        Dim kTrim: kTrim = Trim(KEYWORDS_RAW_ARR(KEYWORDS_IDX))
+        If kTrim <> "" Then
+            KEYWORDS_CLEAN(KEYWORDS_COUNT) = kTrim
+            KEYWORDS_COUNT = KEYWORDS_COUNT + 1
+        End If
     Next
-    KEYWORDS_COUNT = UBound(KEYWORDS_ARR) + 1
+    ReDim Preserve KEYWORDS_CLEAN(KEYWORDS_COUNT - 1)
+    KEYWORDS_ARR = KEYWORDS_CLEAN
 End If
 
 
@@ -207,17 +214,25 @@ Function ScrapeCurrentRO()
 
     Do While Not doneScanning
         For screenRow = 1 To 24
+            rowBuf = ""
             On Error Resume Next
             g_bzhao.ReadScreen rowBuf, 80, screenRow, 1
-            If Err.Number <> 0 Then Err.Clear
+            If Err.Number <> 0 Then
+                rowBuf = ""
+                Err.Clear
+            End If
             On Error GoTo 0
             allText = allText & rowBuf & " "
         Next
 
         ' Check row 22 for CDK pagination indicator
+        pageIndicator = ""
         On Error Resume Next
         g_bzhao.ReadScreen pageIndicator, 80, 22, 1
-        If Err.Number <> 0 Then Err.Clear
+        If Err.Number <> 0 Then
+            pageIndicator = ""
+            Err.Clear
+        End If
         On Error GoTo 0
 
         If InStr(1, pageIndicator, "(MORE ON NEXT SCREEN)", vbTextCompare) > 0 Then
