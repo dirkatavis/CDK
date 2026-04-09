@@ -12,6 +12,12 @@ Option Explicit
 Dim g_fso: Set g_fso = CreateObject("Scripting.FileSystemObject")
 Dim g_sh: Set g_sh = CreateObject("WScript.Shell")
 Dim g_root: g_root = g_sh.Environment("USER")("CDK_BASE")
+If g_root = "" Or Not g_fso.FolderExists(g_root) Then
+    Err.Raise 53, "Bootstrap", "Invalid or missing CDK_BASE. Value: " & g_root
+End If
+If Not g_fso.FileExists(g_fso.BuildPath(g_root, ".cdkroot")) Then
+    Err.Raise 53, "Bootstrap", "Cannot find .cdkroot in base path:" & vbCrLf & g_root
+End If
 ExecuteGlobal g_fso.OpenTextFile(g_fso.BuildPath(g_root, "framework\PathHelper.vbs")).ReadAll
 
 ' --- CDK Terminal Object (must be declared before loading BZHelper) ---
@@ -62,52 +68,63 @@ Sub RunScrapper()
 
         LogResult "INFO", "Navigating to RO: " & roNum
 
-        ' Type the RO number at the current prompt
-        g_bzhao.SendKey roNum & "<NumpadEnter>"
-        g_bzhao.Pause SCREEN_WAIT_DELAY
+        ' Confirm we are at the R.O. NUMBER prompt before sending
+        Dim atPrompt
+        atPrompt = WaitForPrompt("R.O. NUMBER", "", False, 5000, "R.O. NUMBER prompt before RO " & roNum)
 
-        ' Wait for the RO screen to load
-        Dim screenText, startTime, screenFound
-        startTime = Timer
-        screenFound = False
-        Do
-            g_bzhao.ReadScreen screenText, 1920, 1, 1
-
-            If InStr(1, screenText, "RO:", vbTextCompare) > 0 Or InStr(1, screenText, "RO STATUS:", vbTextCompare) > 0 Then
-                screenFound = True
-                Exit Do
-            End If
-
-            If IsKnownErrorPresent(screenText) Then
-                If DetectAndRecover() Then
-                    LogResult "INFO", "Recovery successful for RO " & roNum & "."
-                Else
-                    LogResult "ERROR", "Recovery failed for RO " & roNum & ". Skipping."
-                End If
-                Exit Do
-            End If
-
-            If Timer - startTime > 10 Then
-                LogResult "ERROR", "Timeout waiting for RO screen for RO " & roNum
-                Exit Do
-            End If
-            g_bzhao.Pause 500
-        Loop
-
-        If screenFound Then
-            Dim rowData
-            rowData = ScrapeCurrentRO()
-            If rowData <> "" Then
-                csvFile.WriteLine rowData
-                totalWritten = totalWritten + 1
-                LogResult "INFO", "Wrote RO " & roNum & " (" & totalWritten & " of " & targetROs.Count & ")"
-            End If
-
-            ' Exit RO detail screen back to R.O. NUMBER prompt
-            g_bzhao.SendKey "E<NumpadEnter>"
-            g_bzhao.Pause SCREEN_WAIT_DELAY
+        If Not atPrompt Then
+            LogResult "ERROR", "R.O. NUMBER prompt not found before RO " & roNum & ". Skipping."
         Else
-            LogResult "ERROR", "RO " & roNum & " skipped — screen did not load."
+            ' Type the RO number at the prompt
+            g_bzhao.SendKey roNum & "<NumpadEnter>"
+            g_bzhao.Pause SCREEN_WAIT_DELAY
+
+            ' Wait for the RO screen to load
+            Dim screenText, startTime, screenFound
+            startTime = Timer
+            screenFound = False
+            Do
+                g_bzhao.ReadScreen screenText, 1920, 1, 1
+
+                If InStr(1, screenText, "RO:", vbTextCompare) > 0 Or InStr(1, screenText, "RO STATUS:", vbTextCompare) > 0 Then
+                    screenFound = True
+                    Exit Do
+                End If
+
+                If IsKnownErrorPresent(screenText) Then
+                    If DetectAndRecover() Then
+                        LogResult "INFO", "Recovery successful for RO " & roNum & "."
+                    Else
+                        LogResult "ERROR", "Recovery failed for RO " & roNum & ". Skipping."
+                    End If
+                    Exit Do
+                End If
+
+                If Timer - startTime > 10 Then
+                    LogResult "ERROR", "Timeout waiting for RO screen for RO " & roNum
+                    Exit Do
+                End If
+                g_bzhao.Pause 500
+            Loop
+
+            If screenFound Then
+                Dim rowData
+                rowData = ScrapeCurrentRO()
+                If rowData <> "" Then
+                    csvFile.WriteLine rowData
+                    totalWritten = totalWritten + 1
+                    LogResult "INFO", "Wrote RO " & roNum & " (" & totalWritten & " of " & targetROs.Count & ")"
+                End If
+
+                ' Exit RO detail screen and confirm return to R.O. NUMBER prompt
+                g_bzhao.SendKey "E<NumpadEnter>"
+                If Not WaitForPrompt("R.O. NUMBER", "", False, 5000, "R.O. NUMBER prompt after RO " & roNum) Then
+                    LogResult "ERROR", "R.O. NUMBER prompt not found after exiting RO " & roNum & ". Stopping to avoid corrupt input."
+                    Exit For
+                End If
+            Else
+                LogResult "ERROR", "RO " & roNum & " skipped — screen did not load."
+            End If
         End If
 
     Next

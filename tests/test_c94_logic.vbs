@@ -105,7 +105,7 @@ Function LoadTargetROs()
         If line <> "" And IsNumeric(line) Then
             dict(line) = False
         End If
-    Next
+    Loop
     f.Close
     Set LoadTargetROs = dict
 End Function
