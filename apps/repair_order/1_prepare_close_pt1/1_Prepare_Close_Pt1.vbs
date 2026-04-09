@@ -40,10 +40,18 @@ End If
 ' Check and Open Input File
 If g_fso.FileExists(CSV_FILE) Then
     Set tsInput = g_fso.OpenTextFile(CSV_FILE, 1) ' 1=ForReading
+    If tsInput.AtEndOfStream Then
+        MsgBox "Error: Input file is empty: " & CSV_FILE, vbCritical
+        WScript.Quit 1
+    End If
     tsInput.ReadLine ' Skip header row
+    If tsInput.AtEndOfStream Then
+        MsgBox "Error: Input file has no data rows: " & CSV_FILE, vbCritical
+        WScript.Quit 1
+    End If
 Else
     MsgBox "Error: Input file not found at " & CSV_FILE, vbCritical
-        WScript.Quit 1
+    WScript.Quit 1
 End If
 
 ' Process Records

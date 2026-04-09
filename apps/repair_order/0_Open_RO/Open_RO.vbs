@@ -185,15 +185,21 @@ Sub Main(mva, mileage)
     ' Wait for the "Created repair order" confirmation screen before scraping.
     ' Scrape must happen AFTER this wait — the screen has not transitioned yet
     ' when called immediately after INPUT POINT 16.
-    WaitForPrompt "Created repair order|R.O. NUMBER", "", False, 10000, ""
+    Dim confirmFound
+    confirmFound = WaitForPrompt("Created repair order|R.O. NUMBER", "", False, 10000, "")
 
     ' Scrape and log
     Dim roNumber
     roNumber = GetRepairOrderEnhanced()
     Call LogEntryWithRO(mva, roNumber)
 
-    ' Dismiss confirmation screen
-    g_bzhao.SendKey "<F3>"
+    ' Dismiss confirmation screen only if prompt was detected;
+    ' avoid navigating away from an unexpected screen on timeout.
+    If confirmFound Then
+        g_bzhao.SendKey "<F3>"
+    Else
+        LOG "WARNING: Confirmation screen not detected — F3 not sent for MVA: " & mva, "med"
+    End If
 End Sub
 
 
