@@ -366,4 +366,106 @@ Function BZH_RecoverFromVehidError(employeeNumber, nameConfirmText, menuOption)
     BZH_RecoverFromVehidError = True
 End Function
 
+'-------------------------------------------------------------------------------------
+' BZH_GetMatchedBlacklistTerm — Scan all RO service line pages for a blacklist term.
+'
+' Parameters:
+'   blacklistTermsCsv — comma-separated list of terms to search for (case-insensitive)
+'   pauseMs           — milliseconds to pause between page advances (configurable per script)
+'
+' Pages through multi-screen ROs using the CDK pagination pattern:
+'   "(MORE ON NEXT SCREEN)" on row 22 → advance with "N" + NumpadEnter
+'   "(END OF DISPLAY)" on row 22      → last page reached
+' Returns to page 1 via "B" + NumpadEnter after scanning.
+'
+' Returns the first matched term, or empty string if no match found.
+'-------------------------------------------------------------------------------------
+Function BZH_GetMatchedBlacklistTerm(blacklistTermsCsv, pauseMs)
+    Dim terms, i, term, lineNum, lineContent
+    Dim pagesAdvanced, matchedTerm, pageIndicator
+    Dim foundMatch, doneScanning, p
+
+    BZH_GetMatchedBlacklistTerm = ""
+
+    blacklistTermsCsv = Trim(CStr(blacklistTermsCsv))
+    If Len(blacklistTermsCsv) = 0 Then Exit Function
+    If pauseMs <= 0 Then pauseMs = 500
+
+    terms = Split(blacklistTermsCsv, ",")
+    pagesAdvanced = 0
+    matchedTerm = ""
+    doneScanning = False
+
+    Do While Not doneScanning
+
+        ' Scan all 24 rows of current page
+        foundMatch = False
+        On Error Resume Next
+        For lineNum = 1 To 24
+            lineContent = ""
+            g_bzhao.ReadScreen lineContent, 80, lineNum, 1
+            If Err.Number <> 0 Then
+                Err.Clear
+            Else
+                For i = 0 To UBound(terms)
+                    term = Trim(terms(i))
+                    If Len(term) > 0 Then
+                        If InStr(1, lineContent, term, vbTextCompare) > 0 Then
+                            matchedTerm = term
+                            foundMatch = True
+                            Exit For
+                        End If
+                    End If
+                Next
+            End If
+            If foundMatch Then Exit For
+        Next
+        On Error GoTo 0
+
+        If foundMatch Then
+            BZH_Log "INFO", "BZHelper.BZH_GetMatchedBlacklistTerm: Matched '" & matchedTerm & "' on page " & (pagesAdvanced + 1) & "."
+            doneScanning = True
+        Else
+            ' Check row 22 for pagination indicator
+            pageIndicator = ""
+            On Error Resume Next
+            g_bzhao.ReadScreen pageIndicator, 80, 22, 1
+            If Err.Number <> 0 Then Err.Clear
+            On Error GoTo 0
+
+            If InStr(1, pageIndicator, "(END OF DISPLAY)", vbTextCompare) > 0 Then
+                doneScanning = True
+            ElseIf InStr(1, pageIndicator, "(MORE ON NEXT SCREEN)", vbTextCompare) > 0 Then
+                BZH_Log "INFO", "BZHelper.BZH_GetMatchedBlacklistTerm: Advancing to page " & (pagesAdvanced + 2) & "."
+                On Error Resume Next
+                g_bzhao.SendKey "N"
+                g_bzhao.SendKey "<NumpadEnter>"
+                If Err.Number <> 0 Then Err.Clear
+                On Error GoTo 0
+                g_bzhao.Pause pauseMs
+                pagesAdvanced = pagesAdvanced + 1
+            Else
+                BZH_Log "INFO", "BZHelper.BZH_GetMatchedBlacklistTerm: No pagination indicator on row 22 — treating as end of display."
+                doneScanning = True
+            End If
+        End If
+
+    Loop
+
+    ' Return to page 1 if we paged forward
+    If pagesAdvanced > 0 Then
+        BZH_Log "INFO", "BZHelper.BZH_GetMatchedBlacklistTerm: Returning to page 1 (" & pagesAdvanced & " page(s))."
+        For p = 1 To pagesAdvanced
+            On Error Resume Next
+            g_bzhao.SendKey "B"
+            g_bzhao.SendKey "<NumpadEnter>"
+            If Err.Number <> 0 Then Err.Clear
+            On Error GoTo 0
+            g_bzhao.Pause pauseMs
+        Next
+    End If
+
+    BZH_GetMatchedBlacklistTerm = matchedTerm
+End Function
+
 End If ' g_BZHelper_Loaded load guard
