@@ -46,6 +46,7 @@ Dim g_ProcessPromptSequenceTimeoutMsOverride
 Dim g_ProcessPromptSequenceMaxNoPromptIterationsOverride
 Dim g_ProcessPromptSequenceNoPromptRetryWaitMsOverride
 Dim g_CloseoutConfirmDelayMs
+Dim g_StabilityPause
 Dim g_ReviewedROCount
 Dim g_FiledROCount
 Dim g_BlacklistTermsRaw
@@ -952,34 +953,7 @@ Function GetScreenSnapshot(numLines)
 End Function
 
 ' IsTextPresent — provided by framework\BZHelper.vbs
-
-'-----------------------------------------------------------------------------------
-' **FUNCTION NAME:** GetMatchedBlacklistTerm
-' **DATE CREATED:** 2026-03-12
-' **AUTHOR:** GitHub Copilot
-' 
-' **FUNCTIONALITY:**
-' Checks configured blacklist terms against the current screen and returns
-' the first matched term, or empty string if no match is found.
-'-----------------------------------------------------------------------------------
-Function GetMatchedBlacklistTerm(blacklistTermsCsv)
-    Dim terms, i, term
-    GetMatchedBlacklistTerm = ""
-
-    blacklistTermsCsv = Trim(CStr(blacklistTermsCsv))
-    If Len(blacklistTermsCsv) = 0 Then Exit Function
-
-    terms = Split(blacklistTermsCsv, ",")
-    For i = LBound(terms) To UBound(terms)
-        term = Trim(CStr(terms(i)))
-        If Len(term) > 0 Then
-            If IsTextPresent(term) Then
-                GetMatchedBlacklistTerm = term
-                Exit Function
-            End If
-        End If
-    Next
-End Function
+' BZH_GetMatchedBlacklistTerm — provided by framework\BZHelper.vbs (paginated)
 
 '-----------------------------------------------------------------------------------
 ' **FUNCTION NAME:** NormalizeRoIdentifier
@@ -1738,6 +1712,16 @@ Sub InitializeConfig()
     End If
     On Error GoTo 0
 
+    Dim stabilityPauseValue
+    stabilityPauseValue = GetIniSetting("PostFinalCharges", "StabilityPause", "1000")
+    On Error Resume Next
+    g_StabilityPause = CInt(stabilityPauseValue)
+    If Err.Number <> 0 Or g_StabilityPause < 0 Then
+        g_StabilityPause = 1000
+        Err.Clear
+    End If
+    On Error GoTo 0
+
     g_BlacklistTermsRaw = GetIniSetting("PostFinalCharges", "blacklist_terms", "")
     If Not LoadCloseoutTriggers(GetConfigPath("PostFinalCharges", "TriggerList"), g_CloseoutTriggers) Then
         g_ShouldAbort = True
@@ -2123,79 +2107,43 @@ Sub Main(roNumber)
     send_enter_key = True
     Call WaitForPrompt("COMMAND:", roNumber, send_enter_key, 10000, "")
     
-    ' Wait for RO detail screen to load before scraping RO number
-    If Not WaitForScreenTransition("RO STATUS:", 5000, "RO detail screen") Then
-        Call LogEvent("maj", "low", "RO detail screen did not load within timeout, attempting RO extraction anyway", "Main", "", "")
+    ' Wait for the new sequence's RO to appear on screen.
+    ' WaitForScreenTransition("RO STATUS:") would return immediately if the previous
+    ' sequence's screen is still showing, so we poll until the displayed RO changes.
+    Dim actualRO, roWaitStart, roWaitElapsed, roCandidate, roCandidateNorm
+    roWaitStart = Timer
+    actualRO = ""
+    Do
+        roCandidate = GetROFromScreen()
+        roCandidateNorm = NormalizeRoIdentifier(roCandidate)
+        If Len(roCandidateNorm) > 0 And roCandidateNorm <> g_PreviousNormalizedRo Then
+            actualRO = roCandidate
+            Exit Do
+        End If
+        Call WaitMs(150)
+        roWaitElapsed = (Timer - roWaitStart) * 1000
+    Loop While roWaitElapsed < 15000
+
+    If Len(actualRO) = 0 Then
+        Call LogEvent("maj", "low", "Screen did not show a new RO within 15s; reading current screen", "Main", "", "")
+        actualRO = GetROFromScreen()
     End If
-    
-    ' Scrape the actual RO number from the screen (top of screen shows 'RO:  123456')
-    Dim actualRO
-    actualRO = GetROFromScreen()
+
     If Len(Trim(CStr(actualRO))) > 0 Then
         currentRODisplay = actualRO
     Else
         currentRODisplay = roNumber
         Call LogEvent("maj", "low", "RO not found on screen, using sequence: " & roNumber, "Main", "", "")
     End If
-    
+
     If Len(Trim(CStr(currentRODisplay))) > 0 Then
         Call LogEvent("comm", "med", "Sent RO to BlueZone", "Main", "", "")
     Else
-        ' No scraped RO available; log against the sequence number and note unknown RO
         Call LogEvent("comm", "med", roNumber & " - Sent RO to BlueZone", "Main", "RO: (unknown) - will use sequence number for checks", "")
     End If
 
-    ' Integrity guard: current RO must not match previous RO from prior sequence.
-    ' To avoid false positives from transient UI lag, poll for a changed RO before aborting.
-    Dim normalizedCurrentRo, refreshedRo, refreshedNormalizedRo
-    Dim recheckStart, recheckElapsed, foundDifferentRo
-    normalizedCurrentRo = NormalizeRoIdentifier(currentRODisplay)
-    If Len(normalizedCurrentRo) > 0 Then
-        If Len(g_PreviousNormalizedRo) > 0 Then
-            If normalizedCurrentRo = g_PreviousNormalizedRo And CStr(roNumber) <> CStr(g_PreviousSequenceNumber) Then
-                Call LogEvent("maj", "med", "Current RO matched previous sequence RO on initial read; polling for changed RO", "Main", "RO " & normalizedCurrentRo & " at sequences " & g_PreviousSequenceNumber & ", " & roNumber, "")
-
-                foundDifferentRo = False
-                recheckStart = Timer
-
-                Do
-                    Call WaitForScreenStable(350, 100)
-                    refreshedRo = GetROFromScreen()
-                    refreshedNormalizedRo = NormalizeRoIdentifier(refreshedRo)
-
-                    If Len(refreshedNormalizedRo) > 0 Then
-                        currentRODisplay = refreshedRo
-                        normalizedCurrentRo = refreshedNormalizedRo
-                        If normalizedCurrentRo <> g_PreviousNormalizedRo Then
-                            foundDifferentRo = True
-                            Exit Do
-                        End If
-                    End If
-
-                    Call WaitMs(120)
-                    recheckElapsed = (Timer - recheckStart) * 1000
-                Loop While recheckElapsed < 9000
-
-                If normalizedCurrentRo = g_PreviousNormalizedRo And CStr(roNumber) <> CStr(g_PreviousSequenceNumber) Then
-                    lastRoResult = "Error - Current RO matched previous sequence RO"
-                    g_ShouldAbort = True
-                    g_AbortReason = "RO/Sequence integrity violation: previous sequence " & g_PreviousSequenceNumber & " and current sequence " & roNumber & " both mapped to RO " & normalizedCurrentRo
-                    Call LogEvent("crit", "low", "RO/Sequence integrity violation - current RO matched previous RO", "Main", "RO " & normalizedCurrentRo & " -> sequences " & g_PreviousSequenceNumber & ", " & roNumber, "Manual review required")
-                    Call SafeMsg("Integrity check failed: sequence " & roNumber & " resolved to the same RO as previous sequence " & g_PreviousSequenceNumber & " (RO " & normalizedCurrentRo & ")." & vbCrLf & "Automation stopped for manual review.", True, "RO Mapping Error")
-                    Exit Sub
-                Else
-                    If foundDifferentRo Then
-                        Call LogEvent("comm", "med", "RO polling re-check resolved mismatch; continuing", "Main", "Sequence " & roNumber & " now maps to RO " & currentRODisplay, "")
-                    Else
-                        Call LogEvent("comm", "med", "RO re-check retained current mapping; continuing", "Main", "Sequence " & roNumber & " maps to RO " & currentRODisplay, "")
-                    End If
-                End If
-            End If
-        End If
-
-        g_PreviousNormalizedRo = normalizedCurrentRo
-        g_PreviousSequenceNumber = CStr(roNumber)
-    End If
+    g_PreviousNormalizedRo = NormalizeRoIdentifier(currentRODisplay)
+    g_PreviousSequenceNumber = CStr(roNumber)
 
     Call LogEvent("comm", "low", "Sequence " & roNumber & " (RO " & currentRODisplay & ") - Processing", "ProcessRONumbers", "", "")
 
@@ -2261,11 +2209,11 @@ Sub Main(roNumber)
     Call WaitForScreenStable(1200, 150)
 
     Dim matchedBlacklistTerm
-    matchedBlacklistTerm = GetMatchedBlacklistTerm(g_BlacklistTermsRaw)
+    matchedBlacklistTerm = BZH_GetMatchedBlacklistTerm(g_BlacklistTermsRaw, g_StabilityPause)
     If Len(Trim(CStr(matchedBlacklistTerm))) = 0 And Len(Trim(CStr(g_BlacklistTermsRaw))) > 0 Then
         ' Retry once after an additional short stabilization window to catch late-painted lines.
         Call WaitForScreenStable(1000, 150)
-        matchedBlacklistTerm = GetMatchedBlacklistTerm(g_BlacklistTermsRaw)
+        matchedBlacklistTerm = BZH_GetMatchedBlacklistTerm(g_BlacklistTermsRaw, g_StabilityPause)
     End If
     If Len(Trim(CStr(matchedBlacklistTerm))) > 0 Then
         g_SkipBlacklistCount = g_SkipBlacklistCount + 1

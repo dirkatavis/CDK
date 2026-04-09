@@ -20,7 +20,6 @@ ExecuteGlobal g_fso.OpenTextFile(g_fso.BuildPath(g_root, "framework\BZHelper.vbs
 ' --- Execution Parameters ---
 Dim MAIN_PROMPT: MAIN_PROMPT = "R.O. NUMBER"
 Dim LOG_FILE_PATH: LOG_FILE_PATH = GetConfigPath("Maintenance_RO_Closer", "Log")
-Dim CRITERIA_FILE: CRITERIA_FILE = GetConfigPath("Maintenance_RO_Closer", "Criteria")
 Dim DEBUG_LEVEL: DEBUG_LEVEL = 2 ' 1=Error, 2=Info
 Dim RO_LIST_PATH: RO_LIST_PATH = GetConfigPath("Maintenance_RO_Closer", "ROList")
 Dim SKIP_RO_LIST_PATH: SKIP_RO_LIST_PATH = GetConfigPath("Maintenance_RO_Closer", "SkipRoList")
@@ -48,8 +47,6 @@ Dim OLD_RO_DAYS_THRESHOLD: OLD_RO_DAYS_THRESHOLD = GetConfigSetting("Maintenance
 Dim EMPLOYEE_NUMBER: EMPLOYEE_NUMBER = GetConfigSetting("Maintenance_RO_Closer", "EmployeeNumber", "")
 Dim EMPLOYEE_NAME_CONFIRM: EMPLOYEE_NAME_CONFIRM = GetConfigSetting("Maintenance_RO_Closer", "EmployeeNameConfirm", "")
 
-' --- Picky Match State ---
-Dim CriteriaA, CriteriaB, CriteriaC
 Dim g_SkipRoLookup
 
 ' --- CDK Objects ---
@@ -71,10 +68,6 @@ Sub RunAutomation()
 
     LogResult "INFO", "Starting Maintenance RO Auto-Closer using list: " & RO_LIST_PATH
     
-    ' Load PM match criteria (required gate before closing)
-    LoadMatchCriteria
-    LogResult "INFO", "PM match criteria loaded from: " & CRITERIA_FILE
-
     ' Load SkipRoList (required configuration for deterministic skip behavior)
     LoadSkipRoLookup SKIP_RO_LIST_PATH
     LogResult "INFO", "SkipRoList loaded from: " & SKIP_RO_LIST_PATH & " (entries=" & g_SkipRoLookup.Count & ")"
@@ -259,26 +252,24 @@ Function ShouldProcessRoByBusinessRules(roNumber)
     '
     ' RO Status                    | Condition                        | Action
     ' -----------------------------+----------------------------------+--------
-    ' Any                          | Blacklisted                      | SKIP
-    ' Any (non-blacklisted)         | Age >= AssumeClosedAfterDays     | CLOSE  (overrides footprint)
-    ' Any                          | Footprint mismatch               | SKIP
+    ' Any                          | Blacklisted (any page)           | SKIP
+    ' Any (non-blacklisted)        | Age >= AssumeClosedAfterDays     | CLOSE  (overrides status)
     ' READY TO POST                | (none)                           | CLOSE
     ' Any other                    | (none)                           | SKIP
     '
     ' Rules evaluated top to bottom. First match wins.
-    ' Age exception overrides footprint but not the blacklist.
+    ' Age exception overrides status check but not the blacklist.
     ' =================================================
     Dim ageDays, openedDateToken, isOldEnough
-    Dim screenContent, isReadyToPost, matchedBlacklistTerm, isPickyMatch, currentStatus
+    Dim screenContent, isReadyToPost, matchedBlacklistTerm, currentStatus
 
+    matchedBlacklistTerm = BZH_GetMatchedBlacklistTerm(BLACKLIST_TERMS, STABILITY_PAUSE)
     screenContent = GetCurrentScreenContent()
     isReadyToPost = (InStr(1, screenContent, "READY TO POST", vbTextCompare) > 0)
     isOldEnough = IsRoOldEnoughForOverride(ageDays, openedDateToken)
     currentStatus = ExtractStatusText(screenContent)
-    matchedBlacklistTerm = GetMatchedBlacklistTerm(BLACKLIST_TERMS, screenContent)
-    isPickyMatch = CheckPickyMatch()
 
-    LogResult "INFO", "RO " & roNumber & " | Footprint: " & BoolLabel(isPickyMatch) & " | Status: " & IIf(isReadyToPost, "READY TO POST", currentStatus) & " | Age: " & IIf(ageDays >= 0, ageDays & " days", "unknown")
+    LogResult "INFO", "RO " & roNumber & " | Status: " & IIf(isReadyToPost, "READY TO POST", currentStatus) & " | Age: " & IIf(ageDays >= 0, ageDays & " days", "unknown")
 
     ' Gate 1: Blacklist
     If matchedBlacklistTerm <> "" Then
@@ -287,37 +278,23 @@ Function ShouldProcessRoByBusinessRules(roNumber)
         Exit Function
     End If
 
-    ' Gate 2: Age exception — overrides footprint but not blacklist
+    ' Gate 2: Age exception — overrides status check but not blacklist
     If isOldEnough Then
-        LogResult "INFO", "RO " & roNumber & " | Age exception: " & ageDays & " days old (threshold: " & OLD_RO_DAYS_THRESHOLD & "). Closing regardless of footprint."
+        LogResult "INFO", "RO " & roNumber & " | Age exception: " & ageDays & " days old (threshold: " & OLD_RO_DAYS_THRESHOLD & "). Closing regardless of status."
         ShouldProcessRoByBusinessRules = True
         Exit Function
     End If
 
-    ' Gate 3: Footprint must match
-    If Not isPickyMatch Then
-        ShouldProcessRoByBusinessRules = False
-        Exit Function
-    End If
-
-    ' Gate 4: READY TO POST
+    ' Gate 3: READY TO POST
     If isReadyToPost Then
-        LogResult "INFO", "RO " & roNumber & " | READY TO POST + footprint match. Closing."
+        LogResult "INFO", "RO " & roNumber & " | READY TO POST. Closing."
         ShouldProcessRoByBusinessRules = True
         Exit Function
     End If
 
-    ' Gate 5: Skip anything else
+    ' Gate 4: Skip anything else
     LogResult "INFO", "RO " & roNumber & " | Not READY TO POST and age threshold not met. Skipping."
     ShouldProcessRoByBusinessRules = False
-End Function
-
-Function BoolLabel(value)
-    If value Then
-        BoolLabel = "Yes"
-    Else
-        BoolLabel = "No"
-    End If
 End Function
 
 Function IIf(condition, trueVal, falseVal)
@@ -486,29 +463,6 @@ Function ExtractStatusText(screenContent)
     ExtractStatusText = Trim(snip)
 End Function
 
-Function GetMatchedBlacklistTerm(blacklistTermsCsv, screenContent)
-    Dim terms, i, term
-
-    If Trim(blacklistTermsCsv) = "" Then
-        GetMatchedBlacklistTerm = ""
-        Exit Function
-    End If
-
-    terms = Split(blacklistTermsCsv, ",")
-
-    For i = 0 To UBound(terms)
-        term = Trim(terms(i))
-        If term <> "" Then
-            If InStr(1, screenContent, term, vbTextCompare) > 0 Then
-                GetMatchedBlacklistTerm = term
-                Exit Function
-            End If
-        End If
-    Next
-
-    GetMatchedBlacklistTerm = ""
-End Function
-
 Function DiscoverLineLetters()
     Dim i, capturedLetter, screenContentBuffer, readLength
     Dim foundLetters, foundCount
@@ -583,176 +537,41 @@ Function DiscoverLineLetters()
     DiscoverLineLetters = foundLetters
 End Function
 
-Function CheckPickyMatch()
-    Dim row, col, expectedText, screenContent, i, anchorRow, letters, letterFound
-    
-    ' Phase 1: Discover all line letters on screen
-    letters = DiscoverLineLetters()
-    
-    If UBound(letters) = -1 Then
-        LogResult "INFO", "Footprint mismatch: No line letters detected in Col 1."
-        CheckPickyMatch = False
-        Exit Function
-    End If
-
-    ' Phase 2: Verify descriptions for Lines A, B, and C
-    ' We need to find the specific row for each letter
-    Dim criteria, targetLetter, matchCount
-    matchCount = 0
-    
-    Dim checkTarget: checkTarget = Array("A", "B", "C")
-    Dim checkCriteria: checkCriteria = Array(CriteriaA, CriteriaB, CriteriaC)
-    
-    For i = 0 To UBound(checkTarget)
-        targetLetter = checkTarget(i)
-        criteria = checkCriteria(i)
-        letterFound = False
-        
-        ' Find the row for this letter
-        For row = 7 To 22
-            g_bzhao.ReadScreen screenContent, 1, row, 1
-            If UCase(Trim(screenContent)) = targetLetter Then
-                ' Verify description at this row
-                g_bzhao.ReadScreen screenContent, 50, row, 4
-                If MatchesAnyVariant(screenContent, criteria) Then
-                    LogResult "INFO", "Line " & targetLetter & " verified at Row " & row
-                    letterFound = True
-                    matchCount = matchCount + 1
-                    Exit For
-                Else
-                    LogResult "INFO", "Line " & targetLetter & ": No approved description found. Content: '" & Trim(screenContent) & "'"
-                    CheckPickyMatch = False
-                    Exit Function
-                End If
-            End If
-        Next
-        
-        If Not letterFound Then
-            LogResult "INFO", "Footprint mismatch: Line '" & targetLetter & "' not found."
-            CheckPickyMatch = False
-            Exit Function
-        End If
-    Next
-    
-    ' Phase 3: Exclusion Check - Skip if Line D exists
-    For row = 7 To 22
-        g_bzhao.ReadScreen screenContent, 1, row, 1
-        If UCase(Trim(screenContent)) = "D" Then
-            LogResult "INFO", "Exclusion match failed: Line 'D' detected at Row " & row & ". Too many service lines. Skipping."
-            CheckPickyMatch = False
-            Exit Function
-        End If
-    Next
-    
-    CheckPickyMatch = True
-End Function
-
-Sub LoadMatchCriteria()
-    Dim fso, txtFile, line, parts, key, variants, i, commentPos, vVal
-    Dim cleanArr, count
-    Set fso = CreateObject("Scripting.FileSystemObject")
-    
-    If Not fso.FileExists(CRITERIA_FILE) Then
-        LogResult "ERROR", "CRITICAL ERROR: Configuration file missing: " & CRITERIA_FILE
-        MsgBox "Missing mandatory config file: " & CRITERIA_FILE, vbCritical
-        TerminateScript "Missing configuration file."
-    End If
-    
-    Set txtFile = fso.OpenTextFile(CRITERIA_FILE, 1)
-    Do Until txtFile.AtEndOfStream
-        line = txtFile.ReadLine
-        
-        ' 1. Strip comments
-        commentPos = InStr(line, "#")
-        If commentPos > 0 Then line = Left(line, commentPos - 1)
-        line = Trim(line)
-        
-        ' 2. Process valid key=value lines
-        If line <> "" And InStr(line, "=") > 0 Then
-            parts = Split(line, "=")
-            key = UCase(Trim(parts(0)))
-            variants = Split(parts(1), "|")
-            
-            ' Filter variants
-            count = 0
-            cleanArr = Array() ' Initialize as empty array
-            For i = 0 To UBound(variants)
-                vVal = Trim(variants(i))
-                If vVal <> "" Then
-                    ReDim Preserve cleanArr(count)
-                    cleanArr(count) = vVal
-                    count = count + 1
-                End If
-            Next
-            
-            If count > 0 Then
-                Select Case key
-                    Case "A": CriteriaA = cleanArr
-                    Case "B": CriteriaB = cleanArr
-                    Case "C": CriteriaC = cleanArr
-                End Select
-            End If
-        End If
-    Loop
-    txtFile.Close
-    
-    ' Validate we have all required lines
-    If Not IsArray(CriteriaA) Or Not IsArray(CriteriaB) Or Not IsArray(CriteriaC) Then
-        LogResult "ERROR", "CRITICAL ERROR: Config file incomplete or corrupted (Lines A, B, and C required)."
-        g_bzhao.StopScript
-    End If
-End Sub
-
-Function MatchesAnyVariant(screenStr, variantsArray)
-    Dim i, sText, vText
-    MatchesAnyVariant = False
-    
-    ' Truncate screen string to 50 chars for comparison as requested
-    sText = Left(Trim(screenStr), 50)
-    
-    For i = 0 To UBound(variantsArray)
-        vText = Left(variantsArray(i), 50)
-        ' Use InStr(..., 1) = 1 for "StartsWith" logic (case-insensitive)
-        If InStr(1, sText, vText, vbTextCompare) = 1 Then
-            MatchesAnyVariant = True
-            Exit Function
-        End If
-    Next
-End Function
-
 Function ProcessRoReview()
-    Dim lineLetters, i, startIndex
-    lineLetters = DiscoverLineLetters()
+    Dim letter, screenContent
 
-    If UBound(lineLetters) = -1 Then
-        LogResult "INFO", "No service lines detected for review. Skipping RO."
-        ProcessRoReview = False
-        Exit Function
-    End If
+    ' Step through lines A, B, C... until CDK signals the line does not exist.
+    ' Sending "R <letter>" from COMMAND: navigates directly to that line's review
+    ' prompts regardless of screen pagination — CDK handles the navigation.
+    ' When a letter has no corresponding line, CDK returns immediately to COMMAND:.
+    letter = "A"
+    Do While Asc(letter) <= Asc("Z")
 
-    startIndex = 0
-    For i = 0 To UBound(lineLetters)
-        If lineLetters(i) = "A" Then
-            startIndex = i
-            Exit For
-        End If
-    Next
-
-    If startIndex > 0 Then
-        LogResult "INFO", "Skipping non-line leading letters before Line A."
-    End If
-    
-    For i = startIndex To UBound(lineLetters)
-        LogResult "INFO", "Reviewing discovered Line " & lineLetters(i)
         WaitForText "COMMAND:"
-        EnterTextWithStability "R " & lineLetters(i)
-        
-        If Not HandleReviewPrompts(lineLetters(i)) Then
+        EnterTextWithStability "R " & letter
+
+        ' Allow the screen to settle before checking state
+        g_bzhao.Pause STABILITY_PAUSE
+        g_bzhao.ReadScreen screenContent, 1920, 1, 1
+
+        ' If CDK returned to COMMAND: immediately, this line does not exist — done
+        If InStr(1, screenContent, "COMMAND:", vbTextCompare) > 0 Then
+            LogResult "INFO", "ProcessRoReview: Line '" & letter & "' not found. Review complete."
+            ProcessRoReview = True
+            Exit Function
+        End If
+
+        ' Line exists — handle its review prompts
+        LogResult "INFO", "ProcessRoReview: Reviewing Line '" & letter & "'."
+        If Not HandleReviewPrompts(letter) Then
+            LogResult "ERROR", "ProcessRoReview: Review timed out for Line '" & letter & "'."
             ProcessRoReview = False
             Exit Function
         End If
-    Next
-    
+
+        letter = Chr(Asc(letter) + 1)
+    Loop
+
     ProcessRoReview = True
 End Function
 
