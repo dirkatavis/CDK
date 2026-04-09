@@ -29,7 +29,7 @@ Dim EMPLOYEE_NAME_CONFIRM: EMPLOYEE_NAME_CONFIRM = GetIniSetting("C94ReportAnaly
 
 ' --- Main Script ---
 Sub RunScrapper()
-    Dim targetROs, csvFile, i, abortAll, totalWritten
+    Dim targetROs, csvFile, totalWritten
 
     ' Load target RO list
     Set targetROs = LoadTargetROs()
@@ -54,44 +54,24 @@ Sub RunScrapper()
     Set csvFile = g_fso.CreateTextFile(OUTPUT_CSV_PATH, True)
     csvFile.WriteLine "RO,Line A,Line B,Line C"
 
-    i = 1
-    abortAll = False
     totalWritten = 0
 
-    Do
-        If abortAll Then Exit Do
+    ' Loop directly over the RO list — type each RO number at the prompt
+    Dim roNum
+    For Each roNum In targetROs.Keys
 
-        LogResult "INFO", "Processing sequence: " & i
+        LogResult "INFO", "Navigating to RO: " & roNum
 
-        ' Ensure we are at COMMAND prompt
-        If Not WaitForPrompt("COMMAND:", "", False, 5000, "") Then
-            LogResult "ERROR", "Timed out waiting for COMMAND prompt at sequence " & i
-            If DetectAndRecover() Then
-                LogResult "INFO", "Recovery successful. Retrying sequence " & i & "."
-            Else
-                LogResult "ERROR", "Recovery failed. Exiting."
-                abortAll = True
-            End If
-        End If
-
-        If abortAll Then Exit Do
-
-        ' Enter sequence number
-        g_bzhao.SendKey i & "<NumpadEnter>"
+        ' Type the RO number at the current prompt
+        g_bzhao.SendKey roNum & "<NumpadEnter>"
         g_bzhao.Pause SCREEN_WAIT_DELAY
 
-        ' Wait for screen to resolve
+        ' Wait for the RO screen to load
         Dim screenText, startTime, screenFound
         startTime = Timer
         screenFound = False
         Do
             g_bzhao.ReadScreen screenText, 1920, 1, 1
-
-            If InStr(1, screenText, "DOES NOT EXIST", vbTextCompare) > 0 Then
-                LogResult "INFO", "Reached end of sequences at " & i & ". Stopping."
-                abortAll = True
-                Exit Do
-            End If
 
             If InStr(1, screenText, "RO:", vbTextCompare) > 0 Or InStr(1, screenText, "RO STATUS:", vbTextCompare) > 0 Then
                 screenFound = True
@@ -100,52 +80,37 @@ Sub RunScrapper()
 
             If IsKnownErrorPresent(screenText) Then
                 If DetectAndRecover() Then
-                    LogResult "INFO", "Recovery successful. Skipping sequence " & i & "."
+                    LogResult "INFO", "Recovery successful for RO " & roNum & "."
                 Else
-                    LogResult "ERROR", "Recovery failed. Exiting."
-                    abortAll = True
+                    LogResult "ERROR", "Recovery failed for RO " & roNum & ". Skipping."
                 End If
                 Exit Do
             End If
 
             If Timer - startTime > 10 Then
-                LogResult "ERROR", "Timeout waiting for RO screen at sequence " & i
+                LogResult "ERROR", "Timeout waiting for RO screen for RO " & roNum
                 Exit Do
             End If
             g_bzhao.Pause 500
         Loop
 
-        If abortAll Then Exit Do
-
         If screenFound Then
-            Dim currentRO
-            currentRO = GetROFromScreen()
-
-            If targetROs.Exists(currentRO) And Not targetROs(currentRO) Then
-                Dim rowData
-                rowData = ScrapeCurrentRO()
-                If rowData <> "" Then
-                    csvFile.WriteLine rowData
-                    totalWritten = totalWritten + 1
-                    targetROs(currentRO) = True
-                    LogResult "INFO", "Wrote RO " & currentRO & " (" & totalWritten & " of " & targetROs.Count & ")"
-                End If
+            Dim rowData
+            rowData = ScrapeCurrentRO()
+            If rowData <> "" Then
+                csvFile.WriteLine rowData
+                totalWritten = totalWritten + 1
+                LogResult "INFO", "Wrote RO " & roNum & " (" & totalWritten & " of " & targetROs.Count & ")"
             End If
 
-            ' Return to COMMAND prompt
+            ' Exit RO detail screen back to R.O. NUMBER prompt
             g_bzhao.SendKey "E<NumpadEnter>"
             g_bzhao.Pause SCREEN_WAIT_DELAY
         Else
-            LogResult "ERROR", "Sequence " & i & " skipped due to screen transition timeout."
+            LogResult "ERROR", "RO " & roNum & " skipped — screen did not load."
         End If
 
-        If AllFound(targetROs) Then
-            LogResult "INFO", "All " & targetROs.Count & " target RO(s) found. Done."
-            Exit Do
-        End If
-
-        i = i + 1
-    Loop
+    Next
 
     csvFile.Close
     LogResult "INFO", "Finished. Total rows written: " & totalWritten
@@ -260,7 +225,10 @@ End Function
 
 Function IsKnownErrorPresent(screenContent)
     IsKnownErrorPresent = (InStr(1, screenContent, "PRESS RETURN TO CONTINUE", vbTextCompare) > 0 Or _
-                           InStr(1, screenContent, "Process is locked by", vbTextCompare) > 0)
+                           InStr(1, screenContent, "Process is locked by", vbTextCompare) > 0 Or _
+                           InStr(1, screenContent, "NOT ON FILE", vbTextCompare) > 0 Or _
+                           InStr(1, screenContent, "is closed", vbTextCompare) > 0 Or _
+                           InStr(1, screenContent, "ALREADY CLOSED", vbTextCompare) > 0)
 End Function
 
 Function DetectAndRecover()
@@ -273,17 +241,31 @@ Function DetectAndRecover()
     ElseIf InStr(1, screenContent, "Process is locked by", vbTextCompare) > 0 Then
         LogResult "INFO", "Error detected: Process locked."
         DetectAndRecover = RecoverFromLockedProcess()
+    ElseIf InStr(1, screenContent, "NOT ON FILE", vbTextCompare) > 0 Then
+        LogResult "INFO", "Error detected: RO not on file. Skipping."
+        DetectAndRecover = RecoverFromSkippableError()
+    ElseIf InStr(1, screenContent, "is closed", vbTextCompare) > 0 Or _
+           InStr(1, screenContent, "ALREADY CLOSED", vbTextCompare) > 0 Then
+        LogResult "INFO", "Error detected: RO already closed. Skipping."
+        DetectAndRecover = RecoverFromSkippableError()
     Else
         LogResult "ERROR", "Unrecognised screen state — no recovery handler matched."
         DetectAndRecover = False
     End If
 End Function
 
+Function RecoverFromSkippableError()
+    ' The screen already shows the R.O. NUMBER prompt alongside the message.
+    ' No keys needed — just wait for the screen to settle before the next RO.
+    g_bzhao.Pause SCREEN_WAIT_DELAY
+    RecoverFromSkippableError = True
+End Function
+
 Function RecoverFromLockedProcess()
     RecoverFromLockedProcess = False
     LogResult "INFO", "Recovery: dismissing locked process, waiting for sequence prompt."
     g_bzhao.SendKey "<Enter>"
-    If Not WaitForPrompt("COMMAND:(SEQ#", "", False, 10000, "") Then
+    If Not WaitForPrompt("R.O. NUMBER", "", False, 10000, "") Then
         LogResult "ERROR", "Recovery failed: sequence prompt not found after locked process dismiss."
         Exit Function
     End If
@@ -297,7 +279,7 @@ Function RecoverFromVehidError()
         LogResult "ERROR", "Recovery failed: BZH_RecoverFromVehidError returned False."
         Exit Function
     End If
-    If Not WaitForPrompt("COMMAND:(SEQ#", "", False, 10000, "sequence prompt after VEHID recovery") Then
+    If Not WaitForPrompt("R.O. NUMBER", "", False, 10000, "sequence prompt after VEHID recovery") Then
         LogResult "ERROR", "Recovery failed: sequence prompt not found after BZH_RecoverFromVehidError."
         Exit Function
     End If
