@@ -3,7 +3,8 @@
 ' Part of the CDK DMS Automation Suite
 '
 ' Reads a list of RO numbers from input.csv, walks terminal sequences,
-' and extracts Lines A, B, C into a 4-column CSV (RO, Line A, Line B, Line C).
+' and searches all RO screens for configured keywords (config.ini: C94ReportAnalyzer.Keywords).
+' Output CSV: one row per RO, one column per keyword (keyword text if matched, blank if not).
 '=====================================================================================
 
 Option Explicit
@@ -32,6 +33,26 @@ Dim SCREEN_WAIT_DELAY:     SCREEN_WAIT_DELAY     = CInt(GetIniSetting("C94Report
 Dim EMPLOYEE_NUMBER:       EMPLOYEE_NUMBER       = GetIniSetting("C94ReportAnalyzer", "EmployeeNumber", "")
 Dim EMPLOYEE_NAME_CONFIRM: EMPLOYEE_NAME_CONFIRM = GetIniSetting("C94ReportAnalyzer", "EmployeeNameConfirm", "")
 
+Dim KEYWORDS_RAW: KEYWORDS_RAW = GetIniSetting("C94ReportAnalyzer", "Keywords", "")
+Dim KEYWORDS_ARR, KEYWORDS_COUNT, KEYWORDS_IDX
+If Trim(KEYWORDS_RAW) = "" Then
+    KEYWORDS_ARR   = Array()
+    KEYWORDS_COUNT = 0
+Else
+    Dim KEYWORDS_RAW_ARR: KEYWORDS_RAW_ARR = Split(KEYWORDS_RAW, ",")
+    Dim KEYWORDS_CLEAN(): ReDim KEYWORDS_CLEAN(UBound(KEYWORDS_RAW_ARR))
+    KEYWORDS_COUNT = 0
+    For KEYWORDS_IDX = 0 To UBound(KEYWORDS_RAW_ARR)
+        Dim kTrim: kTrim = Trim(KEYWORDS_RAW_ARR(KEYWORDS_IDX))
+        If kTrim <> "" Then
+            KEYWORDS_CLEAN(KEYWORDS_COUNT) = kTrim
+            KEYWORDS_COUNT = KEYWORDS_COUNT + 1
+        End If
+    Next
+    ReDim Preserve KEYWORDS_CLEAN(KEYWORDS_COUNT - 1)
+    KEYWORDS_ARR = KEYWORDS_CLEAN
+End If
+
 
 ' --- Main Script ---
 Sub RunScrapper()
@@ -58,7 +79,12 @@ Sub RunScrapper()
 
     ' Initialise output CSV (overwrite)
     Set csvFile = g_fso.CreateTextFile(OUTPUT_CSV_PATH, True)
-    csvFile.WriteLine "RO,Line A,Line B,Line C"
+    Dim csvHeader, hIdx
+    csvHeader = "RO"
+    For hIdx = 0 To KEYWORDS_COUNT - 1
+        csvHeader = csvHeader & ",Keyword " & (hIdx + 1)
+    Next
+    csvFile.WriteLine csvHeader
 
     totalWritten = 0
 
@@ -172,49 +198,75 @@ End Function
 
 ' --- Scraping Functions ---
 
+' ScrapeCurrentRO — pages through all screens of the current RO, searches for each
+' configured keyword in the full screen text, and returns a CSV row:
+'   RO, <keyword1 text or blank>, <keyword2 text or blank>, ...
 Function ScrapeCurrentRO()
-    Dim roNum, lineA, lineB, lineC
+    Dim roNum, allText, pagesAdvanced, pageIndicator, doneScanning, rowBuf
+    Dim screenRow, kIdx, kw, csvRow, p
 
     roNum = GetROFromScreen()
-    lineA = GetLineDescription("A")
-    lineB = GetLineDescription("B")
-    lineC = GetLineDescription("C")
 
-    ' Sanitise commas for CSV safety
-    roNum = Replace(roNum, ",", " ")
-    lineA = Replace(lineA, ",", " ")
-    lineB = Replace(lineB, ",", " ")
-    lineC = Replace(lineC, ",", " ")
+    ' Accumulate full screen text across all pages
+    allText = ""
+    pagesAdvanced = 0
+    doneScanning = False
 
-    ScrapeCurrentRO = roNum & "," & lineA & "," & lineB & "," & lineC
-End Function
-
-Function GetLineDescription(letter)
-    Dim row, buf, nextColChar, foundText
-    GetLineDescription = ""
-
-    For row = 10 To 22
-        g_bzhao.ReadScreen buf, 1, row, 1
-        If UCase(Trim(buf)) = UCase(letter) Then
-            g_bzhao.ReadScreen nextColChar, 1, row, 2
-            If Asc(nextColChar) = 32 Then
-                g_bzhao.ReadScreen foundText, 100, row, 4
-                GetLineDescription = Left(TruncateAtDoubleSpace(Trim(foundText)), 100)
-                Exit Function
+    Do While Not doneScanning
+        For screenRow = 1 To 24
+            rowBuf = ""
+            On Error Resume Next
+            g_bzhao.ReadScreen rowBuf, 80, screenRow, 1
+            If Err.Number <> 0 Then
+                rowBuf = ""
+                Err.Clear
             End If
-        End If
-    Next
-End Function
+            On Error GoTo 0
+            allText = allText & rowBuf & " "
+        Next
 
-Function TruncateAtDoubleSpace(text)
-    Dim k
-    For k = 1 To Len(text) - 1
-        If Mid(text, k, 2) = "  " Then
-            TruncateAtDoubleSpace = Left(text, k - 1)
-            Exit Function
+        ' Check row 22 for CDK pagination indicator
+        pageIndicator = ""
+        On Error Resume Next
+        g_bzhao.ReadScreen pageIndicator, 80, 22, 1
+        If Err.Number <> 0 Then
+            pageIndicator = ""
+            Err.Clear
+        End If
+        On Error GoTo 0
+
+        If InStr(1, pageIndicator, "(MORE ON NEXT SCREEN)", vbTextCompare) > 0 Then
+            g_bzhao.SendKey "N"
+            g_bzhao.SendKey "<NumpadEnter>"
+            g_bzhao.Pause SCREEN_WAIT_DELAY
+            pagesAdvanced = pagesAdvanced + 1
+        Else
+            doneScanning = True
+        End If
+    Loop
+
+    ' Return to page 1
+    For p = 1 To pagesAdvanced
+        On Error Resume Next
+        g_bzhao.SendKey "B"
+        g_bzhao.SendKey "<NumpadEnter>"
+        If Err.Number <> 0 Then Err.Clear
+        On Error GoTo 0
+        g_bzhao.Pause SCREEN_WAIT_DELAY
+    Next
+
+    ' Build CSV row: RO + one cell per keyword
+    csvRow = Replace(roNum, ",", " ")
+    For kIdx = 0 To KEYWORDS_COUNT - 1
+        kw = KEYWORDS_ARR(kIdx)
+        If kw <> "" And InStr(1, allText, kw, vbTextCompare) > 0 Then
+            csvRow = csvRow & "," & Replace(kw, ",", " ")
+        Else
+            csvRow = csvRow & ","
         End If
     Next
-    TruncateAtDoubleSpace = text
+
+    ScrapeCurrentRO = csvRow
 End Function
 
 
