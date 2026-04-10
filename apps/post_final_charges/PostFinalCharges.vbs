@@ -898,7 +898,7 @@ End Function
 '   positions. GetScreenLine Trims the buffer and would shift column indices.
 ' - Parts-line indicator: screen column 6 = "P", column 7 is a digit (P1, P2...).
 ' - SALE AMT field occupies the area around columns 70-80; the value is extracted
-'   with Mid(buf, 70, 11), trimmed, and converted with Val().
+'   with Mid(buf, 70, 11), trimmed, checked with IsNumeric(), and converted with CDbl().
 '
 ' **RETURNS:** True if at least one P-line with a sale amount > 0 is found.
 '-----------------------------------------------------------------------------------
