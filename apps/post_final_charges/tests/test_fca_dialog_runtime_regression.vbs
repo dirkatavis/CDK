@@ -67,9 +67,13 @@ AssertContains "HandleFcaDialog sub declared", "Sub HandleFcaDialog("
 AssertContains "FCA dialog detection string present", "FCA GLOBAL CLAIMS INFORMATION"
 
 ' Config keys are read
+AssertContains "FcaDialogEnabled feature flag is read", "FcaDialogEnabled"
 AssertContains "FcaConditionCode config key is read", "FcaConditionCode"
 AssertContains "FcaCausalLop config key is read", "FcaCausalLop"
 AssertContains "FcaCalEmissions config key is read", "FcaCalEmissions"
+
+' Disabled-path sets correct skip result
+AssertContains "Disabled handler sets skip result", "Skipped - FCA dialog handler not yet configured"
 
 ' IsWchLine uses correct LTYPE column position
 AssertContains "IsWchLine reads LTYPE at col 50", "Mid(buf, 50, 6)"

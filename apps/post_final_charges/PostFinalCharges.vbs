@@ -1061,7 +1061,16 @@ End Function
 ' is halted (g_ShouldAbort = True) so the operator can intervene.
 '-----------------------------------------------------------------------------------
 Sub HandleFcaDialog(prePartNumber)
-    Call LogInfo("FCA warranty dialog detected - beginning automated field entry", "HandleFcaDialog")
+    Call LogInfo("FCA warranty dialog detected", "HandleFcaDialog")
+
+    ' Feature flag: disabled until field values are confirmed with management
+    If LCase(Trim(GetIniSetting("PostFinalCharges", "FcaDialogEnabled", "false"))) <> "true" Then
+        Call LogWarn("FCA dialog handler is disabled (FcaDialogEnabled=false). WCH RO requires manual review.", "HandleFcaDialog")
+        lastRoResult = "Skipped - FCA dialog handler not yet configured"
+        Exit Sub
+    End If
+
+    Call LogInfo("Beginning automated FCA field entry", "HandleFcaDialog")
 
     ' Read config values
     Dim condCode, causalLop, calEmissions
