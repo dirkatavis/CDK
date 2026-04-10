@@ -59,7 +59,6 @@ Dim g_SkipOtherStates
 Dim g_SkipRoListRaw
 Dim g_SkipRoLookup
 Dim g_SkipConfiguredCount
-Dim g_SkipWarrantyCount
 Dim g_OverwriteLogOnStart
 Dim g_PreviousNormalizedRo
 Dim g_PreviousSequenceNumber
@@ -886,6 +885,47 @@ Function GetScreenLine(lineNum)
 End Function
 
 '-----------------------------------------------------------------------------------
+' **FUNCTION NAME:** HasPartsCharged
+' **DATE CREATED:** 2026-04-09
+' **AUTHOR:** GitHub Copilot
+'
+' **FUNCTIONALITY:**
+' Scans rows 9-22 of the current RO detail screen for parts lines (P1, P2, etc.)
+' and checks whether any carry a non-zero SALE AMT.
+'
+' **DETECTION LOGIC:**
+' - Reads each row via g_bzhao.ReadScreen (80 chars, col 1) to preserve column
+'   positions. GetScreenLine Trims the buffer and would shift column indices.
+' - Parts-line indicator: screen column 6 = "P", column 7 is a digit (P1, P2...).
+' - SALE AMT field occupies the area around columns 70-80; the value is extracted
+'   with Mid(buf, 70, 11), trimmed, checked with IsNumeric(), and converted with CDbl().
+'
+' **RETURNS:** True if at least one P-line with a sale amount > 0 is found.
+'-----------------------------------------------------------------------------------
+Function HasPartsCharged()
+    Dim row, buf, amtRaw, amtVal
+    HasPartsCharged = False
+    For row = 9 To 22
+        buf = ""
+        On Error Resume Next
+        g_bzhao.ReadScreen buf, 80, row, 1
+        If Err.Number <> 0 Then Err.Clear
+        On Error GoTo 0
+        If Len(buf) >= 80 Then
+            If Mid(buf, 6, 1) = "P" And IsNumeric(Mid(buf, 7, 1)) Then
+                amtRaw = Trim(Mid(buf, 70, 11))
+                amtVal = 0
+                If IsNumeric(amtRaw) Then amtVal = CDbl(amtRaw)
+                If amtVal > 0 Then
+                    HasPartsCharged = True
+                    Exit Function
+                End If
+            End If
+        End If
+    Next
+End Function
+
+'-----------------------------------------------------------------------------------
 ' **FUNCTION NAME:** GetScreenLines
 ' **DATE CREATED:** 2026-02-13
 ' **AUTHOR:** GitHub Copilot
@@ -1322,7 +1362,6 @@ Sub RunMainProcess()
                 "Older ROs Attempted: " & g_OlderRoAttemptCount & vbCrLf & _
                 "Older ROs Posted: " & g_OlderRoFiledCount & vbCrLf & _
                 "Skips - Specific ROs: " & g_SkipConfiguredCount & vbCrLf & _
-                "Skips - Warranty (WCH): " & g_SkipWarrantyCount & vbCrLf & _
                 "Skips - Other Terms: " & g_SkipBlacklistCount & vbCrLf & _
                 "Skips - Open: " & g_SkipStatusOpenCount & vbCrLf & _
                 "Skips - Pre-Assigned: " & g_SkipStatusPreassignedCount & vbCrLf & _
@@ -1938,7 +1977,6 @@ Sub ProcessRONumbers()
     g_SkipStatusPreassignedCount = 0
     g_SkipStatusOtherCount = 0
     g_SkipConfiguredCount = 0
-    g_SkipWarrantyCount = 0
     g_OlderRoAttemptCount = 0
     g_OlderRoFiledCount = 0
     Set g_SkipOtherStates = CreateObject("Scripting.Dictionary")
@@ -2183,19 +2221,6 @@ Sub Main(roNumber)
         Call FastKey("<NumpadEnter>")
         Call WaitForPrompt("COMMAND:", "", False, 5000, "")
         lastRoResult = "Skipped - Configured RO skip list"
-        Exit Sub
-    End If
-
-    ' --- WARRANTY SKIP GATE ---
-    ' Allow 1000ms for RO detail lines (including LTYPE) to fully render before scanning.
-    Call WaitMs(1000)
-    If IsTextPresent("WCH") Then
-        g_SkipWarrantyCount = g_SkipWarrantyCount + 1
-        Call LogEvent("comm", "med", "Warranty labor type detected - skipping RO", "Main", "WCH found on RO: " & currentRODisplay, "")
-        Call FastText("E")
-        Call FastKey("<NumpadEnter>")
-        Call WaitForPrompt("COMMAND:", "", False, 5000, "")
-        lastRoResult = "Skipped - WCH labor type"
         Exit Sub
     End If
 
@@ -3522,7 +3547,19 @@ End Sub
 '-----------------------------------------------------------------------------------
 Sub Closeout_Ro(roStatus)
     Call LogEvent("comm", "med", "Starting closeout procedure", "Closeout_Ro", "Status: " & roStatus, "")
-    
+
+    ' --- PARTS CHARGE GUARD ---
+    ' Abort closeout if no P-line on the detail screen carries a non-zero sale amount.
+    ' This prevents FC/F commands from being sent against ROs with no billable parts.
+    If Not HasPartsCharged() Then
+        Call LogWarn("No charged parts found on RO detail screen - skipping closeout", "Closeout_Ro")
+        Call FastText("E")
+        Call FastKey("<NumpadEnter>")
+        Call WaitForPrompt("COMMAND:", "", False, 5000, "")
+        lastRoResult = "Skipped - No parts charged"
+        Exit Sub
+    End If
+
     ' Check if status-specific closeout is enabled
     Dim useStatusSpecific
     useStatusSpecific = GetIniSetting("PostFinalCharges", "UseStatusSpecificCloseout", "true")

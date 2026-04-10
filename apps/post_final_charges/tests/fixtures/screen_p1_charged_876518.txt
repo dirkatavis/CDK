@@ -1,0 +1,30 @@
+RO SCREEN COORDINATE MAP
+Generated: 4/9/2026 4:50:44 PM
+
+                1         2         3         4         5         6         7         8
+      01234567890123456789012345678901234567890123456789012345678901234567890123456789
+      --------------------------------------------------------------------------------
+01 | ONSITE PLUS SERVICE            (PFC) POST FINAL CHARGES            09APR26 16:47
+02 |                                                                                 
+03 | RO: 876518     TAG: T5290862 SA: 73166   23 CHRYSLER CHRYSVIN: 2C4RC1L78PR572527
+04 | NAME:                   PMT: CASH      MILEAGE:   55986     OPENED DATE: 19MAR26
+05 | RO STATUS: READY TO POST          PROMISED: 19MAR26 17:00   OPENED TIME:   14:19
+06 | REMARKS:                                                   WAR EXP DATE:        
+07 | REPAIR ORDER #876518 DETAIL                                                     
+08 | LC DESCRIPTION                           TECH... LTYPE    ACT   SOLD    SALE AMT
+09 |                                                                                 
+10 | A  BATTERY, TEST, REMOVE AND REPLACE     C92                                    
+11 |    L1 B BATTERY, TEST, REMOVE AND REPLAC 73166   WCH     0.02   0.40       34.00
+12 |      P1 BBH6A001AA BATTERY-STORAGE                                 1      295.12
+13 | B  CHECK AND ADJUST TIRE PRESSURE        C92                                    
+14 |    L1 CATP CHECK AND ADJUST TIRE PRESSUR 73166   I       0.00   0.10        8.10
+15 | C  MEASURE AND DOCUMENT TIRE TREAD DEPTH C92                                    
+16 |    L1 MTD MEASURE AND DOCUMENT TIRE TREA 73166   I       0.00   0.10        8.10
+17 |                                                                                 
+18 |                                                                                 
+19 |                                                                                 
+20 |                                                                                 
+21 |                                                                                 
+22 |                                                                 (END OF DISPLAY)
+23 | COMMAND:                                                                        
+      --------------------------------------------------------------------------------

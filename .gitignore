@@ -2,6 +2,7 @@
 *.tmp
 *.log
 *.txt
+!**/tests/fixtures/*.txt
 *.bak
 *.old
 *~
