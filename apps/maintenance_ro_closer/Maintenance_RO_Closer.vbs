@@ -271,6 +271,13 @@ Function ShouldProcessRoByBusinessRules(roNumber)
 
     LogResult "INFO", "RO " & roNumber & " | Status: " & IIf(isReadyToPost, "READY TO POST", currentStatus) & " | Age: " & IIf(ageDays >= 0, ageDays & " days", "unknown")
 
+    ' Gate 0: Warranty labor type
+    If InStr(1, screenContent, "WCH", vbTextCompare) > 0 Then
+        LogResult "INFO", "RO " & roNumber & " | Warranty labor type (WCH) detected. Skipping."
+        ShouldProcessRoByBusinessRules = False
+        Exit Function
+    End If
+
     ' Gate 1: Blacklist
     If matchedBlacklistTerm <> "" Then
         LogResult "INFO", "RO " & roNumber & " | Blacklisted ('" & matchedBlacklistTerm & "'). Skipping."
