@@ -104,8 +104,11 @@ Sub Main()
     ' Test 15: Older RO close feature tests
     RunTest "Older RO Close Tests", "cscript.exe test_older_ro_close.vbs"
 
-    ' Test 16: WCH skip counter runtime wiring regression
+    ' Test 16: Parts-charged gate runtime wiring regression (replaces WCH skip counter)
     RunTest "WCH Skip Counter Runtime Regression", "cscript.exe test_wch_skip_counter_runtime_regression.vbs"
+
+    ' Test 17: HasPartsCharged unit tests using screen fixture files
+    RunTest "HasPartsCharged Unit Tests", "cscript.exe test_has_parts_charged.vbs"
 
     ' Summary
     WScript.Echo ""
