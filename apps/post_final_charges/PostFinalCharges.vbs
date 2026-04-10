@@ -926,6 +926,167 @@ Function HasPartsCharged()
 End Function
 
 '-----------------------------------------------------------------------------------
+' **FUNCTION NAME:** IsWchLine
+' **DATE CREATED:** 2026-04-10
+' **AUTHOR:** GitHub Copilot
+'
+' **FUNCTIONALITY:**
+' Scans rows 9-22 for L-operations belonging to the given line letter and checks
+' whether any carry a LABOR TYPE of "WCH" (col 50-55, 1-indexed).
+'
+' Screen layout (from RO DETAIL header row):
+'   LC DESCRIPTION                           TECH... LTYPE    ACT   SOLD    SALE AMT
+' Line letter headers have the letter at col 1. L-operation rows have:
+'   - col 1 = " " (space-indented)
+'   - col 4 = "L", col 5 = digit (e.g., L1, L2)
+'   - col 50-55 = LTYPE value (e.g., "WCH", "I", "B")
+'
+' **PARAMETERS:**
+' lineLetterChar - Single uppercase letter identifying the line (e.g., "A")
+'
+' **RETURNS:** True if any L-row for the given line has LTYPE = "WCH".
+'-----------------------------------------------------------------------------------
+Function IsWchLine(lineLetterChar)
+    IsWchLine = False
+    Dim row, buf, inTargetLine, firstChar
+    inTargetLine = False
+    For row = 9 To 22
+        buf = ""
+        On Error Resume Next
+        g_bzhao.ReadScreen buf, 80, row, 1
+        If Err.Number <> 0 Then Err.Clear
+        On Error GoTo 0
+        If Len(buf) >= 55 Then
+            firstChar = Mid(buf, 1, 1)
+            ' Line letter headers: uppercase A-Z in col 1
+            If firstChar >= "A" And firstChar <= "Z" Then
+                If inTargetLine Then Exit For  ' Past our target line - done scanning
+                If firstChar = lineLetterChar Then inTargetLine = True
+            End If
+            ' Within target line, check L-rows (col 4 = "L", col 5 = digit) for LTYPE
+            If inTargetLine And Mid(buf, 4, 1) = "L" And IsNumeric(Mid(buf, 5, 1)) Then
+                If Trim(Mid(buf, 50, 6)) = "WCH" Then
+                    IsWchLine = True
+                    Exit Function
+                End If
+            End If
+        End If
+    Next
+End Function
+
+'-----------------------------------------------------------------------------------
+' **FUNCTION NAME:** ExtractPartNumberForFca
+' **DATE CREATED:** 2026-04-10
+' **AUTHOR:** GitHub Copilot
+'
+' **FUNCTIONALITY:**
+' Scans rows 9-22 for the first P-line (col 6 = "P", col 7 = digit) and extracts
+' the part number from cols 9 onwards. Intended to be called BEFORE the FNL
+' command is issued (while the detail screen is clean, no dialog overlay), since
+' IsWchLine() can predict when the FCA dialog will appear.
+'
+' **RETURNS:** Part number string (e.g., "BBH6A001AA"), or "" if not found.
+'-----------------------------------------------------------------------------------
+Function ExtractPartNumberForFca()
+    Dim row, buf, partToken, spacePos
+    ExtractPartNumberForFca = ""
+    For row = 9 To 22
+        buf = ""
+        On Error Resume Next
+        g_bzhao.ReadScreen buf, 80, row, 1
+        If Err.Number <> 0 Then Err.Clear
+        On Error GoTo 0
+        If Len(buf) >= 20 Then
+            If Mid(buf, 6, 1) = "P" And IsNumeric(Mid(buf, 7, 1)) Then
+                partToken = Trim(Mid(buf, 9, 20))
+                spacePos = InStr(1, partToken, " ")
+                If spacePos > 1 Then partToken = Left(partToken, spacePos - 1)
+                If Len(partToken) > 0 Then
+                    ExtractPartNumberForFca = partToken
+                    Exit Function
+                End If
+            End If
+        End If
+    Next
+    Call LogWarn("No P-line found on screen - cannot extract part number for FCA dialog", "ExtractPartNumberForFca")
+End Function
+
+'-----------------------------------------------------------------------------------
+' **FUNCTION NAME:** CreateFcaPromptDictionary
+' **DATE CREATED:** 2026-04-10
+' **AUTHOR:** GitHub Copilot
+'
+' **FUNCTIONALITY:**
+' Builds the prompt dictionary for the FCA Global Claims Information dialog.
+' Uses the same AddPromptToDict pattern as CreateLineItemPromptDictionary().
+'
+' The Condition Code footer prompt is confirmed from screen capture.
+' Remaining field footer prompts are marked TODO and require a live WCH POC
+' session to determine exact text before those entries can be activated.
+'
+' **PARAMETERS:**
+' partNumber   - Failed Part Number extracted from P1 line on RO detail screen
+' condCode     - Condition Code value ("1", "2", or "3") from config
+' causalLop    - Causal LOP answer ("Y" or "N") from config
+' calEmissions - Cal. Emissions answer ("Y" or "N") from config
+'-----------------------------------------------------------------------------------
+Function CreateFcaPromptDictionary(partNumber, condCode, causalLop, calEmissions)
+    Dim dict
+    Set dict = CreateObject("Scripting.Dictionary")
+    ' Condition Code: footer confirmed from screen capture (2026-04-10)
+    Call AddPromptToDict(dict, "Enter 1, 2, or 3 for the Condition Code.", condCode, "<NumpadEnter>", False)
+    ' TODO POC: Add footer prompts for Causal LOP, Cal. Emissions, Failure Code,
+    '           and Failed Part Number once verified via live WCH session.
+    ' Example (uncomment and update text after POC):
+    '   Call AddPromptToDict(dict, "<causal lop footer text>", causalLop, "<NumpadEnter>", False)
+    '   Call AddPromptToDict(dict, "<cal emissions footer text>", calEmissions, "<NumpadEnter>", False)
+    '   Call AddPromptToDict(dict, "<failed part number footer text>", partNumber, "<NumpadEnter>", False)
+    '   Call AddPromptToDict(dict, "<failure code footer text>", "", "<NumpadEnter>", False)
+    Set CreateFcaPromptDictionary = dict
+End Function
+
+'-----------------------------------------------------------------------------------
+' **PROCEDURE NAME:** HandleFcaDialog
+' **DATE CREATED:** 2026-04-10
+' **AUTHOR:** GitHub Copilot
+'
+' **FUNCTIONALITY:**
+' Detects and handles the FCA Global Claims Information dialog that appears when
+' a WCH labor-type line is finalized. Extracts the Failed Part Number from the
+' background RO detail screen (left portion, unobscured by dialog overlay), reads
+' config values for Condition Code and Y/N fields, then drives field entry via
+' ProcessPromptSequence.
+'
+' If no part number is found, the RO is flagged for manual review and the script
+' is halted (g_ShouldAbort = True) so the operator can intervene.
+'-----------------------------------------------------------------------------------
+Sub HandleFcaDialog(prePartNumber)
+    Call LogInfo("FCA warranty dialog detected - beginning automated field entry", "HandleFcaDialog")
+
+    ' Read config values
+    Dim condCode, causalLop, calEmissions
+    condCode     = Trim(GetIniSetting("PostFinalCharges", "FcaConditionCode", "1"))
+    causalLop    = Trim(GetIniSetting("PostFinalCharges", "FcaCausalLop", "Y"))
+    calEmissions = Trim(GetIniSetting("PostFinalCharges", "FcaCalEmissions", "N"))
+
+    ' Use pre-captured part number (extracted before FNL, no dialog overlay).
+    ' prePartNumber is supplied by the caller who called IsWchLine() + ExtractPartNumberForFca()
+    ' before issuing the FNL command.
+    If Len(prePartNumber) = 0 Then
+        Call LogWarn("Cannot automate FCA dialog: no part number was pre-captured. Flagging for manual review.", "HandleFcaDialog")
+        lastRoResult = "Flagged - Missing part number for FCA dialog"
+        g_ShouldAbort = True
+        Exit Sub
+    End If
+    Call LogInfo("Using pre-captured part number for FCA dialog: " & prePartNumber, "HandleFcaDialog")
+
+    ' Drive field entry via prompt sequence
+    Call ProcessPromptSequence(CreateFcaPromptDictionary(prePartNumber, condCode, causalLop, calEmissions))
+
+    Call LogInfo("FCA dialog processing complete", "HandleFcaDialog")
+End Sub
+
+'-----------------------------------------------------------------------------------
 ' **FUNCTION NAME:** GetScreenLines
 ' **DATE CREATED:** 2026-02-13
 ' **AUTHOR:** GitHub Copilot
@@ -3433,17 +3594,26 @@ Sub ProcessLineItems()
 
     ' Phase 1: Run FNL commands for all lines (A through Z)
     Call LogEvent("comm", "high", "Phase 1: Running FNL commands for all lines", "ProcessLineItems", "", "")
+    Dim pliPrePartNum
     For i = 65 To 90 ' ASCII for A to Z
         lineLetterChar = Chr(i)
         Call LogEvent("comm", "high", "Running FNL " & lineLetterChar & " command", "ProcessLineItems", "", "")
-        
+
+        ' Pre-detect WCH labor type BEFORE sending FNL so part number can be captured
+        ' from the clean detail screen (no dialog overlay yet).
+        pliPrePartNum = ""
+        If IsWchLine(lineLetterChar) Then
+            Call LogInfo("WCH labor type detected on line " & lineLetterChar & " - pre-capturing part number", "ProcessLineItems")
+            pliPrePartNum = ExtractPartNumberForFca()
+        End If
+
         ' Send the FNL command and let ProcessPromptSequence handle any prompts that appear
         Call FastText("FNL " & lineLetterChar)
         Call FastKey("<NumpadEnter>")
-        
+
         ' Brief wait to let the response appear
         Call WaitMs(500)
-        
+
         ' Check if line exists BEFORE processing other prompts
         If IsTextPresent("LINE CODE " & lineLetterChar & " IS NOT ON FILE") Then
             Dim screenResponse
@@ -3457,10 +3627,16 @@ Sub ProcessLineItems()
             ' System automatically returns to COMMAND prompt without manual ENTER
             Exit For
         End If
-        
+
         ' Track successful line for better reporting
         g_LastSuccessfulLine = lineLetterChar
-        
+
+        ' Handle FCA warranty dialog if it appeared after FNL (predicted by IsWchLine above)
+        If IsTextPresent("FCA GLOBAL CLAIMS INFORMATION") Then
+            Call LogInfo("FCA warranty dialog present on line " & lineLetterChar & " - handling", "ProcessLineItems")
+            Call HandleFcaDialog(pliPrePartNum)
+        End If
+
         ' Process any other prompts that appear (including technician assignment)
         Call ProcessPromptSequence(lineItemPrompts)
     Next
@@ -3677,14 +3853,23 @@ Sub ProcessLinesSequentially()
         lineLetterChar = Chr(i)
         Call LogEvent("comm", "high", "Processing line " & lineLetterChar & " - Finish then Review", "ProcessLinesSequentially", "", "")
         
+        ' Pre-detect WCH labor type BEFORE sending FNL so part number can be captured
+        ' from the clean detail screen (no dialog overlay yet).
+        Dim fcaPrePartNum
+        fcaPrePartNum = ""
+        If IsWchLine(lineLetterChar) Then
+            Call LogInfo("WCH labor type detected on line " & lineLetterChar & " - pre-capturing part number", "ProcessLinesSequentially")
+            fcaPrePartNum = ExtractPartNumberForFca()
+        End If
+
         ' Step 1: Finish the line with FNL command FIRST (to ensure it's complete before reviewing)
         Call LogEvent("comm", "high", "Running FNL " & lineLetterChar & " command", "ProcessLinesSequentially", "", "")
         Call WaitForPrompt("COMMAND:", "FNL " & lineLetterChar, True, g_PromptWait, "")
-        
+
         ' Wait for the FNL response
         Call LogEvent("comm", "high", "Waiting for FNL " & lineLetterChar & " response", "ProcessLinesSequentially", "", "")
         Call WaitForScreenStable(2000, 300)  ' Wait up to 2 sec for screen to stabilize
-        
+
         ' Check if the line exists FIRST
         If IsTextPresent("LINE CODE " & lineLetterChar & " IS NOT ON FILE") Then
             Dim fnlScreenResponse
@@ -3697,11 +3882,16 @@ Sub ProcessLinesSequentially()
             End If
             Exit For ' Exit the For loop
         End If
-        
+
         ' Check if the line is already finished
         If IsTextPresent("LINE " & lineLetterChar & " IS ALREADY FINISHED") Then
             Call LogEvent("comm", "high", "Line " & lineLetterChar & " already finished", "ProcessLinesSequentially", "Skipping FNL processing", "")
         Else
+            ' Handle FCA warranty dialog if it appeared after FNL (predicted by IsWchLine above)
+            If IsTextPresent("FCA GLOBAL CLAIMS INFORMATION") Then
+                Call LogInfo("FCA warranty dialog present on line " & lineLetterChar & " - handling", "ProcessLinesSequentially")
+                Call HandleFcaDialog(fcaPrePartNum)
+            End If
             ' Process FNL prompts for this line
             Call LogDebug("Processing FNL " & lineLetterChar & " prompts", "ProcessLinesSequentially")
             Call ProcessPromptSequence(fnlPrompts)
