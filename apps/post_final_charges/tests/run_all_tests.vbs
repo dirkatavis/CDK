@@ -110,6 +110,12 @@ Sub Main()
     ' Test 17: HasPartsCharged unit tests using screen fixture files
     RunTest "HasPartsCharged Unit Tests", "cscript.exe test_has_parts_charged.vbs"
 
+    ' Test 18: ExtractPartNumberForFca unit tests using screen fixture files
+    RunTest "FCA Dialog Handler Unit Tests", "cscript.exe test_fca_dialog_handler.vbs"
+
+    ' Test 19: FCA dialog runtime wiring regression
+    RunTest "FCA Dialog Runtime Regression", "cscript.exe test_fca_dialog_runtime_regression.vbs"
+
     ' Summary
     WScript.Echo ""
     WScript.Echo "=== Test Results Summary ==="
