@@ -34,6 +34,7 @@ Dim g_EnableDetailedLogging
 Dim g_LastScrapedStatus
 Dim g_BaseScriptPath
 Dim g_ShouldAbort, g_AbortReason
+Dim g_EmployeeNumber, g_EmployeeNameConfirm
 Dim g_StartSequenceNumber, g_EndSequenceNumber
 Dim g_DebugDelayFactor
 Dim MainPromptLine
@@ -59,6 +60,7 @@ Dim g_SkipOtherStates
 Dim g_SkipRoListRaw
 Dim g_SkipRoLookup
 Dim g_SkipConfiguredCount
+Dim g_SkipWarrantyCount
 Dim g_OverwriteLogOnStart
 Dim g_PreviousNormalizedRo
 Dim g_PreviousSequenceNumber
@@ -1532,6 +1534,7 @@ Sub RunMainProcess()
                 "Older ROs Attempted: " & g_OlderRoAttemptCount & vbCrLf & _
                 "Older ROs Posted: " & g_OlderRoFiledCount & vbCrLf & _
                 "Skips - Specific ROs: " & g_SkipConfiguredCount & vbCrLf & _
+                "Skips - Warranty (WCH): " & g_SkipWarrantyCount & vbCrLf & _
                 "Skips - Other Terms: " & g_SkipBlacklistCount & vbCrLf & _
                 "Skips - Open: " & g_SkipStatusOpenCount & vbCrLf & _
                 "Skips - Pre-Assigned: " & g_SkipStatusPreassignedCount & vbCrLf & _
@@ -1961,6 +1964,9 @@ Sub InitializeConfig()
     Next
     g_OlderRoStatuses = olderStatusArr
     Call LogEvent("comm", "high", "Older RO threshold configured", "InitializeConfig", "Days: " & g_OlderRoThresholdDays & " Statuses: " & olderRoStatusesRaw, "")
+
+    g_EmployeeNumber = GetIniSetting("PostFinalCharges", "EmployeeNumber", "")
+    g_EmployeeNameConfirm = GetIniSetting("PostFinalCharges", "EmployeeNameConfirm", "")
 End Sub
 
 Sub ApplyLogStartupMode()
@@ -2147,6 +2153,7 @@ Sub ProcessRONumbers()
     g_SkipStatusPreassignedCount = 0
     g_SkipStatusOtherCount = 0
     g_SkipConfiguredCount = 0
+    g_SkipWarrantyCount = 0
     g_OlderRoAttemptCount = 0
     g_OlderRoFiledCount = 0
     Set g_SkipOtherStates = CreateObject("Scripting.Dictionary")
@@ -2368,6 +2375,17 @@ Sub Main(roNumber)
         lastRoResult = "Not On File"
         Exit Sub
     End If
+
+    ' Check for "PRESS RETURN TO CONTINUE" (VEHID not on file)
+    If IsTextPresent("PRESS RETURN TO CONTINUE") Then
+        Call LogEvent("comm", "med", "VEHID not on file - attempting recovery", "Main", "RO: " & currentRODisplay, "")
+        If Not BZH_RecoverFromVehidError(g_EmployeeNumber, g_EmployeeNameConfirm, "2") Then
+            Call LogEvent("crit", "low", "VEHID recovery failed - terminal state unknown", "Main", "", "")
+            g_ShouldAbort = True
+        End If
+        lastRoResult = "Skipped - VEHID not on file"
+        Exit Sub
+    End If
     
     ' Otherwise, assume repair order is open G�� prefer the scraped RO for logging
     If Len(Trim(CStr(currentRODisplay))) > 0 Then
@@ -2391,6 +2409,19 @@ Sub Main(roNumber)
         Call FastKey("<NumpadEnter>")
         Call WaitForPrompt("COMMAND:", "", False, 5000, "")
         lastRoResult = "Skipped - Configured RO skip list"
+        Exit Sub
+    End If
+
+    ' --- WARRANTY SKIP GATE ---
+    ' Allow 1000ms for RO detail lines (including LTYPE) to fully render before scanning.
+    Call WaitMs(1000)
+    If IsTextPresent("WCH") Then
+        g_SkipWarrantyCount = g_SkipWarrantyCount + 1
+        Call LogEvent("comm", "med", "Warranty labor type detected - skipping RO", "Main", "WCH found on RO: " & currentRODisplay, "")
+        Call FastText("E")
+        Call FastKey("<NumpadEnter>")
+        Call WaitForPrompt("COMMAND:", "", False, 5000, "")
+        lastRoResult = "Skipped - WCH labor type"
         Exit Sub
     End If
 
