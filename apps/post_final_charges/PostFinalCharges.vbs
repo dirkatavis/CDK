@@ -65,6 +65,8 @@ Dim g_SkipWchEnabled
 Dim g_SkipPartsOrderNeededCount
 Dim g_PartsOrderKeywords
 Dim g_PartsOrderNegators
+Dim g_AllowedTechCodes
+Dim g_SkipTechCodeCount
 Dim g_OverwriteLogOnStart
 Dim g_PreviousNormalizedRo
 Dim g_PreviousSequenceNumber
@@ -1118,6 +1120,64 @@ Function GetPartsNeededLaborDesc()
 End Function
 
 '-----------------------------------------------------------------------------------
+' **FUNCTION NAME:** GetFirstNonCompliantLineTech
+' **DATE CREATED:** 2026-04-14
+' **AUTHOR:** GitHub Copilot
+'
+' **FUNCTIONALITY:**
+' Scans rows 9-22 of the RO detail screen for line-letter header rows
+' (col 1 = uppercase A-Z) and extracts the tech/status code at col 44
+' (1-indexed). Returns a description of the first line whose code is not
+' found in g_AllowedTechCodes, or "" if every line passes.
+'
+' Screen layout (1-indexed):
+'   Col 1     = line letter (A, B, C ...)
+'   Cols 4-41 = description (38 chars)
+'   Cols 42+  = tech code (e.g. "C92", "I91")
+'
+' An empty or blank tech code on a header row is treated as compliant
+' (no tech assigned yet, not an unauthorized code).
+'
+' **RETURNS:**
+'   "" if all lines are compliant or AllowedTechCodes is not configured.
+'   "Line X: <code>" (e.g. "Line B: I91") for the first non-compliant line.
+'-----------------------------------------------------------------------------------
+Function GetFirstNonCompliantLineTech()
+    GetFirstNonCompliantLineTech = ""
+    If Not IsArray(g_AllowedTechCodes) Then Exit Function
+    If UBound(g_AllowedTechCodes) < 0 Then Exit Function
+    If Len(Trim(g_AllowedTechCodes(0))) = 0 Then Exit Function  ' empty config = gate disabled
+
+    Dim row, buf, firstChar, techCode, i, isAllowed
+    For row = 9 To 22
+        buf = ""
+        On Error Resume Next
+        g_bzhao.ReadScreen buf, 80, row, 1
+        If Err.Number <> 0 Then Err.Clear
+        On Error GoTo 0
+        If Len(buf) >= 44 Then
+            firstChar = Mid(buf, 1, 1)
+            If firstChar >= "A" And firstChar <= "Z" Then
+                techCode = UCase(Trim(Mid(buf, 42, 8)))
+                If Len(techCode) > 0 Then
+                    isAllowed = False
+                    For i = 0 To UBound(g_AllowedTechCodes)
+                        If techCode = g_AllowedTechCodes(i) Then
+                            isAllowed = True
+                            Exit For
+                        End If
+                    Next
+                    If Not isAllowed Then
+                        GetFirstNonCompliantLineTech = "Line " & firstChar & ": " & techCode
+                        Exit Function
+                    End If
+                End If
+            End If
+        End If
+    Next
+End Function
+
+'-----------------------------------------------------------------------------------
 ' **FUNCTION NAME:** CreateFcaPromptDictionary
 ' **DATE CREATED:** 2026-04-10
 ' **AUTHOR:** GitHub Copilot
@@ -1639,6 +1699,7 @@ Sub RunMainProcess()
                 "Older ROs Posted: " & g_OlderRoFiledCount & vbCrLf & _
                 "Skips - Specific ROs: " & g_SkipConfiguredCount & vbCrLf & _
                 "Skips - Warranty (WCH): " & g_SkipWarrantyCount & vbCrLf & _
+                "Skips - Non-compliant tech code: " & g_SkipTechCodeCount & vbCrLf & _
                 "Skips - Parts Order Needed: " & g_SkipPartsOrderNeededCount & vbCrLf & _
                 "Skips - Other Terms: " & g_SkipBlacklistCount & vbCrLf & _
                 "Skips - Open: " & g_SkipStatusOpenCount & vbCrLf & _
@@ -2092,6 +2153,14 @@ Sub InitializeConfig()
         g_PartsOrderNegators(ki) = LCase(Trim(g_PartsOrderNegators(ki)))
     Next
     Call LogEvent("comm", "high", "Parts-order keyword scan configured", "InitializeConfig", "Keywords: " & partsOrderKeywordsRaw & " | Negators: " & partsOrderNegatorsRaw, "")
+
+    Dim allowedTechCodesRaw, ti
+    allowedTechCodesRaw = GetIniSetting("PostFinalCharges", "AllowedTechCodes", "C92,C93")
+    g_AllowedTechCodes = Split(allowedTechCodesRaw, ",")
+    For ti = 0 To UBound(g_AllowedTechCodes)
+        g_AllowedTechCodes(ti) = UCase(Trim(g_AllowedTechCodes(ti)))
+    Next
+    Call LogEvent("comm", "high", "Closure readiness tech-code gate configured", "InitializeConfig", "AllowedTechCodes: " & allowedTechCodesRaw, "")
 End Sub
 
 Sub ApplyLogStartupMode()
@@ -2280,6 +2349,7 @@ Sub ProcessRONumbers()
     g_SkipConfiguredCount = 0
     g_SkipWarrantyCount = 0
     g_SkipPartsOrderNeededCount = 0
+    g_SkipTechCodeCount = 0
     g_OlderRoAttemptCount = 0
     g_OlderRoFiledCount = 0
     Set g_SkipOtherStates = CreateObject("Scripting.Dictionary")
@@ -2617,6 +2687,21 @@ Sub Main(roNumber)
     Dim trigger, roStatusForDecision
     roStatusForDecision = Trim(CStr(g_LastScrapedStatus))
     Call LogEvent("comm", "high", "Pre-trigger check", "Main", "Scraped status: '" & roStatusForDecision & "'", "")
+
+    ' --- CLOSURE READINESS GATE ---
+    ' Skip ROs where any line-letter header row carries a tech code not in
+    ' AllowedTechCodes (default: C92, C93). Configure or clear in config.ini.
+    Dim nonCompliantLine
+    nonCompliantLine = GetFirstNonCompliantLineTech()
+    If Len(Trim(nonCompliantLine)) > 0 Then
+        g_SkipTechCodeCount = g_SkipTechCodeCount + 1
+        Call LogEvent("comm", "med", "Closure readiness check failed - non-compliant tech code", "Main", nonCompliantLine & " | RO: " & currentRODisplay, "")
+        Call FastText("E")
+        Call FastKey("<NumpadEnter>")
+        Call WaitForPrompt("COMMAND:", "", False, 5000, "")
+        lastRoResult = "Skipped - Non-compliant tech code: " & nonCompliantLine
+        Exit Sub
+    End If
 
     ' --- PARTS ORDER NEEDED GATE ---
     ' Skip ROs where an L-line has no following P-line but a keyword suggests
