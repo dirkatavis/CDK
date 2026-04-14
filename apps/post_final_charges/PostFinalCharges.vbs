@@ -61,6 +61,10 @@ Dim g_SkipRoListRaw
 Dim g_SkipRoLookup
 Dim g_SkipConfiguredCount
 Dim g_SkipWarrantyCount
+Dim g_SkipWchEnabled
+Dim g_SkipPartsOrderNeededCount
+Dim g_PartsOrderKeywords
+Dim g_PartsOrderNegators
 Dim g_OverwriteLogOnStart
 Dim g_PreviousNormalizedRo
 Dim g_PreviousSequenceNumber
@@ -1014,6 +1018,106 @@ Function ExtractPartNumberForFca()
 End Function
 
 '-----------------------------------------------------------------------------------
+' **FUNCTION NAME:** DescMatchesPartsKeyword
+' **DATE CREATED:** 2026-04-14
+' **AUTHOR:** GitHub Copilot
+'
+' **FUNCTIONALITY:**
+' Returns True if descText contains any of g_PartsOrderKeywords (case-insensitive
+' substring match) AND does NOT contain any of g_PartsOrderNegators.
+' Both arrays are pre-lowercased by InitializeConfig.
+'
+' **PARAMETERS:**
+' descText - Raw labor-line description text (trimmed, any case)
+'
+' **RETURNS:** True if a keyword fires and no negator is present.
+'-----------------------------------------------------------------------------------
+Function DescMatchesPartsKeyword(descText)
+    DescMatchesPartsKeyword = False
+    If Not IsArray(g_PartsOrderKeywords) Or Not IsArray(g_PartsOrderNegators) Then Exit Function
+    Dim i, lowerDesc
+    lowerDesc = LCase(descText)
+    For i = 0 To UBound(g_PartsOrderNegators)
+        If Len(g_PartsOrderNegators(i)) > 0 Then
+            If InStr(1, lowerDesc, g_PartsOrderNegators(i), vbTextCompare) > 0 Then Exit Function
+        End If
+    Next
+    For i = 0 To UBound(g_PartsOrderKeywords)
+        If Len(g_PartsOrderKeywords(i)) > 0 Then
+            If InStr(1, lowerDesc, g_PartsOrderKeywords(i), vbTextCompare) > 0 Then
+                DescMatchesPartsKeyword = True
+                Exit Function
+            End If
+        End If
+    Next
+End Function
+
+'-----------------------------------------------------------------------------------
+' **FUNCTION NAME:** GetPartsNeededLaborDesc
+' **DATE CREATED:** 2026-04-14
+' **AUTHOR:** GitHub Copilot
+'
+' **FUNCTIONALITY:**
+' Scans rows 9-23 of the current RO detail screen and returns the description of
+' the first L-line that has NO P-line immediately following it and whose
+' description matches a parts-order keyword (via DescMatchesPartsKeyword).
+'
+' Column layout (1-indexed, matches HasPartsCharged / IsWchLine conventions):
+'   L-operation rows : col 4 = "L", col 5 = digit
+'   P-operation rows : col 6 = "P", col 7 = digit
+'   Description field: cols 7-41 -> Mid(buf, 7, 35), then Trimmed
+'
+' Row 23 (COMMAND:) is read solely to flush the last pending L-row; it cannot
+' be mistaken for a P-row (col 6 = "A" from "COMMAND").
+'
+' **RETURNS:** First matching description string, or "" if none found.
+'-----------------------------------------------------------------------------------
+Function GetPartsNeededLaborDesc()
+    GetPartsNeededLaborDesc = ""
+    If Not IsArray(g_PartsOrderKeywords) Then Exit Function
+    If UBound(g_PartsOrderKeywords) < 0 Then Exit Function
+
+    Dim row, buf, pendingDesc, pendingRow
+    pendingDesc = ""
+    pendingRow = -1
+
+    For row = 9 To 23
+        buf = ""
+        On Error Resume Next
+        g_bzhao.ReadScreen buf, 80, row, 1
+        If Err.Number <> 0 Then Err.Clear
+        On Error GoTo 0
+
+        If pendingRow > 0 Then
+            ' Check whether this row is a P-line (parts attached to the pending L-row)
+            If Len(buf) >= 7 And Mid(buf, 6, 1) = "P" And IsNumeric(Mid(buf, 7, 1)) Then
+                ' P-line found: pending L-row has parts, clear without evaluating
+                pendingDesc = ""
+                pendingRow = -1
+            Else
+                ' No P-line: evaluate the pending L-row now
+                If DescMatchesPartsKeyword(pendingDesc) Then
+                    GetPartsNeededLaborDesc = pendingDesc
+                    Exit Function
+                End If
+                pendingDesc = ""
+                pendingRow = -1
+                ' Current row may itself be a new L-row
+                If Len(buf) >= 5 And Mid(buf, 4, 1) = "L" And IsNumeric(Mid(buf, 5, 1)) Then
+                    pendingDesc = Trim(Mid(buf, 7, 35))
+                    pendingRow = row
+                End If
+            End If
+        Else
+            If Len(buf) >= 5 And Mid(buf, 4, 1) = "L" And IsNumeric(Mid(buf, 5, 1)) Then
+                pendingDesc = Trim(Mid(buf, 7, 35))
+                pendingRow = row
+            End If
+        End If
+    Next
+End Function
+
+'-----------------------------------------------------------------------------------
 ' **FUNCTION NAME:** CreateFcaPromptDictionary
 ' **DATE CREATED:** 2026-04-10
 ' **AUTHOR:** GitHub Copilot
@@ -1535,6 +1639,7 @@ Sub RunMainProcess()
                 "Older ROs Posted: " & g_OlderRoFiledCount & vbCrLf & _
                 "Skips - Specific ROs: " & g_SkipConfiguredCount & vbCrLf & _
                 "Skips - Warranty (WCH): " & g_SkipWarrantyCount & vbCrLf & _
+                "Skips - Parts Order Needed: " & g_SkipPartsOrderNeededCount & vbCrLf & _
                 "Skips - Other Terms: " & g_SkipBlacklistCount & vbCrLf & _
                 "Skips - Open: " & g_SkipStatusOpenCount & vbCrLf & _
                 "Skips - Pre-Assigned: " & g_SkipStatusPreassignedCount & vbCrLf & _
@@ -1967,6 +2072,26 @@ Sub InitializeConfig()
 
     g_EmployeeNumber = GetIniSetting("PostFinalCharges", "EmployeeNumber", "")
     g_EmployeeNameConfirm = GetIniSetting("PostFinalCharges", "EmployeeNameConfirm", "")
+
+    Dim skipWchValue
+    skipWchValue = LCase(Trim(GetIniSetting("PostFinalCharges", "SkipWchLabor", "true")))
+    g_SkipWchEnabled = (skipWchValue = "true" Or skipWchValue = "1" Or skipWchValue = "yes")
+    Dim wchGateState : wchGateState = "disabled"
+    If g_SkipWchEnabled Then wchGateState = "enabled"
+    Call LogEvent("comm", "high", "WCH skip gate: " & wchGateState, "InitializeConfig", "", "")
+
+    Dim partsOrderKeywordsRaw, partsOrderNegatorsRaw, ki
+    partsOrderKeywordsRaw = GetIniSetting("PostFinalCharges", "PartsOrderKeywords", "")
+    partsOrderNegatorsRaw = GetIniSetting("PostFinalCharges", "PartsOrderNegators", "")
+    g_PartsOrderKeywords = Split(partsOrderKeywordsRaw, ",")
+    g_PartsOrderNegators = Split(partsOrderNegatorsRaw, ",")
+    For ki = 0 To UBound(g_PartsOrderKeywords)
+        g_PartsOrderKeywords(ki) = LCase(Trim(g_PartsOrderKeywords(ki)))
+    Next
+    For ki = 0 To UBound(g_PartsOrderNegators)
+        g_PartsOrderNegators(ki) = LCase(Trim(g_PartsOrderNegators(ki)))
+    Next
+    Call LogEvent("comm", "high", "Parts-order keyword scan configured", "InitializeConfig", "Keywords: " & partsOrderKeywordsRaw & " | Negators: " & partsOrderNegatorsRaw, "")
 End Sub
 
 Sub ApplyLogStartupMode()
@@ -2154,6 +2279,7 @@ Sub ProcessRONumbers()
     g_SkipStatusOtherCount = 0
     g_SkipConfiguredCount = 0
     g_SkipWarrantyCount = 0
+    g_SkipPartsOrderNeededCount = 0
     g_OlderRoAttemptCount = 0
     g_OlderRoFiledCount = 0
     Set g_SkipOtherStates = CreateObject("Scripting.Dictionary")
@@ -2415,7 +2541,7 @@ Sub Main(roNumber)
     ' --- WARRANTY SKIP GATE ---
     ' Allow 1000ms for RO detail lines (including LTYPE) to fully render before scanning.
     Call WaitMs(1000)
-    If IsTextPresent("WCH") Then
+    If g_SkipWchEnabled And IsTextPresent("WCH") Then
         g_SkipWarrantyCount = g_SkipWarrantyCount + 1
         Call LogEvent("comm", "med", "Warranty labor type detected - skipping RO", "Main", "WCH found on RO: " & currentRODisplay, "")
         Call FastText("E")
@@ -2491,6 +2617,23 @@ Sub Main(roNumber)
     Dim trigger, roStatusForDecision
     roStatusForDecision = Trim(CStr(g_LastScrapedStatus))
     Call LogEvent("comm", "high", "Pre-trigger check", "Main", "Scraped status: '" & roStatusForDecision & "'", "")
+
+    ' --- PARTS ORDER NEEDED GATE ---
+    ' Skip ROs where an L-line has no following P-line but a keyword suggests
+    ' parts will need to be ordered. Keywords and negators come from
+    ' [PostFinalCharges] PartsOrderKeywords / PartsOrderNegators in config.ini.
+    Dim matchedPartsDesc
+    matchedPartsDesc = GetPartsNeededLaborDesc()
+    If Len(Trim(matchedPartsDesc)) > 0 Then
+        g_SkipPartsOrderNeededCount = g_SkipPartsOrderNeededCount + 1
+        Call LogEvent("comm", "med", "Parts likely needed on RO - skipping closeout", "Main", "Matched labor: " & matchedPartsDesc & " | RO: " & currentRODisplay, "")
+        Call FastText("E")
+        Call FastKey("<NumpadEnter>")
+        Call WaitForPrompt("COMMAND:", "", False, 5000, "")
+        lastRoResult = "Skipped - Parts order needed: " & matchedPartsDesc
+        Exit Sub
+    End If
+
     trigger = FindTrigger()
     If trigger <> "" Then
         Call LogEvent("comm", "med", "Trigger found: " & trigger, "Main", "Proceeding to Closeout", "")
