@@ -36,6 +36,8 @@ Scripts for initial environment setup and configuration.
 Tools for analyzing the codebase and identifying issues.
 
 **`scan_hardcoded_paths.vbs` / `scan_hardcoded_paths.ps1`** - Scans for hardcoded paths
+**`scan_hardcoded_employee.vbs`** - Flags hardcoded employee numbers
+**`scan_unconfigured_keys.vbs`** - Reports config keys referenced in scripts but missing from `config.ini`
 **`coordinate_finder.vbs`** - Interactive screen coordinate discovery
 **`ro_screen_map.vbs`** - Maps RO screen layouts
 **`safe_mapper.vbs`** - Safe screen mapping with error recovery
@@ -82,6 +84,13 @@ powershell -ExecutionPolicy Bypass -File .\tools\upsert_pr_with_body.ps1 `
 	-BodyFile .\Temp\pr_body.md `
 	-Title "fix(post-final-charges): log RO at sequence start and add log overwrite toggle"
 ```
+
+### 📊 Data Collection
+BlueZone scrapers that feed the analysis pipeline.
+
+**`labor_parts_scraper.vbs`** - Scrapes L-line and P-line data from PFC sequences into `runtime\data\Master_Labor_Log.csv`. Supports resume-on-abort via sequence tracking. Configure range and output path in `[LaborPartsScraper]` in `config\config.ini`.
+
+**`mva_scrapper/`** - Looks up MVA numbers from VINs via the CDK screen. Configure via `[GetMvaFromVin]` in `config\config.ini`.
 
 ## Design Principles
 - **One-Time or Rare Use:** Tooling is for setup/diagnostics, not daily operations
