@@ -1126,7 +1126,7 @@ End Function
 '
 ' **FUNCTIONALITY:**
 ' Scans rows 9-22 of the RO detail screen for line-letter header rows
-' (col 1 = uppercase A-Z) and extracts the tech/status code at col 44
+' (col 1 = uppercase A-Z) and extracts the tech/status code at col 42
 ' (1-indexed). Returns a description of the first line whose code is not
 ' found in g_AllowedTechCodes, or "" if every line passes.
 '

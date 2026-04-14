@@ -242,25 +242,31 @@ Sub Test_BlankTechCode_Compliant()
 End Sub
 
 '===================================================================================
-' TEST 6: Col alignment sanity - verify Mid(buf,42,8) extracts code from fixture row
+' TEST 6: Col alignment sanity - compliant line (C93 on line A at col 42)
 '===================================================================================
-Sub Test_ColAlignmentSanity()
-    ' Directly verify that row 10 of the I91 fixture reads "C93" at col 42
+Sub Test_ColAlignment_CompliantCode()
     Dim fixturePath
     fixturePath = g_fso.BuildPath( _
         g_fso.GetParentFolderName(WScript.ScriptFullName), _
         "fixtures\screen_i91_tech_875722.txt")
-
     Dim fullBuf: fullBuf = ParseScreenMapToBuffer(fixturePath)
     ' Row 10 starts at offset (10-1)*80+1 = 721
     Dim row10: row10 = Mid(fullBuf, 721, 80)
-    Dim extracted: extracted = UCase(Trim(Mid(row10, 42, 8)))
-    AssertEqual "Row 10 col 42 extracts 'C93' (line A)", "C93", extracted
+    AssertEqual "Row 10 col 42 extracts 'C93' (line A)", "C93", UCase(Trim(Mid(row10, 42, 8)))
+End Sub
 
+'===================================================================================
+' TEST 7: Col alignment sanity - non-compliant line (I91 on line C at col 42)
+'===================================================================================
+Sub Test_ColAlignment_NonCompliantCode()
+    Dim fixturePath
+    fixturePath = g_fso.BuildPath( _
+        g_fso.GetParentFolderName(WScript.ScriptFullName), _
+        "fixtures\screen_i91_tech_875722.txt")
+    Dim fullBuf: fullBuf = ParseScreenMapToBuffer(fixturePath)
     ' Row 15 = line C with I91, starts at offset (15-1)*80+1 = 1121
     Dim row15: row15 = Mid(fullBuf, 1121, 80)
-    extracted = UCase(Trim(Mid(row15, 42, 8)))
-    AssertEqual "Row 15 col 42 extracts 'I91' (line C)", "I91", extracted
+    AssertEqual "Row 15 col 42 extracts 'I91' (line C)", "I91", UCase(Trim(Mid(row15, 42, 8)))
 End Sub
 
 '===================================================================================
@@ -271,7 +277,8 @@ Test_I91_OnLineC_FromFixture
 Test_H20_OnLineD_Synthetic
 Test_GateDisabled_NoSkip
 Test_BlankTechCode_Compliant
-Test_ColAlignmentSanity
+Test_ColAlignment_CompliantCode
+Test_ColAlignment_NonCompliantCode
 
 WScript.Echo ""
 WScript.Echo "Results: " & g_Pass & " passed, " & g_Fail & " failed."
