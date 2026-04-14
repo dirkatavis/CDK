@@ -15,6 +15,9 @@ Thumbs.db
 Temp/
 runtime/logs/
 runtime/data/out/
+runtime/data/Master_Labor_Log.csv
+runtime/data/analysis/
+runtime/data/Keyword_Analysis/
 
 # CSV data files (Assume-unchanged will be applied to tracked CSVs separately)
 # We only ignore CSVs that should NEVER be tracked.
