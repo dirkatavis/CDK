@@ -116,6 +116,9 @@ Sub Main()
     ' Test 19: FCA dialog runtime wiring regression
     RunTest "FCA Dialog Runtime Regression", "cscript.exe test_fca_dialog_runtime_regression.vbs"
 
+    ' Test 20: WCH pagination detection regression
+    RunTest "WCH Pagination Detection", "cscript.exe test_wch_pagination_detection.vbs"
+
     ' Summary
     WScript.Echo ""
     WScript.Echo "=== Test Results Summary ==="
