@@ -3017,7 +3017,7 @@ Sub Main(roNumber)
     Do
         mainPromptText = GetScreenLine(MainPromptLine)
         If InStr(1, mainPromptText, "Process is locked by", vbTextCompare) > 0 Then
-            If Len(Trim(CStr(currentRODisplay))) = 0 Then currentRODisplay = roNumber
+            currentRODisplay = roNumber
             Call LogEvent("comm", "med", "RO locked by another user during RO load - returning to command", "Main", "RO: " & currentRODisplay, "Line " & MainPromptLine & ": '" & mainPromptText & "'")
             Call FastKey("<Enter>")
             Call WaitForPrompt("COMMAND:", "", False, 5000, "Process Lock Recovery")

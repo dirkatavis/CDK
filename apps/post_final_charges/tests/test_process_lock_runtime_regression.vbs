@@ -11,7 +11,7 @@
 
 Option Explicit
 
-Dim g_fso, g_scriptPath, g_content
+Dim g_fso, g_scriptPath, g_content, g_mainBlock
 Set g_fso = CreateObject("Scripting.FileSystemObject")
 g_scriptPath = "../PostFinalCharges.vbs"
 
@@ -25,11 +25,17 @@ Set ts = g_fso.OpenTextFile(g_scriptPath, 1)
 g_content = ts.ReadAll
 ts.Close
 
+g_mainBlock = ExtractMainBlock(g_content)
+If Len(g_mainBlock) = 0 Then
+    WScript.Echo "[FAIL] Could not isolate Sub Main(roNumber) block in PostFinalCharges.vbs"
+    WScript.Quit 1
+End If
+
 Dim failures
 failures = 0
 
 Sub AssertContains(label, needle)
-    If InStr(1, g_content, needle, vbTextCompare) > 0 Then
+    If InStr(1, g_mainBlock, needle, vbTextCompare) > 0 Then
         WScript.Echo "[PASS] " & label
     Else
         WScript.Echo "[FAIL] " & label & " (missing: " & needle & ")"
@@ -38,7 +44,24 @@ Sub AssertContains(label, needle)
 End Sub
 
 Function IndexOf(needle)
-    IndexOf = InStr(1, g_content, needle, vbTextCompare)
+    IndexOf = InStr(1, g_mainBlock, needle, vbTextCompare)
+End Function
+
+Function ExtractMainBlock(content)
+    Dim startPos, endPos
+    startPos = InStr(1, content, "Sub Main(roNumber)", vbTextCompare)
+    If startPos <= 0 Then
+        ExtractMainBlock = ""
+        Exit Function
+    End If
+
+    endPos = InStr(startPos, content, vbCrLf & "End Sub", vbTextCompare)
+    If endPos <= 0 Then
+        ExtractMainBlock = ""
+        Exit Function
+    End If
+
+    ExtractMainBlock = Mid(content, startPos, (endPos - startPos) + Len(vbCrLf & "End Sub"))
 End Function
 
 Sub AssertOrder(label, firstNeedle, secondNeedle)
