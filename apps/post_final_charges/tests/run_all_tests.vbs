@@ -122,6 +122,9 @@ Sub Main()
     ' Test 21: Summary accounting runtime regression
     RunTest "Summary Accounting Runtime Regression", "cscript.exe test_summary_accounting_runtime_regression.vbs"
 
+    ' Test 22: Process-lock recovery runtime regression
+    RunTest "Process Lock Runtime Regression", "cscript.exe test_process_lock_runtime_regression.vbs"
+
     ' Summary
     WScript.Echo ""
     WScript.Echo "=== Test Results Summary ==="
