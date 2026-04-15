@@ -399,6 +399,7 @@ Function CreateReviewPromptDictionary()
     Call AddPromptToDictEx(dict, "ACTUAL HOURS \(\d+\)", "0", "<NumpadEnter>", False, True)
     Call AddPromptToDictEx(dict, "SOLD HOURS( \(\d+\))?\?", "0", "<NumpadEnter>", False, True)
     Call AddPromptToDict(dict, "ADD A LABOR OPERATION( \(N\)\?)?", "N", "<NumpadEnter>", True)
+    Call AddPromptToDict(dict, "ADD A LABOR OPERATION", "", "<Enter>", True)
     Call AddPromptToDict(dict, "PRESS RETURN TO CONTINUE", "", "<Enter>", False)
     Call AddPromptToDict(dict, "Press F3 to exit.", "", "<F3>", False)
 
@@ -455,6 +456,16 @@ Function ProcessPromptSequence(prompts, timeoutMs)
 
     Do
         mainPromptText = GetScreenLine(23)
+
+        ' Hard guard for this recurring footer prompt. Some sessions vary spacing/default
+        ' text enough to bypass regex watchers, but Enter reliably accepts default (N).
+        If InStr(1, mainPromptText, "ADD A LABOR OPERATION", vbTextCompare) > 0 Then
+            bzhao.SendKey "<Enter>"
+            bzhao.Pause 500
+            ProcessPromptSequence = True
+            Exit Function
+        End If
+
         If Len(mainPromptText) > 0 Then
             If Not IsPromptInConfig(mainPromptText, prompts) Then
                 Call LogErrorMessage("Unknown prompt on line 23: '" & mainPromptText & "'" & vbCrLf & BuildPromptAreaSnapshot())
@@ -499,6 +510,9 @@ Function ProcessPromptSequence(prompts, timeoutMs)
                 ProcessPromptSequence = True
                 Exit Function
             End If
+
+            ' Give each prompt transition its own timeout window.
+            startTime = Timer
         Else
             If InStr(1, mainPromptText, "COMMAND:", vbTextCompare) = 1 Then
                 ProcessPromptSequence = True
@@ -512,7 +526,7 @@ Function ProcessPromptSequence(prompts, timeoutMs)
         If elapsed > timeoutMs Then Exit Do
     Loop
 
-    Call LogErrorMessage("Prompt sequence timed out after " & timeoutMs & " ms." & vbCrLf & BuildPromptAreaSnapshot())
+    Call LogErrorMessage("Prompt sequence timed out after " & timeoutMs & " ms." & vbCrLf & "Elapsed: " & Int(elapsed) & " ms." & vbCrLf & BuildPromptAreaSnapshot())
 End Function
 
 Function IsPromptMatch(screenLine, triggerText, isRegex)

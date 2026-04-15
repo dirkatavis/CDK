@@ -295,6 +295,9 @@ Function CreateLineItemPromptDictionary()
     ' "SOLD HOURS (10)?" -> accepts default 10, "SOLD HOURS?" -> sends "0"
     Call AddPromptToDictEx(dict, "SOLD HOURS( \(\d+\))?\?", "0", "<NumpadEnter>", False, True)
     Call AddPromptToDict(dict, "ADD A LABOR OPERATION( \(N\)\?)?", "N", "<NumpadEnter>", True)
+    ' Fallback watcher: some terminals render spacing/default text variably on this prompt.
+    ' Enter accepts the default (N) and safely returns to COMMAND.
+    Call AddPromptToDict(dict, "ADD A LABOR OPERATION", "", "<Enter>", True)
     ' Note: COMMAND: success condition removed - handled by checking MainPromptLine specifically
     ' to avoid false positives when COMMAND appears elsewhere on screen
     Call AddPromptToDict(dict, "Is this a comeback \(Y/N\)\.\.\.", "Y", "<NumpadEnter>", False)
