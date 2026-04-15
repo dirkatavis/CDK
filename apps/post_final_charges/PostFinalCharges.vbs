@@ -67,6 +67,19 @@ Dim g_PartsOrderKeywords
 Dim g_PartsOrderNegators
 Dim g_AllowedTechCodes
 Dim g_SkipTechCodeCount
+Dim g_ClosedRoCount
+Dim g_NotOnFileRoCount
+Dim g_SkipVehidNotOnFileCount
+Dim g_SkipNoCloseoutTextCount
+Dim g_SkipNoPartsChargedCount
+Dim g_LeftOpenManualCount
+Dim g_FcaMissingPartFlagCount
+Dim g_FcaHandlerNotConfiguredCount
+Dim g_ErrorInMainCount
+Dim g_NoResultRecordedCount
+Dim g_SummaryOtherOutcomeCount
+Dim g_SummaryOtherOutcomeBreakdown
+Dim g_SummaryOtherOutcomeRawBreakdown
 Dim g_OverwriteLogOnStart
 Dim g_PreviousNormalizedRo
 Dim g_PreviousSequenceNumber
@@ -1803,12 +1816,33 @@ Sub RunMainProcess()
         ProcessRONumbers()
         If Not g_IsTestMode Then
             Dim summaryMsg
+            Dim accountedTotal
+            Dim otherOutcomeDetails
+
+            accountedTotal = g_FiledROCount + _
+                g_SkipConfiguredCount + _
+                g_SkipWarrantyCount + _
+                g_SkipTechCodeCount + _
+                g_SkipPartsOrderNeededCount + _
+                g_SkipBlacklistCount + _
+                g_SkipStatusOpenCount + _
+                g_SkipStatusPreassignedCount + _
+                g_SkipStatusOtherCount + _
+                g_ClosedRoCount + _
+                g_NotOnFileRoCount + _
+                g_SkipVehidNotOnFileCount + _
+                g_SkipNoCloseoutTextCount + _
+                g_SkipNoPartsChargedCount + _
+                g_LeftOpenManualCount + _
+                g_FcaMissingPartFlagCount + _
+                g_FcaHandlerNotConfiguredCount + _
+                g_ErrorInMainCount + _
+                g_NoResultRecordedCount + _
+                g_SummaryOtherOutcomeCount
 
             summaryMsg = "DONE" & vbCrLf & _
                 "ROs Reviewed: " & g_ReviewedROCount & vbCrLf & _
                 "ROs Posted: " & g_FiledROCount & vbCrLf & _
-                "Older ROs Attempted: " & g_OlderRoAttemptCount & vbCrLf & _
-                "Older ROs Posted: " & g_OlderRoFiledCount & vbCrLf & _
                 "Skips - Specific ROs: " & g_SkipConfiguredCount & vbCrLf & _
                 "Skips - Warranty (WCH): " & g_SkipWarrantyCount & vbCrLf & _
                 "Skips - Non-compliant tech code: " & g_SkipTechCodeCount & vbCrLf & _
@@ -1816,7 +1850,32 @@ Sub RunMainProcess()
                 "Skips - Other Terms: " & g_SkipBlacklistCount & vbCrLf & _
                 "Skips - Open: " & g_SkipStatusOpenCount & vbCrLf & _
                 "Skips - Pre-Assigned: " & g_SkipStatusPreassignedCount & vbCrLf & _
-                "Skips - Other Statuses: " & g_SkipStatusOtherCount
+                "Skips - Other Statuses: " & g_SkipStatusOtherCount & vbCrLf & _
+                "Closed (already): " & g_ClosedRoCount & vbCrLf & _
+                "Not On File: " & g_NotOnFileRoCount & vbCrLf & _
+                "Skipped - VEHID not on file: " & g_SkipVehidNotOnFileCount & vbCrLf & _
+                "Skipped - No closeout text: " & g_SkipNoCloseoutTextCount & vbCrLf & _
+                "Skipped - No parts charged: " & g_SkipNoPartsChargedCount & vbCrLf & _
+                "Left Open for manual closing: " & g_LeftOpenManualCount & vbCrLf & _
+                "Flagged - Missing FCA part #: " & g_FcaMissingPartFlagCount & vbCrLf & _
+                "Skipped - FCA handler not configured: " & g_FcaHandlerNotConfiguredCount & vbCrLf & _
+                "Errors in Main: " & g_ErrorInMainCount & vbCrLf & _
+                "No result recorded: " & g_NoResultRecordedCount & vbCrLf & _
+                "Other Outcomes: " & g_SummaryOtherOutcomeCount & vbCrLf & _
+                "Accounted Total: " & accountedTotal & vbCrLf & _
+                "Older ROs Attempted (subset): " & g_OlderRoAttemptCount
+
+            If g_SummaryOtherOutcomeCount > 0 Then
+                otherOutcomeDetails = BuildOtherOutcomeBreakdown(8)
+                If Len(Trim(CStr(otherOutcomeDetails))) > 0 Then
+                    summaryMsg = summaryMsg & vbCrLf & "Other Outcome Breakdown:" & vbCrLf & otherOutcomeDetails
+                End If
+
+                otherOutcomeDetails = BuildOtherOutcomeRawBreakdown(12)
+                If Len(Trim(CStr(otherOutcomeDetails))) > 0 Then
+                    summaryMsg = summaryMsg & vbCrLf & "Other Outcome Raw Results:" & vbCrLf & otherOutcomeDetails
+                End If
+            End If
 
             Call SafeMsg(summaryMsg, False, "PostFinalCharges")
         End If
@@ -2462,6 +2521,19 @@ Sub ProcessRONumbers()
     g_SkipWarrantyCount = 0
     g_SkipPartsOrderNeededCount = 0
     g_SkipTechCodeCount = 0
+    g_ClosedRoCount = 0
+    g_NotOnFileRoCount = 0
+    g_SkipVehidNotOnFileCount = 0
+    g_SkipNoCloseoutTextCount = 0
+    g_SkipNoPartsChargedCount = 0
+    g_LeftOpenManualCount = 0
+    g_FcaMissingPartFlagCount = 0
+    g_FcaHandlerNotConfiguredCount = 0
+    g_ErrorInMainCount = 0
+    g_NoResultRecordedCount = 0
+    g_SummaryOtherOutcomeCount = 0
+    Set g_SummaryOtherOutcomeBreakdown = CreateObject("Scripting.Dictionary")
+    Set g_SummaryOtherOutcomeRawBreakdown = CreateObject("Scripting.Dictionary")
     g_OlderRoAttemptCount = 0
     g_OlderRoFiledCount = 0
     Set g_SkipOtherStates = CreateObject("Scripting.Dictionary")
@@ -2480,6 +2552,9 @@ Sub ProcessRONumbers()
         If InStr(1, lastRoResult, "Successfully filed", vbTextCompare) > 0 Then
             g_FiledROCount = g_FiledROCount + 1
         End If
+        If Len(Trim(CStr(lastRoResult))) = 0 Then lastRoResult = "No result recorded"
+        Call TrackPrimaryOutcomeCounters(lastRoResult)
+        Call TrackOtherOutcome(lastRoResult)
         
         Call LogEvent("comm", "med", sequenceLabel & " - Result: " & lastRoResult, "ProcessRONumbers", "", "")
         Call LogEvent("comm", "med", "Test mode: Processed single RO " & roNumber, "ProcessRONumbers", "", "")
@@ -2537,6 +2612,8 @@ Sub ProcessRONumbers()
 
         ' Ensure there's always a final result logged for the RO
         If Len(Trim(CStr(lastRoResult))) = 0 Then lastRoResult = "No result recorded"
+        Call TrackPrimaryOutcomeCounters(lastRoResult)
+        Call TrackOtherOutcome(lastRoResult)
         Dim finalMessage
         finalMessage = sequenceLabel & " - Result: " & lastRoResult
         Call LogEvent("comm", "low", finalMessage, "ProcessRONumbers", "", "")
@@ -2556,6 +2633,307 @@ Sub ProcessRONumbers()
         End If
     Next
 End Sub
+
+Sub TrackPrimaryOutcomeCounters(resultText)
+    Dim normalized
+    normalized = UCase(Trim(CStr(resultText)))
+
+    If Len(normalized) = 0 Then Exit Sub
+
+    If normalized = "CLOSED" Then
+        g_ClosedRoCount = g_ClosedRoCount + 1
+        Exit Sub
+    End If
+    If normalized = "NOT ON FILE" Then
+        g_NotOnFileRoCount = g_NotOnFileRoCount + 1
+        Exit Sub
+    End If
+    If InStr(1, normalized, "SKIPPED - VEHID NOT ON FILE", vbTextCompare) = 1 Then
+        g_SkipVehidNotOnFileCount = g_SkipVehidNotOnFileCount + 1
+        Exit Sub
+    End If
+    If InStr(1, normalized, "SKIPPED - NO CLOSEOUT TEXT FOUND", vbTextCompare) = 1 Then
+        g_SkipNoCloseoutTextCount = g_SkipNoCloseoutTextCount + 1
+        Exit Sub
+    End If
+    If InStr(1, normalized, "SKIPPED - NO PARTS CHARGED", vbTextCompare) = 1 Then
+        g_SkipNoPartsChargedCount = g_SkipNoPartsChargedCount + 1
+        Exit Sub
+    End If
+    If InStr(1, normalized, "LEFT OPEN FOR MANUAL CLOSING", vbTextCompare) = 1 Then
+        g_LeftOpenManualCount = g_LeftOpenManualCount + 1
+        Exit Sub
+    End If
+    If InStr(1, normalized, "FLAGGED - MISSING PART NUMBER FOR FCA DIALOG", vbTextCompare) = 1 Then
+        g_FcaMissingPartFlagCount = g_FcaMissingPartFlagCount + 1
+        Exit Sub
+    End If
+    If InStr(1, normalized, "SKIPPED - FCA DIALOG HANDLER NOT YET CONFIGURED", vbTextCompare) = 1 Then
+        g_FcaHandlerNotConfiguredCount = g_FcaHandlerNotConfiguredCount + 1
+        Exit Sub
+    End If
+    If InStr(1, normalized, "ERROR IN MAIN:", vbTextCompare) = 1 Then
+        g_ErrorInMainCount = g_ErrorInMainCount + 1
+        Exit Sub
+    End If
+    If InStr(1, normalized, "NO RESULT RECORDED", vbTextCompare) = 1 Then
+        g_NoResultRecordedCount = g_NoResultRecordedCount + 1
+        Exit Sub
+    End If
+End Sub
+
+Sub TrackOtherOutcome(resultText)
+    Dim bucket
+    Dim rawKey
+
+    If IsResultRepresentedInSummary(resultText) Then Exit Sub
+
+    bucket = GetOtherOutcomeBucket(resultText)
+    If Len(Trim(CStr(bucket))) = 0 Then bucket = "Other/Unknown"
+
+    g_SummaryOtherOutcomeCount = g_SummaryOtherOutcomeCount + 1
+
+    If Not IsObject(g_SummaryOtherOutcomeBreakdown) Then
+        Set g_SummaryOtherOutcomeBreakdown = CreateObject("Scripting.Dictionary")
+    End If
+
+    If g_SummaryOtherOutcomeBreakdown.Exists(bucket) Then
+        g_SummaryOtherOutcomeBreakdown(bucket) = CLng(g_SummaryOtherOutcomeBreakdown(bucket)) + 1
+    Else
+        g_SummaryOtherOutcomeBreakdown.Add bucket, 1
+    End If
+
+    rawKey = BuildRawOtherOutcomeKey(resultText)
+    If Len(Trim(CStr(rawKey))) = 0 Then rawKey = "(blank result)"
+
+    If Not IsObject(g_SummaryOtherOutcomeRawBreakdown) Then
+        Set g_SummaryOtherOutcomeRawBreakdown = CreateObject("Scripting.Dictionary")
+    End If
+
+    If g_SummaryOtherOutcomeRawBreakdown.Exists(rawKey) Then
+        g_SummaryOtherOutcomeRawBreakdown(rawKey) = CLng(g_SummaryOtherOutcomeRawBreakdown(rawKey)) + 1
+    Else
+        g_SummaryOtherOutcomeRawBreakdown.Add rawKey, 1
+    End If
+End Sub
+
+Function BuildRawOtherOutcomeKey(resultText)
+    Dim keyText
+    keyText = Trim(CStr(resultText))
+
+    If Len(keyText) = 0 Then
+        BuildRawOtherOutcomeKey = ""
+        Exit Function
+    End If
+
+    ' Normalize whitespace and cap size for MsgBox readability.
+    keyText = Replace(keyText, vbCr, " ")
+    keyText = Replace(keyText, vbLf, " ")
+    Do While InStr(1, keyText, "  ", vbTextCompare) > 0
+        keyText = Replace(keyText, "  ", " ")
+    Loop
+
+    If Len(keyText) > 90 Then
+        keyText = Left(keyText, 87) & "..."
+    End If
+
+    BuildRawOtherOutcomeKey = keyText
+End Function
+
+Function GetOtherOutcomeBucket(resultText)
+    Dim normalized
+    normalized = UCase(Trim(CStr(resultText)))
+
+    GetOtherOutcomeBucket = "Other/Unknown"
+    If Len(normalized) = 0 Then Exit Function
+
+    If normalized = "CLOSED" Then
+        GetOtherOutcomeBucket = "Already Closed"
+        Exit Function
+    End If
+    If normalized = "NOT ON FILE" Then
+        GetOtherOutcomeBucket = "Not On File"
+        Exit Function
+    End If
+    If InStr(1, normalized, "SKIPPED - VEHID NOT ON FILE", vbTextCompare) = 1 Then
+        GetOtherOutcomeBucket = "Skipped - VEHID not on file"
+        Exit Function
+    End If
+    If InStr(1, normalized, "SKIPPED - NO CLOSEOUT TEXT FOUND", vbTextCompare) = 1 Then
+        GetOtherOutcomeBucket = "Skipped - No closeout text"
+        Exit Function
+    End If
+    If InStr(1, normalized, "SKIPPED - NO PARTS CHARGED", vbTextCompare) = 1 Then
+        GetOtherOutcomeBucket = "Skipped - No parts charged"
+        Exit Function
+    End If
+    If InStr(1, normalized, "LEFT OPEN FOR MANUAL CLOSING", vbTextCompare) = 1 Then
+        GetOtherOutcomeBucket = "Left open for manual closing"
+        Exit Function
+    End If
+    If InStr(1, normalized, "FLAGGED - MISSING PART NUMBER FOR FCA DIALOG", vbTextCompare) = 1 Then
+        GetOtherOutcomeBucket = "Flagged - Missing FCA part number"
+        Exit Function
+    End If
+    If InStr(1, normalized, "SKIPPED - FCA DIALOG HANDLER NOT YET CONFIGURED", vbTextCompare) = 1 Then
+        GetOtherOutcomeBucket = "Skipped - FCA dialog handler not configured"
+        Exit Function
+    End If
+    If InStr(1, normalized, "ERROR IN MAIN:", vbTextCompare) = 1 Then
+        GetOtherOutcomeBucket = "Error in Main"
+        Exit Function
+    End If
+    If InStr(1, normalized, "NO RESULT RECORDED", vbTextCompare) = 1 Then
+        GetOtherOutcomeBucket = "No result recorded"
+        Exit Function
+    End If
+
+    GetOtherOutcomeBucket = "Other: " & Left(Trim(CStr(resultText)), 60)
+End Function
+
+Function BuildOtherOutcomeBreakdown(maxLines)
+    Dim key, countValue, linesAdded, hiddenCategories
+    Dim output
+
+    If maxLines <= 0 Then maxLines = 8
+    output = ""
+    linesAdded = 0
+    hiddenCategories = 0
+
+    If Not IsObject(g_SummaryOtherOutcomeBreakdown) Then
+        BuildOtherOutcomeBreakdown = ""
+        Exit Function
+    End If
+
+    For Each key In g_SummaryOtherOutcomeBreakdown.Keys
+        If linesAdded < maxLines Then
+            countValue = CLng(g_SummaryOtherOutcomeBreakdown(key))
+            output = output & "  - " & CStr(key) & ": " & CStr(countValue) & vbCrLf
+            linesAdded = linesAdded + 1
+        Else
+            hiddenCategories = hiddenCategories + 1
+        End If
+    Next
+
+    If hiddenCategories > 0 Then
+        output = output & "  - (+" & hiddenCategories & " more categories)"
+    ElseIf Len(output) > 0 Then
+        output = Left(output, Len(output) - Len(vbCrLf))
+    End If
+
+    BuildOtherOutcomeBreakdown = output
+End Function
+
+Function BuildOtherOutcomeRawBreakdown(maxLines)
+    Dim key, countValue, linesAdded, hiddenCategories
+    Dim output
+
+    If maxLines <= 0 Then maxLines = 12
+    output = ""
+    linesAdded = 0
+    hiddenCategories = 0
+
+    If Not IsObject(g_SummaryOtherOutcomeRawBreakdown) Then
+        BuildOtherOutcomeRawBreakdown = ""
+        Exit Function
+    End If
+
+    For Each key In g_SummaryOtherOutcomeRawBreakdown.Keys
+        If linesAdded < maxLines Then
+            countValue = CLng(g_SummaryOtherOutcomeRawBreakdown(key))
+            output = output & "  - " & CStr(key) & ": " & CStr(countValue) & vbCrLf
+            linesAdded = linesAdded + 1
+        Else
+            hiddenCategories = hiddenCategories + 1
+        End If
+    Next
+
+    If hiddenCategories > 0 Then
+        output = output & "  - (+" & hiddenCategories & " more raw results)"
+    ElseIf Len(output) > 0 Then
+        output = Left(output, Len(output) - Len(vbCrLf))
+    End If
+
+    BuildOtherOutcomeRawBreakdown = output
+End Function
+
+Function IsResultRepresentedInSummary(resultText)
+    Dim normalized
+    normalized = UCase(Trim(CStr(resultText)))
+
+    IsResultRepresentedInSummary = False
+    If Len(normalized) = 0 Then Exit Function
+
+    If InStr(1, normalized, "SUCCESSFULLY FILED", vbTextCompare) > 0 Then
+        IsResultRepresentedInSummary = True
+        Exit Function
+    End If
+
+    If InStr(1, normalized, "SKIPPED - CONFIGURED RO SKIP LIST", vbTextCompare) = 1 Then
+        IsResultRepresentedInSummary = True
+        Exit Function
+    End If
+    If InStr(1, normalized, "SKIPPED - WCH LABOR TYPE", vbTextCompare) = 1 Then
+        IsResultRepresentedInSummary = True
+        Exit Function
+    End If
+    If InStr(1, normalized, "SKIPPED - NON-COMPLIANT TECH CODE:", vbTextCompare) = 1 Then
+        IsResultRepresentedInSummary = True
+        Exit Function
+    End If
+    If InStr(1, normalized, "SKIPPED - PARTS ORDER NEEDED:", vbTextCompare) = 1 Then
+        IsResultRepresentedInSummary = True
+        Exit Function
+    End If
+    If InStr(1, normalized, "SKIPPED - BLACKLISTED TERM:", vbTextCompare) = 1 Then
+        IsResultRepresentedInSummary = True
+        Exit Function
+    End If
+    If InStr(1, normalized, "SKIPPED - STATUS NOT READY", vbTextCompare) = 1 Then
+        IsResultRepresentedInSummary = True
+        Exit Function
+    End If
+    If normalized = "CLOSED" Then
+        IsResultRepresentedInSummary = True
+        Exit Function
+    End If
+    If normalized = "NOT ON FILE" Then
+        IsResultRepresentedInSummary = True
+        Exit Function
+    End If
+    If InStr(1, normalized, "SKIPPED - VEHID NOT ON FILE", vbTextCompare) = 1 Then
+        IsResultRepresentedInSummary = True
+        Exit Function
+    End If
+    If InStr(1, normalized, "SKIPPED - NO CLOSEOUT TEXT FOUND", vbTextCompare) = 1 Then
+        IsResultRepresentedInSummary = True
+        Exit Function
+    End If
+    If InStr(1, normalized, "SKIPPED - NO PARTS CHARGED", vbTextCompare) = 1 Then
+        IsResultRepresentedInSummary = True
+        Exit Function
+    End If
+    If InStr(1, normalized, "LEFT OPEN FOR MANUAL CLOSING", vbTextCompare) = 1 Then
+        IsResultRepresentedInSummary = True
+        Exit Function
+    End If
+    If InStr(1, normalized, "FLAGGED - MISSING PART NUMBER FOR FCA DIALOG", vbTextCompare) = 1 Then
+        IsResultRepresentedInSummary = True
+        Exit Function
+    End If
+    If InStr(1, normalized, "SKIPPED - FCA DIALOG HANDLER NOT YET CONFIGURED", vbTextCompare) = 1 Then
+        IsResultRepresentedInSummary = True
+        Exit Function
+    End If
+    If InStr(1, normalized, "ERROR IN MAIN:", vbTextCompare) = 1 Then
+        IsResultRepresentedInSummary = True
+        Exit Function
+    End If
+    If InStr(1, normalized, "NO RESULT RECORDED", vbTextCompare) = 1 Then
+        IsResultRepresentedInSummary = True
+        Exit Function
+    End If
+End Function
 
 
 '-----------------------------------------------------------------------------------

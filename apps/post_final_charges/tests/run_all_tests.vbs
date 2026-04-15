@@ -119,6 +119,9 @@ Sub Main()
     ' Test 20: WCH pagination detection regression
     RunTest "WCH Pagination Detection", "cscript.exe test_wch_pagination_detection.vbs"
 
+    ' Test 21: Summary accounting runtime regression
+    RunTest "Summary Accounting Runtime Regression", "cscript.exe test_summary_accounting_runtime_regression.vbs"
+
     ' Summary
     WScript.Echo ""
     WScript.Echo "=== Test Results Summary ==="
