@@ -98,7 +98,6 @@ Function DiscoverLineLetters()
             emptyRowCount = emptyRowCount + 1
         End If
 
-        If emptyRowCount >= 3 Then Exit For
     Next
 
     If foundCount = 0 Then
@@ -398,7 +397,7 @@ Function CreateReviewPromptDictionary()
     Call AddPromptToDictEx(dict, "TECHNICIAN \(Y/N\)", "Y", "<NumpadEnter>", True, False)
     Call AddPromptToDictEx(dict, "ACTUAL HOURS \(\d+\)", "0", "<NumpadEnter>", False, True)
     Call AddPromptToDictEx(dict, "SOLD HOURS( \(\d+\))?\?", "0", "<NumpadEnter>", False, True)
-    Call AddPromptToDict(dict, "ADD A LABOR OPERATION( \(N\)\?)?", "N", "<NumpadEnter>", False)
+    Call AddPromptToDict(dict, "ADD\s+A\s+LABOR\s+OPERATION(\s*\(N\)\?)?", "", "<Enter>", False)
     Call AddPromptToDict(dict, "ADD A LABOR OPERATION", "", "<Enter>", False)
     Call AddPromptToDict(dict, "PRESS RETURN TO CONTINUE", "", "<Enter>", False)
     Call AddPromptToDict(dict, "Press F3 to exit.", "", "<F3>", False)
@@ -423,9 +422,17 @@ Function ExecuteReviewSequence()
         letters = Array("A", "B", "C")
     End If
 
-    ' Execute R <letter> for each discovered line
+    ' Execute FNL <letter> then R <letter> for each discovered line.
+    ' If a line is already closed (C92/C93), skip only the FNL step.
     For i = 0 To UBound(letters)
         letter = letters(i)
+        If Not IsLineAlreadyClosed(letter) Then
+            If Not FinishLineForReview(letter) Then
+                Call LogErrorMessage("Finish command 'FNL " & letter & "' failed before review." & vbCrLf & BuildPromptAreaSnapshot())
+                Exit Function
+            End If
+        End If
+
         reviewCommand = "R " & letter
 
         Call EnterTextAndWait(reviewCommand)
@@ -446,13 +453,13 @@ End Function
 ' Returns True when a success prompt is reached.
 '-----------------------------------------------------------
 Function ProcessPromptSequence(prompts, timeoutMs)
-    Dim startTime, elapsed, promptKey, lineToCheck, lineText
+    Dim elapsedMs, promptKey, lineToCheck, lineText, lineNotFinishedResult
     Dim bestMatchKey, bestMatchLength, promptDetails, mainPromptText, bestMatchLineText
 
     If timeoutMs <= 0 Then timeoutMs = 10000
 
     ProcessPromptSequence = False
-    startTime = Timer
+    elapsedMs = 0
 
     Do
         mainPromptText = GetScreenLine(23)
@@ -485,39 +492,113 @@ Function ProcessPromptSequence(prompts, timeoutMs)
         Next
 
         If bestMatchLength > 0 Then
+            lineNotFinishedResult = HandleLineNotFinishedPrompt(bestMatchLineText)
+            If lineNotFinishedResult = -1 Then Exit Do
+
+            If lineNotFinishedResult = 1 Then
+                elapsedMs = elapsedMs + (REVIEW_PAUSE * 3)
+            Else
             Set promptDetails = prompts.Item(bestMatchKey)
 
             If promptDetails.ResponseText <> "" And Not (HasDefaultValueInPrompt(bestMatchLineText) And Not IsYesNoPrompt(bestMatchLineText)) Then
                 bzhao.SendKey promptDetails.ResponseText
                 bzhao.Pause 100
+                elapsedMs = elapsedMs + 100
             End If
 
             If promptDetails.KeyPress <> "" Then
                 bzhao.SendKey promptDetails.KeyPress
                 bzhao.Pause 500
+                elapsedMs = elapsedMs + 500
             End If
 
             If promptDetails.IsSuccess Then
                 ProcessPromptSequence = True
                 Exit Function
             End If
-
-            ' Give each prompt transition its own timeout window.
-            startTime = Timer
+            End If
         Else
             If InStr(1, mainPromptText, "COMMAND:", vbTextCompare) = 1 Then
                 ProcessPromptSequence = True
                 Exit Function
             End If
             bzhao.Pause 250
+            elapsedMs = elapsedMs + 250
         End If
 
-        elapsed = (Timer - startTime) * 1000
-        If elapsed < 0 Then elapsed = elapsed + 86400000
-        If elapsed > timeoutMs Then Exit Do
+        If elapsedMs > timeoutMs Then Exit Do
     Loop
 
-    Call LogErrorMessage("Prompt sequence timed out after " & timeoutMs & " ms." & vbCrLf & "Elapsed: " & Int(elapsed) & " ms." & vbCrLf & BuildPromptAreaSnapshot())
+    Call LogErrorMessage("Prompt sequence timed out after " & elapsedMs & " ms (limit " & timeoutMs & " ms)." & vbCrLf & BuildPromptAreaSnapshot())
+End Function
+
+Function HandleLineNotFinishedPrompt(promptText)
+    Dim re, matches, lineLetter
+    HandleLineNotFinishedPrompt = 0
+
+    On Error Resume Next
+    Set re = CreateObject("VBScript.RegExp")
+    re.Pattern = "LINE\s+([A-Z])\s+IS\s+NOT\s+FINISHED\..*REVIEW\s+IT\s+ANYWAY\s*\(Y/N\)"
+    re.IgnoreCase = True
+    re.Global = False
+    If Err.Number <> 0 Then
+        Err.Clear
+        HandleLineNotFinishedPrompt = 0
+        Exit Function
+    End If
+    On Error GoTo 0
+
+    If Not re.Test(promptText) Then Exit Function
+
+    Set matches = re.Execute(promptText)
+    If matches.Count = 0 Then Exit Function
+
+    lineLetter = UCase(matches(0).SubMatches(0))
+
+    ' Acknowledge the warning, finish the line, then retry review for that line.
+    bzhao.SendKey "<Enter>"
+    bzhao.Pause REVIEW_PAUSE
+
+    If Not FinishLineForReview(lineLetter) Then
+        Call LogErrorMessage("Failed to finish line '" & lineLetter & "' after review warning." & vbCrLf & BuildPromptAreaSnapshot())
+        HandleLineNotFinishedPrompt = -1
+        Exit Function
+    End If
+
+    If Not WaitForTextAtBottom("COMMAND:") Then
+        Call LogErrorMessage("COMMAND: prompt not found after finishing line '" & lineLetter & "'." & vbCrLf & BuildPromptAreaSnapshot())
+        HandleLineNotFinishedPrompt = -1
+        Exit Function
+    End If
+    bzhao.SendKey "R " & lineLetter
+    bzhao.Pause 100
+    bzhao.SendKey "<NumpadEnter>"
+    bzhao.Pause REVIEW_PAUSE
+
+    HandleLineNotFinishedPrompt = 1
+End Function
+
+Function IsLineAlreadyClosed(lineLetter)
+    Dim row, rowLetter, rowBuffer, techType
+    IsLineAlreadyClosed = False
+
+    For row = 10 To 22
+        rowLetter = ""
+        bzhao.ReadScreen rowLetter, 1, row, 1
+        rowLetter = UCase(Trim(rowLetter))
+
+        If rowLetter = UCase(CStr(lineLetter)) Then
+            rowBuffer = ""
+            techType = ""
+            bzhao.ReadScreen rowBuffer, 80, row, 1
+            If Len(rowBuffer) >= 44 Then techType = UCase(Trim(Mid(rowBuffer, 42, 8)))
+
+            If Left(techType, 3) = "C92" Or Left(techType, 3) = "C93" Then
+                IsLineAlreadyClosed = True
+            End If
+            Exit Function
+        End If
+    Next
 End Function
 
 Function IsPromptMatch(screenLine, triggerText, isRegex)
