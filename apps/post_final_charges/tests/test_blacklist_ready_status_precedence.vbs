@@ -91,13 +91,13 @@ End Sub
 WScript.Echo "Blacklist READY-TO-POST Precedence Regression Test"
 WScript.Echo "================================================="
 
-AssertContains "Main checks blacklist", "matchedBlacklistTerm = GetMatchedBlacklistTerm(g_BlacklistTermsRaw)"
+AssertContains "Main checks blacklist", "matchedBlacklistTerm = BZH_GetMatchedBlacklistTerm(g_BlacklistTermsRaw, g_StabilityPause)"
 AssertContains "Main checks status readiness", "If Not IsStatusReady() Then"
 AssertContains "Main sets blacklist skip result", "lastRoResult = ""Skipped - Blacklisted term: "" & matchedBlacklistTerm"
 AssertContains "Main sets status skip result", "lastRoResult = ""Skipped - Status not ready"""
 
 AssertOrder "Blacklist check occurs before IsStatusReady", _
-    "matchedBlacklistTerm = GetMatchedBlacklistTerm(g_BlacklistTermsRaw)", _
+    "matchedBlacklistTerm = BZH_GetMatchedBlacklistTerm(g_BlacklistTermsRaw, g_StabilityPause)", _
     "If Not IsStatusReady() Then"
 
 AssertOrder "Blacklist skip assignment occurs before status skip assignment", _

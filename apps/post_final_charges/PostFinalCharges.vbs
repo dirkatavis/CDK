@@ -947,6 +947,118 @@ Function HasPartsCharged()
 End Function
 
 '-----------------------------------------------------------------------------------
+' **FUNCTION NAME:** HasWchOnAnyDetailPage
+' **DATE CREATED:** 2026-04-15
+' **AUTHOR:** GitHub Copilot
+'
+' **FUNCTIONALITY:**
+' Scans RO detail pages for WCH labor type with pagination awareness.
+' Stops scanning as soon as WCH is found or when END OF DISPLAY is reached.
+' Uses row 22 pagination markers and advances via N + <NumpadEnter>.
+'
+' **RETURNS:** True when WCH is found on any page; otherwise False.
+'-----------------------------------------------------------------------------------
+Function HasWchOnAnyDetailPage()
+    Dim row, buf, pageIndicator
+    Dim foundWch, doneScanning
+    Dim pagesAdvanced, p
+    Dim preSig, postSig, preSig2, postSig2, preMarker, postMarker
+    Dim maxPageAdvances
+
+    HasWchOnAnyDetailPage = False
+    pagesAdvanced = 0
+    doneScanning = False
+    maxPageAdvances = 50
+
+    Do While Not doneScanning
+        foundWch = False
+
+        ' Scan current detail page (rows 9-22)
+        On Error Resume Next
+        For row = 9 To 22
+            buf = ""
+            g_bzhao.ReadScreen buf, 80, row, 1
+            If Err.Number <> 0 Then
+                Err.Clear
+            Else
+                If InStr(1, buf, "WCH", vbTextCompare) > 0 Then
+                    foundWch = True
+                    Exit For
+                End If
+            End If
+        Next
+        On Error GoTo 0
+
+        If foundWch Then
+            HasWchOnAnyDetailPage = True
+            doneScanning = True
+        Else
+            pageIndicator = ""
+            On Error Resume Next
+            g_bzhao.ReadScreen pageIndicator, 80, 22, 1
+            If Err.Number <> 0 Then Err.Clear
+            On Error GoTo 0
+
+            If InStr(1, pageIndicator, "(END OF DISPLAY)", vbTextCompare) > 0 Then
+                doneScanning = True
+            ElseIf InStr(1, pageIndicator, "(MORE ON NEXT SCREEN)", vbTextCompare) > 0 Then
+                preMarker = pageIndicator
+                preSig = ""
+                preSig2 = ""
+                On Error Resume Next
+                g_bzhao.ReadScreen preSig, 80, 9, 1
+                If Err.Number <> 0 Then Err.Clear
+                g_bzhao.ReadScreen preSig2, 80, 10, 1
+                If Err.Number <> 0 Then Err.Clear
+                On Error GoTo 0
+
+                On Error Resume Next
+                g_bzhao.SendKey "N"
+                g_bzhao.SendKey "<NumpadEnter>"
+                If Err.Number <> 0 Then Err.Clear
+                On Error GoTo 0
+                g_bzhao.Pause 500
+
+                postMarker = ""
+                postSig = ""
+                postSig2 = ""
+                On Error Resume Next
+                g_bzhao.ReadScreen postMarker, 80, 22, 1
+                If Err.Number <> 0 Then Err.Clear
+                g_bzhao.ReadScreen postSig, 80, 9, 1
+                If Err.Number <> 0 Then Err.Clear
+                g_bzhao.ReadScreen postSig2, 80, 10, 1
+                If Err.Number <> 0 Then Err.Clear
+                On Error GoTo 0
+
+                If postMarker = preMarker And postSig = preSig And postSig2 = preSig2 Then
+                    doneScanning = True
+                Else
+                    pagesAdvanced = pagesAdvanced + 1
+                    If pagesAdvanced >= maxPageAdvances Then
+                        doneScanning = True
+                    End If
+                End If
+            Else
+                doneScanning = True
+            End If
+        End If
+    Loop
+
+    ' Return to page 1 so downstream flow remains on a known screen state.
+    If pagesAdvanced > 0 Then
+        For p = 1 To pagesAdvanced
+            On Error Resume Next
+            g_bzhao.SendKey "B"
+            g_bzhao.SendKey "<NumpadEnter>"
+            If Err.Number <> 0 Then Err.Clear
+            On Error GoTo 0
+            g_bzhao.Pause 500
+        Next
+    End If
+End Function
+
+'-----------------------------------------------------------------------------------
 ' **FUNCTION NAME:** IsWchLine
 ' **DATE CREATED:** 2026-04-10
 ' **AUTHOR:** GitHub Copilot
@@ -2989,7 +3101,7 @@ Sub Main(roNumber)
     ' --- WARRANTY SKIP GATE ---
     ' Allow 1000ms for RO detail lines (including LTYPE) to fully render before scanning.
     Call WaitMs(1000)
-    If g_SkipWchEnabled And IsTextPresent("WCH") Then
+    If g_SkipWchEnabled And HasWchOnAnyDetailPage() Then
         g_SkipWarrantyCount = g_SkipWarrantyCount + 1
         Call LogEvent("comm", "med", "Warranty labor type detected - skipping RO", "Main", "WCH found on RO: " & currentRODisplay, "")
         Call FastText("E")

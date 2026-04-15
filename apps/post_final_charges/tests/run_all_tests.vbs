@@ -116,7 +116,10 @@ Sub Main()
     ' Test 19: FCA dialog runtime wiring regression
     RunTest "FCA Dialog Runtime Regression", "cscript.exe test_fca_dialog_runtime_regression.vbs"
 
-    ' Test 20: Summary accounting runtime regression
+    ' Test 20: WCH pagination detection regression
+    RunTest "WCH Pagination Detection", "cscript.exe test_wch_pagination_detection.vbs"
+
+    ' Test 21: Summary accounting runtime regression
     RunTest "Summary Accounting Runtime Regression", "cscript.exe test_summary_accounting_runtime_regression.vbs"
 
     ' Summary
