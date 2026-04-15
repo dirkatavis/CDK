@@ -1,6 +1,6 @@
 '=====================================================================================
 ' BZHelper.vbs
-' Part of the CDK DMS Automation Suite ??? framework\BZHelper.vbs
+' Part of the CDK DMS Automation Suite  - framework\BZHelper.vbs
 '
 ' Purpose: Authoritative shared library for BlueZone terminal automation.
 '          Provides connection management, screen reading, text detection,
@@ -12,7 +12,7 @@
 '
 '   The calling script must DECLARE g_bzhao before loading this file (required by
 '   Option Explicit). It must be SET before any BZHelper function is first called,
-'   but does not need to be set at load time ??? loading with g_bzhao = Nothing is safe.
+'   but does not need to be set at load time  - loading with g_bzhao = Nothing is safe.
 '
 '   Typical bootstrap (g_bzhao set immediately):
 '     Dim g_bzhao: Set g_bzhao = CreateObject("BZWhll.WhllObj")
@@ -34,7 +34,7 @@ If Not IsObject(g_BZHelper_Loaded) Then
 Set g_BZHelper_Loaded = CreateObject("Scripting.Dictionary")
 
 '-------------------------------------------------------------------------------------
-' BZH_Log ??? Internal logging shim.
+' BZH_Log  - Internal logging shim.
 ' Calls LogResult(level, message) if the calling script has defined it.
 ' Silently no-ops if LogResult is not available, so BZHelper works in any script.
 '-------------------------------------------------------------------------------------
@@ -45,7 +45,7 @@ Sub BZH_Log(level, message)
 End Sub
 
 '-------------------------------------------------------------------------------------
-' ConnectBZ ??? Connect g_bzhao to the active BlueZone session.
+' ConnectBZ  - Connect g_bzhao to the active BlueZone session.
 ' Returns True on success, False on failure.
 '-------------------------------------------------------------------------------------
 Function ConnectBZ()
@@ -59,7 +59,7 @@ Function ConnectBZ()
 
     g_bzhao.Connect ""
     If Err.Number <> 0 Then
-        BZH_Log "ERROR", "BZHelper.ConnectBZ: Connection failed ??? " & Err.Description
+        BZH_Log "ERROR", "BZHelper.ConnectBZ: Connection failed  - " & Err.Description
         Err.Clear
         ConnectBZ = False
     Else
@@ -70,7 +70,7 @@ Function ConnectBZ()
 End Function
 
 '-------------------------------------------------------------------------------------
-' DisconnectBZ ??? Cleanly disconnect and release g_bzhao.
+' DisconnectBZ  - Cleanly disconnect and release g_bzhao.
 '-------------------------------------------------------------------------------------
 Sub DisconnectBZ()
     On Error Resume Next
@@ -84,11 +84,11 @@ Sub DisconnectBZ()
 End Sub
 
 '-------------------------------------------------------------------------------------
-' BZReadScreen ??? Read a block of characters from the terminal screen.
+' BZReadScreen  - Read a block of characters from the terminal screen.
 ' Parameters:
-'   length  ??? number of characters to read (max 1920 for full 24x80 screen)
-'   row     ??? starting row (1-based)
-'   col     ??? starting column (1-based)
+'   length   - number of characters to read (max 1920 for full 24x80 screen)
+'   row      - starting row (1-based)
+'   col      - starting column (1-based)
 ' Returns the screen content as a string.
 '-------------------------------------------------------------------------------------
 Function BZReadScreen(length, row, col)
@@ -97,7 +97,7 @@ Function BZReadScreen(length, row, col)
     On Error Resume Next
     g_bzhao.ReadScreen buf, length, row, col
     If Err.Number <> 0 Then
-        BZH_Log "ERROR", "BZHelper.BZReadScreen: ReadScreen failed at row " & row & ", col " & col & " ??? " & Err.Description
+        BZH_Log "ERROR", "BZHelper.BZReadScreen: ReadScreen failed at row " & row & ", col " & col & "  - " & Err.Description
         Err.Clear
     End If
     On Error GoTo 0
@@ -105,7 +105,7 @@ Function BZReadScreen(length, row, col)
 End Function
 
 '-------------------------------------------------------------------------------------
-' IsTextPresent ??? Search the full terminal screen (24 rows x 80 cols) for text.
+' IsTextPresent  - Search the full terminal screen (24 rows x 80 cols) for text.
 ' Pipe-delimited multi-target: "PROMPT A|PROMPT B" returns True if either matches.
 ' Search is case-insensitive.
 ' Returns True if any target is found, False otherwise.
@@ -140,7 +140,7 @@ Function IsTextPresent(searchText)
 End Function
 
 '-------------------------------------------------------------------------------------
-' BZSendKey ??? Send a keystroke or text string to the terminal.
+' BZSendKey  - Send a keystroke or text string to the terminal.
 ' Handles both special keys (e.g. "<NumpadEnter>") and plain text.
 ' Returns True on success, False on error.
 '-------------------------------------------------------------------------------------
@@ -149,14 +149,14 @@ Function BZSendKey(keyValue)
     BZSendKey = False
 
     If Len(keyValue) = 0 Then
-        BZH_Log "WARN", "BZHelper.BZSendKey: Empty key value ??? nothing sent."
+        BZH_Log "WARN", "BZHelper.BZSendKey: Empty key value  - nothing sent."
         On Error GoTo 0
         Exit Function
     End If
 
     g_bzhao.SendKey keyValue
     If Err.Number <> 0 Then
-        BZH_Log "ERROR", "BZHelper.BZSendKey: Failed to send '" & keyValue & "' ??? " & Err.Description
+        BZH_Log "ERROR", "BZHelper.BZSendKey: Failed to send '" & keyValue & "'  - " & Err.Description
         Err.Clear
     Else
         BZSendKey = True
@@ -165,7 +165,7 @@ Function BZSendKey(keyValue)
 End Function
 
 '-------------------------------------------------------------------------------------
-' WaitMs ??? Busy-wait for a number of milliseconds.
+' WaitMs  - Busy-wait for a number of milliseconds.
 ' Uses Timer-based loop; handles midnight rollover (Timer resets to 0 at midnight).
 '-------------------------------------------------------------------------------------
 Sub WaitMs(milliseconds)
@@ -180,15 +180,15 @@ Sub WaitMs(milliseconds)
 End Sub
 
 '-------------------------------------------------------------------------------------
-' WaitForPrompt ??? Wait for a prompt to appear on screen, optionally send input.
+' WaitForPrompt  - Wait for a prompt to appear on screen, optionally send input.
 '
 ' Parameters:
-'   promptText  ??? text to wait for (pipe-delimited for multi-target: "A|B")
-'   inputValue  ??? text or key to send once prompt is detected (pass "" to skip)
+'   promptText   - text to wait for (pipe-delimited for multi-target: "A|B")
+'   inputValue   - text or key to send once prompt is detected (pass "" to skip)
 '                 Special keys detected by presence of "<" and ">" (e.g. "<NumpadEnter>")
-'   sendEnter   ??? Boolean; if True, sends <NumpadEnter> after inputValue
-'   timeoutMs   ??? milliseconds to wait before giving up (0 = use default 5000ms)
-'   description ??? optional label used in log messages (pass "" if not needed)
+'   sendEnter    - Boolean; if True, sends <NumpadEnter> after inputValue
+'   timeoutMs    - milliseconds to wait before giving up (0 = use default 5000ms)
+'   description  - optional label used in log messages (pass "" if not needed)
 '
 ' Returns True if the prompt was found, False if timeout elapsed.
 '
@@ -222,7 +222,7 @@ Function WaitForPrompt(promptText, inputValue, sendEnter, timeoutMs, description
                     g_bzhao.SendKey inputValue
                 End If
                 If Err.Number <> 0 Then
-                    BZH_Log "ERROR", "BZHelper.WaitForPrompt: Failed to send input '" & inputValue & "' ??? " & Err.Description
+                    BZH_Log "ERROR", "BZHelper.WaitForPrompt: Failed to send input '" & inputValue & "'  - " & Err.Description
                     Err.Clear
                 Else
                     BZH_Log "INFO", "BZHelper.WaitForPrompt: Sent '" & inputValue & "'"
@@ -236,7 +236,7 @@ Function WaitForPrompt(promptText, inputValue, sendEnter, timeoutMs, description
                 On Error Resume Next
                 g_bzhao.SendKey "<NumpadEnter>"
                 If Err.Number <> 0 Then
-                    BZH_Log "ERROR", "BZHelper.WaitForPrompt: Failed to send Enter ??? " & Err.Description
+                    BZH_Log "ERROR", "BZHelper.WaitForPrompt: Failed to send Enter  - " & Err.Description
                     Err.Clear
                 Else
                     BZH_Log "INFO", "BZHelper.WaitForPrompt: Enter sent."
@@ -265,15 +265,15 @@ Function WaitForPrompt(promptText, inputValue, sendEnter, timeoutMs, description
 End Function
 
 '-------------------------------------------------------------------------------------
-' WaitForAnyOf ??? Wait for any one of several pipe-delimited targets to appear.
+' WaitForAnyOf  - Wait for any one of several pipe-delimited targets to appear.
 '
 ' Parameters:
-'   targets    ??? pipe-delimited list of strings to search for (e.g. "CAMP|PASTEUR")
-'   timeoutMs  ??? milliseconds to wait before giving up (0 = use default 5000ms)
+'   targets     - pipe-delimited list of strings to search for (e.g. "CAMP|PASTEUR")
+'   timeoutMs   - milliseconds to wait before giving up (0 = use default 5000ms)
 '
 ' Returns True if any target is found, False if timeout elapsed.
 '
-' Uses IsTextPresent internally ??? search is case-insensitive, row-by-row.
+' Uses IsTextPresent internally  - search is case-insensitive, row-by-row.
 ' Canonical version. Authoritative source: framework\BZHelper.vbs
 '-------------------------------------------------------------------------------------
 Function WaitForAnyOf(targets, timeoutMs)
@@ -306,17 +306,17 @@ Function WaitForAnyOf(targets, timeoutMs)
 End Function
 
 '-------------------------------------------------------------------------------------
-' BZH_RecoverFromVehidError ??? Shared recovery for "VEHID not on file" errors.
+' BZH_RecoverFromVehidError  - Shared recovery for "VEHID not on file" errors.
 '
 ' Called when the terminal shows "PRESS RETURN TO CONTINUE" after a VEHID lookup
 ' failure. Navigates back to the PFC function menu and selects the caller-specified
 ' option, leaving the terminal in a stable state for the caller to continue.
 '
 ' Parameters:
-'   employeeNumber   ??? Employee ID string (e.g. "18351"), read from config
-'   nameConfirmText  ??? Pipe-delimited name fragment(s) to wait for on the
+'   employeeNumber    - Employee ID string (e.g. "18351"), read from config
+'   nameConfirmText   - Pipe-delimited name fragment(s) to wait for on the
 '                      name confirmation screen (e.g. "CAMP|PASTEUR"), read from config
-'   menuOption       ??? Option to select at the PFC ENTER OPTION menu:
+'   menuOption        - Option to select at the PFC ENTER OPTION menu:
 '                        "1" = return to main RO screen (Maintenance_RO_Closer)
 '                        "2" = return to PFC sequence prompt (PFC_Scrapper)
 '
@@ -367,15 +367,15 @@ Function BZH_RecoverFromVehidError(employeeNumber, nameConfirmText, menuOption)
 End Function
 
 '-------------------------------------------------------------------------------------
-' BZH_GetMatchedBlacklistTerm ??? Scan all RO service line pages for a blacklist term.
+' BZH_GetMatchedBlacklistTerm  - Scan all RO service line pages for a blacklist term.
 '
 ' Parameters:
-'   blacklistTermsCsv ??? comma-separated list of terms to search for (case-insensitive)
-'   pauseMs           ??? milliseconds to pause between page advances (configurable per script)
+'   blacklistTermsCsv  - comma-separated list of terms to search for (case-insensitive)
+'   pauseMs            - milliseconds to pause between page advances (configurable per script)
 '
 ' Pages through multi-screen ROs using the CDK pagination pattern:
-'   "(MORE ON NEXT SCREEN)" on row 22 ??? advance with "N" + NumpadEnter
-'   "(END OF DISPLAY)" on row 22      ??? last page reached
+'   "(MORE ON NEXT SCREEN)" on row 22  - advance with "N" + NumpadEnter
+'   "(END OF DISPLAY)" on row 22       - last page reached
 ' Returns to page 1 via "B" + NumpadEnter after scanning.
 '
 ' Returns the first matched term, or empty string if no match found.
@@ -445,7 +445,7 @@ Function BZH_GetMatchedBlacklistTerm(blacklistTermsCsv, pauseMs)
                 g_bzhao.Pause pauseMs
                 pagesAdvanced = pagesAdvanced + 1
             Else
-                BZH_Log "INFO", "BZHelper.BZH_GetMatchedBlacklistTerm: No pagination indicator on row 22 ??? treating as end of display."
+                BZH_Log "INFO", "BZHelper.BZH_GetMatchedBlacklistTerm: No pagination indicator on row 22  - treating as end of display."
                 doneScanning = True
             End If
         End If
