@@ -3011,10 +3011,20 @@ Sub Main(roNumber)
     ' Wait for the new sequence's RO to appear on screen.
     ' WaitForScreenTransition("RO STATUS:") would return immediately if the previous
     ' sequence's screen is still showing, so we poll until the displayed RO changes.
-    Dim actualRO, roWaitStart, roWaitElapsed, roCandidate, roCandidateNorm
+    Dim actualRO, roWaitStart, roWaitElapsed, roCandidate, roCandidateNorm, mainPromptText
     roWaitStart = Timer
     actualRO = ""
     Do
+        mainPromptText = GetScreenLine(MainPromptLine)
+        If InStr(1, mainPromptText, "Process is locked by", vbTextCompare) > 0 Then
+            If Len(Trim(CStr(currentRODisplay))) = 0 Then currentRODisplay = roNumber
+            Call LogEvent("comm", "med", "RO locked by another user during RO load - returning to command", "Main", "RO: " & currentRODisplay, "Line " & MainPromptLine & ": '" & mainPromptText & "'")
+            Call FastKey("<Enter>")
+            Call WaitForPrompt("COMMAND:", "", False, 5000, "Process Lock Recovery")
+            lastRoResult = "Skipped - Process locked by another user"
+            Exit Sub
+        End If
+
         roCandidate = GetROFromScreen()
         roCandidateNorm = NormalizeRoIdentifier(roCandidate)
         If Len(roCandidateNorm) > 0 And roCandidateNorm <> g_PreviousNormalizedRo Then
@@ -3059,6 +3069,17 @@ Sub Main(roNumber)
     If IsTextPresent("NOT ON FILE") Then
         Call LogEvent("comm", "med", "Not On File", "Main", "", "")
         lastRoResult = "Not On File"
+        Exit Sub
+    End If
+
+    ' App rule: line 23 may show process lock when another user has this RO open.
+    ' Send Enter once to return to COMMAND: and skip this RO for now.
+    mainPromptText = GetScreenLine(MainPromptLine)
+    If InStr(1, mainPromptText, "Process is locked by", vbTextCompare) > 0 Then
+        Call LogEvent("comm", "med", "RO locked by another user - returning to command", "Main", "RO: " & currentRODisplay, "Line " & MainPromptLine & ": '" & mainPromptText & "'")
+        Call FastKey("<Enter>")
+        Call WaitForPrompt("COMMAND:", "", False, 5000, "Process Lock Recovery")
+        lastRoResult = "Skipped - Process locked by another user"
         Exit Sub
     End If
 
