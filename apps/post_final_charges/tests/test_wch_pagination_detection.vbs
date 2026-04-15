@@ -25,6 +25,7 @@ Class FakeBzhao
     Private m_currentPage
     Private m_pendingN
     Private m_pendingB
+    Private m_allowAdvance
 
     Private m_keys()
     Private m_keyCount
@@ -36,6 +37,7 @@ Class FakeBzhao
         m_currentPage = 0
         m_pendingN = False
         m_pendingB = False
+        m_allowAdvance = True
         m_keyCount = 0
         m_pauseCount = 0
         ReDim m_keys(-1)
@@ -47,10 +49,15 @@ Class FakeBzhao
         m_currentPage = 0
         m_pendingN = False
         m_pendingB = False
+        m_allowAdvance = True
         m_keyCount = 0
         m_pauseCount = 0
         ReDim m_keys(-1)
         ReDim m_pauses(-1)
+    End Sub
+
+    Public Sub SetAllowAdvance(ByVal allowAdvance)
+        m_allowAdvance = CBool(allowAdvance)
     End Sub
 
     Public Sub ReadScreen(ByRef outText, ByVal length, ByVal row, ByVal col)
@@ -80,7 +87,9 @@ Class FakeBzhao
 
         If keyText = "<NumpadEnter>" Then
             If m_pendingN Then
-                If m_currentPage < UBound(m_pages) Then m_currentPage = m_currentPage + 1
+                If m_allowAdvance Then
+                    If m_currentPage < UBound(m_pages) Then m_currentPage = m_currentPage + 1
+                End If
             ElseIf m_pendingB Then
                 If m_currentPage > 0 Then m_currentPage = m_currentPage - 1
             End If
@@ -158,10 +167,13 @@ Function HasWchOnAnyDetailPage()
     Dim row, buf, pageIndicator
     Dim foundWch, doneScanning
     Dim pagesAdvanced, p
+    Dim preSig, postSig, preSig2, postSig2, preMarker, postMarker
+    Dim maxPageAdvances
 
     HasWchOnAnyDetailPage = False
     pagesAdvanced = 0
     doneScanning = False
+    maxPageAdvances = 50
 
     Do While Not doneScanning
         foundWch = False
@@ -194,13 +206,43 @@ Function HasWchOnAnyDetailPage()
             If InStr(1, pageIndicator, "(END OF DISPLAY)", vbTextCompare) > 0 Then
                 doneScanning = True
             ElseIf InStr(1, pageIndicator, "(MORE ON NEXT SCREEN)", vbTextCompare) > 0 Then
+                preMarker = pageIndicator
+                preSig = ""
+                preSig2 = ""
+                On Error Resume Next
+                g_bzhao.ReadScreen preSig, 80, 9, 1
+                If Err.Number <> 0 Then Err.Clear
+                g_bzhao.ReadScreen preSig2, 80, 10, 1
+                If Err.Number <> 0 Then Err.Clear
+                On Error GoTo 0
+
                 On Error Resume Next
                 g_bzhao.SendKey "N"
                 g_bzhao.SendKey "<NumpadEnter>"
                 If Err.Number <> 0 Then Err.Clear
                 On Error GoTo 0
                 g_bzhao.Pause 500
-                pagesAdvanced = pagesAdvanced + 1
+
+                postMarker = ""
+                postSig = ""
+                postSig2 = ""
+                On Error Resume Next
+                g_bzhao.ReadScreen postMarker, 80, 22, 1
+                If Err.Number <> 0 Then Err.Clear
+                g_bzhao.ReadScreen postSig, 80, 9, 1
+                If Err.Number <> 0 Then Err.Clear
+                g_bzhao.ReadScreen postSig2, 80, 10, 1
+                If Err.Number <> 0 Then Err.Clear
+                On Error GoTo 0
+
+                If postMarker = preMarker And postSig = preSig And postSig2 = preSig2 Then
+                    doneScanning = True
+                Else
+                    pagesAdvanced = pagesAdvanced + 1
+                    If pagesAdvanced >= maxPageAdvances Then
+                        doneScanning = True
+                    End If
+                End If
             Else
                 doneScanning = True
             End If
@@ -312,9 +354,9 @@ AssertAllPausesAre500 "Positive: all pauses are 500ms", mock1
 Dim mock2, pages2
 Set mock2 = New FakeBzhao
 pages2 = Array( _
-    BuildPage("(MORE ON NEXT SCREEN)", False), _
-    BuildPage("(MORE ON NEXT SCREEN)", False), _
-    BuildPage("(END OF DISPLAY)", False) _
+    SetRow(BuildPage("(MORE ON NEXT SCREEN)", False), 10, "PAGE 1 MARKER"), _
+    SetRow(BuildPage("(MORE ON NEXT SCREEN)", False), 10, "PAGE 2 MARKER"), _
+    SetRow(BuildPage("(END OF DISPLAY)", False), 10, "PAGE 3 MARKER") _
 )
 mock2.SetPages pages2
 Set g_bzhao = mock2
@@ -325,6 +367,23 @@ AssertCommandPairs "Negative: N/B commands paired with Enter", mock2
 AssertFalse "Negative: command buffer clear after scan", mock2.HasPendingCommand
 AssertEqual "Negative: pause called per navigation", 4, mock2.PauseCount
 AssertAllPausesAre500 "Negative: all pauses are 500ms", mock2
+
+' Test 3: Safety (MORE marker repeats but page does not advance)
+Dim mock3, pages3
+Set mock3 = New FakeBzhao
+pages3 = Array( _
+    BuildPage("(MORE ON NEXT SCREEN)", False) _
+)
+mock3.SetPages pages3
+mock3.SetAllowAdvance False
+Set g_bzhao = mock3
+AssertFalse "Safety: stops when page does not advance", HasWchOnAnyDetailPage()
+AssertEqual "Safety: remains on page 1", 0, mock3.CurrentPageIndex
+AssertEqual "Safety: attempts one page-down sequence", 2, mock3.KeyCount
+AssertCommandPairs "Safety: N/B commands paired with Enter", mock3
+AssertFalse "Safety: command buffer clear after scan", mock3.HasPendingCommand
+AssertEqual "Safety: pause called once for attempted advance", 1, mock3.PauseCount
+AssertAllPausesAre500 "Safety: all pauses are 500ms", mock3
 
 WScript.Echo ""
 If g_Fail = 0 Then

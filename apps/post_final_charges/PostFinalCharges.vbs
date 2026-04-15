@@ -949,10 +949,13 @@ Function HasWchOnAnyDetailPage()
     Dim row, buf, pageIndicator
     Dim foundWch, doneScanning
     Dim pagesAdvanced, p
+    Dim preSig, postSig, preSig2, postSig2, preMarker, postMarker
+    Dim maxPageAdvances
 
     HasWchOnAnyDetailPage = False
     pagesAdvanced = 0
     doneScanning = False
+    maxPageAdvances = 50
 
     Do While Not doneScanning
         foundWch = False
@@ -986,13 +989,43 @@ Function HasWchOnAnyDetailPage()
             If InStr(1, pageIndicator, "(END OF DISPLAY)", vbTextCompare) > 0 Then
                 doneScanning = True
             ElseIf InStr(1, pageIndicator, "(MORE ON NEXT SCREEN)", vbTextCompare) > 0 Then
+                preMarker = pageIndicator
+                preSig = ""
+                preSig2 = ""
+                On Error Resume Next
+                g_bzhao.ReadScreen preSig, 80, 9, 1
+                If Err.Number <> 0 Then Err.Clear
+                g_bzhao.ReadScreen preSig2, 80, 10, 1
+                If Err.Number <> 0 Then Err.Clear
+                On Error GoTo 0
+
                 On Error Resume Next
                 g_bzhao.SendKey "N"
                 g_bzhao.SendKey "<NumpadEnter>"
                 If Err.Number <> 0 Then Err.Clear
                 On Error GoTo 0
                 g_bzhao.Pause 500
-                pagesAdvanced = pagesAdvanced + 1
+
+                postMarker = ""
+                postSig = ""
+                postSig2 = ""
+                On Error Resume Next
+                g_bzhao.ReadScreen postMarker, 80, 22, 1
+                If Err.Number <> 0 Then Err.Clear
+                g_bzhao.ReadScreen postSig, 80, 9, 1
+                If Err.Number <> 0 Then Err.Clear
+                g_bzhao.ReadScreen postSig2, 80, 10, 1
+                If Err.Number <> 0 Then Err.Clear
+                On Error GoTo 0
+
+                If postMarker = preMarker And postSig = preSig And postSig2 = preSig2 Then
+                    doneScanning = True
+                Else
+                    pagesAdvanced = pagesAdvanced + 1
+                    If pagesAdvanced >= maxPageAdvances Then
+                        doneScanning = True
+                    End If
+                End If
             Else
                 doneScanning = True
             End If
