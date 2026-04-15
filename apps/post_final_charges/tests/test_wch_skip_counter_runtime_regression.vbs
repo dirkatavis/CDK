@@ -4,12 +4,9 @@
 ' **AUTHOR:** GitHub Copilot
 '
 ' **FUNCTIONALITY:**
-' Regression guard for HasPartsCharged() gate in PostFinalCharges runtime logic.
-' The WCH skip gate was removed; ROs are now allowed or skipped based solely on
-' whether at least one P-line carries a non-zero SALE AMT.
-' Verifies function presence, guard placement in Closeout_Ro, and skip result label.
-'
-' NOTE: Also confirms the old WCH unconditional skip is gone.
+' Regression guard for HasPartsCharged() and WCH skip gates in PostFinalCharges.
+' Verifies parts-charged guard placement and confirms the WCH gate is present,
+' feature-flagged, and wired through pagination-aware detection.
 '-----------------------------------------------------------------------------------
 
 Option Explicit
@@ -36,15 +33,6 @@ Sub AssertContains(label, needle)
         WScript.Echo "[PASS] " & label
     Else
         WScript.Echo "[FAIL] " & label & " (missing: " & needle & ")"
-        failures = failures + 1
-    End If
-End Sub
-
-Sub AssertNotContains(label, needle)
-    If InStr(1, g_content, needle, vbTextCompare) = 0 Then
-        WScript.Echo "[PASS] " & label
-    Else
-        WScript.Echo "[FAIL] " & label & " (should be absent: " & needle & ")"
         failures = failures + 1
     End If
 End Sub
@@ -82,10 +70,15 @@ AssertContains "Skip result label is correct", "lastRoResult = ""Skipped - No pa
 AssertOrder "Parts guard precedes READY TO POST closeout", _
     "If Not HasPartsCharged() Then", "Call Closeout_ReadyToPost()"
 
-' Old WCH unconditional skip is gone
-AssertNotContains "WCH skip gate removed", "lastRoResult = ""Skipped - WCH labor type"""
-AssertNotContains "g_SkipWarrantyCount removed", "Dim g_SkipWarrantyCount"
-AssertNotContains "Warranty summary line removed", "Skips - Warranty (WCH):"
+' WCH gate is enabled/disabled by config and uses paginated detection
+AssertContains "WCH feature flag exists", "Dim g_SkipWchEnabled"
+AssertContains "WCH pagination helper is declared", "Function HasWchOnAnyDetailPage()"
+AssertContains "WCH gate uses pagination helper", "If g_SkipWchEnabled And HasWchOnAnyDetailPage() Then"
+AssertContains "WCH skip result label is preserved", "lastRoResult = ""Skipped - WCH labor type"""
+AssertContains "WCH summary line is present", "Skips - Warranty (WCH):"
+AssertContains "WCH pagination uses next-screen command", "g_bzhao.SendKey ""N"""
+AssertContains "WCH pagination uses ENTER command", "g_bzhao.SendKey ""<NumpadEnter>"""
+AssertContains "WCH pagination waits after page advance", "g_bzhao.Pause 500"
 
 WScript.Echo ""
 If failures = 0 Then
