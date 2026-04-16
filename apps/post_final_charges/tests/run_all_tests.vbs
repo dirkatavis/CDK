@@ -128,6 +128,9 @@ Sub Main()
     ' Test 23: Labor-only exception + no-parts pagination behavior
     RunTest "CDK Labor Exceptions Pagination", "cscript.exe test_cdk_labor_exceptions_pagination.vbs"
 
+    ' Test 24: Configurable blocked LTYPE gate (replaces WCH-specific gate)
+    RunTest "Blocked LTYPE Gate", "cscript.exe test_blocked_ltype_gate.vbs"
+
     ' Summary
     WScript.Echo ""
     WScript.Echo "=== Test Results Summary ==="

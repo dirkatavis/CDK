@@ -74,21 +74,27 @@ AssertContains "Closeout_Ro writes dynamic skip reason", "lastRoResult = noParts
 AssertOrder "Parts guard precedes READY TO POST closeout", _
     "If Not EvaluatePartsChargedGate(noPartsSkipReason) Then", "Call Closeout_ReadyToPost()"
 
-' Exception list is config-driven
-AssertContains "Config reader loads labor-only exceptions", "GetIniSetting(""PostFinalCharges"", ""CDKLaborOnlyLTypeExceptions"", ""WCH,WT,WF"")"
+' Exception list is config-driven (default is I for internal labor)
+AssertContains "Config reader loads labor-only exceptions", "GetIniSetting(""PostFinalCharges"", ""CDKLaborOnlyLTypeExceptions"", ""I"")"
 AssertContains "Exception list is normalized to uppercase", "g_arrCDKExceptions(ei) = UCase(Trim(g_arrCDKExceptions(ei)))"
 AssertContains "Config reader loads labor-only description exceptions", "GetIniSetting(""PostFinalCharges"", ""CDKLaborOnlyDescriptionExceptions"", ""check and adjust"")"
 AssertContains "Description exceptions normalized lowercase", "g_arrCDKDescriptionExceptions(di) = LCase(Trim(g_arrCDKDescriptionExceptions(di)))"
 
-' WCH gate is enabled/disabled by config and uses paginated detection
-AssertContains "WCH feature flag exists", "Dim g_SkipWchEnabled"
-AssertContains "WCH pagination helper is declared", "Function HasWchOnAnyDetailPage()"
-AssertContains "WCH gate uses pagination helper", "If g_SkipWchEnabled And HasWchOnAnyDetailPage() Then"
-AssertContains "WCH skip result label is preserved", "lastRoResult = ""Skipped - WCH labor type"""
-AssertContains "WCH summary line is present", "Skips - Warranty (WCH):"
-AssertContains "WCH pagination uses next-screen command", "g_bzhao.SendKey ""N"""
-AssertContains "WCH pagination uses ENTER command", "g_bzhao.SendKey ""<NumpadEnter>"""
-AssertContains "WCH pagination waits after page advance", "g_bzhao.Pause 500"
+' Configurable LTYPE block gate replaces WCH-specific gate
+AssertContains "SkipLaborLTypes config key is read", "GetIniSetting(""PostFinalCharges"", ""SkipLaborLTypes"", ""WCH,WV,WF"")"
+AssertContains "Blocked LTYPE array is declared", "Dim g_arrSkipLaborLTypes"
+AssertContains "Blocked LTYPE helper is declared", "Function HasBlockedLTypeOnAnyPage()"
+AssertContains "Main gate calls blocked LTYPE helper", "blockedLType = HasBlockedLTypeOnAnyPage()"
+AssertContains "Blocked LTYPE skip result includes LTYPE code", "lastRoResult = ""Skipped - Blocked LTYPE: "" & blockedLType"
+AssertContains "Blocked LTYPE summary line is present", "Skips - Blocked LTYPE:"
+AssertContains "LTYPE gate reads col 50 for LTYPE", "Mid(buf, 50, 6)"
+AssertContains "LTYPE gate checks L-row indicator", "Mid(buf, 4, 1) = ""L"""
+AssertContains "LTYPE gate guards against empty lTypeCode", "If Len(lTypeCode) > 0 And IsArray(g_arrSkipLaborLTypes)"
+AssertContains "LTYPE gate filters empty entries in loop", "If Len(g_arrSkipLaborLTypes(i)) > 0 And lTypeCode"
+AssertContains "LTYPE gate pagination uses next-screen command", "g_bzhao.SendKey ""N"""
+AssertContains "LTYPE gate pagination uses ENTER command", "g_bzhao.SendKey ""<NumpadEnter>"""
+AssertContains "LTYPE gate pagination waits after page advance", "g_bzhao.Pause 500"
+AssertContains "InitializeConfig filters empty SkipLaborLTypes entries", "g_arrSkipLaborLTypes = Array()"
 
 WScript.Echo ""
 If failures = 0 Then

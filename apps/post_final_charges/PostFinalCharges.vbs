@@ -1221,9 +1221,9 @@ Function HasBlockedLTypeOnAnyPage()
                 Err.Clear
             ElseIf Len(buf) >= 55 And Mid(buf, 4, 1) = "L" And IsNumeric(Mid(buf, 5, 1)) Then
                 lTypeCode = UCase(Trim(Mid(buf, 50, 6)))
-                If IsArray(g_arrSkipLaborLTypes) Then
+                If Len(lTypeCode) > 0 And IsArray(g_arrSkipLaborLTypes) Then
                     For i = 0 To UBound(g_arrSkipLaborLTypes)
-                        If lTypeCode = g_arrSkipLaborLTypes(i) Then
+                        If Len(g_arrSkipLaborLTypes(i)) > 0 And lTypeCode = g_arrSkipLaborLTypes(i) Then
                             matchedLType = lTypeCode
                             Exit For
                         End If
@@ -2552,11 +2552,24 @@ Sub InitializeConfig()
 
     Dim skipLaborLTypesRaw, sli
     skipLaborLTypesRaw = GetIniSetting("PostFinalCharges", "SkipLaborLTypes", "WCH,WV,WF")
-    g_arrSkipLaborLTypes = Split(skipLaborLTypesRaw, ",")
-    For sli = 0 To UBound(g_arrSkipLaborLTypes)
-        g_arrSkipLaborLTypes(sli) = UCase(Trim(g_arrSkipLaborLTypes(sli)))
+    Dim rawSkipArr, filteredSkip(), filteredSkipCount
+    rawSkipArr = Split(skipLaborLTypesRaw, ",")
+    filteredSkipCount = 0
+    ReDim filteredSkip(UBound(rawSkipArr))
+    For sli = 0 To UBound(rawSkipArr)
+        Dim trimmedSkip : trimmedSkip = UCase(Trim(rawSkipArr(sli)))
+        If Len(trimmedSkip) > 0 Then
+            filteredSkip(filteredSkipCount) = trimmedSkip
+            filteredSkipCount = filteredSkipCount + 1
+        End If
     Next
-    Call LogEvent("comm", "high", "Blocked LTYPE gate configured", "InitializeConfig", "SkipLaborLTypes: " & skipLaborLTypesRaw, "")
+    If filteredSkipCount > 0 Then
+        ReDim Preserve filteredSkip(filteredSkipCount - 1)
+        g_arrSkipLaborLTypes = filteredSkip
+    Else
+        g_arrSkipLaborLTypes = Array()  ' empty config = gate disabled
+    End If
+    Call LogEvent("comm", "high", "Blocked LTYPE gate configured", "InitializeConfig", "SkipLaborLTypes: " & skipLaborLTypesRaw & " (" & filteredSkipCount & " active)", "")
 
     Dim partsOrderKeywordsRaw, partsOrderNegatorsRaw, ki
     partsOrderKeywordsRaw = GetIniSetting("PostFinalCharges", "PartsOrderKeywords", "")
@@ -2580,7 +2593,7 @@ Sub InitializeConfig()
     Call LogEvent("comm", "high", "Closure readiness tech-code gate configured", "InitializeConfig", "AllowedTechCodes: " & allowedTechCodesRaw, "")
 
     Dim cdkLaborExceptionRaw, ei
-    cdkLaborExceptionRaw = GetIniSetting("PostFinalCharges", "CDKLaborOnlyLTypeExceptions", "WCH,WT,WF")
+    cdkLaborExceptionRaw = GetIniSetting("PostFinalCharges", "CDKLaborOnlyLTypeExceptions", "I")
     g_arrCDKExceptions = Split(cdkLaborExceptionRaw, ",")
     For ei = 0 To UBound(g_arrCDKExceptions)
         g_arrCDKExceptions(ei) = UCase(Trim(g_arrCDKExceptions(ei)))
