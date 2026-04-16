@@ -160,13 +160,22 @@ Function SetColText(ByVal rowText, ByVal colNum, ByVal textValue)
     SetColText = Left(head & textValue & tail & String(80, " "), 80)
 End Function
 
-Function BuildHeaderRow(ByVal lineLetter, ByVal techCode, ByVal descText)
+Function BuildHeaderRow(ByVal lineLetter)
     Dim rowText
     rowText = String(80, " ")
     rowText = SetColText(rowText, 1, lineLetter)
-    rowText = SetColText(rowText, 4, descText)
-    rowText = SetColText(rowText, 42, techCode)
     BuildHeaderRow = rowText
+End Function
+
+Function BuildLRow(ByVal ltypeCode, ByVal descText)
+    ' Matches real CDK L-row layout: L1 at col 4-5, description at col 7-41, LTYPE at col 50-55.
+    ' Consistent with IsWchLine() (col 50-55) and GetPartsNeededLaborDesc() (col 7, 35 chars).
+    Dim rowText
+    rowText = String(80, " ")
+    rowText = SetColText(rowText, 4, "L1")
+    rowText = SetColText(rowText, 7, Left(descText & String(35, " "), 35))
+    rowText = SetColText(rowText, 50, ltypeCode)
+    BuildLRow = rowText
 End Function
 
 Function BuildPartRow(ByVal amountText)
@@ -178,10 +187,11 @@ Function BuildPartRow(ByVal amountText)
     BuildPartRow = rowText
 End Function
 
-Function BuildPage(ByVal row22Marker, ByVal techCode, ByVal lineDesc, ByVal includePartLine, ByVal partAmountText)
+Function BuildPage(ByVal row22Marker, ByVal ltypeCode, ByVal lineDesc, ByVal includePartLine, ByVal partAmountText)
     Dim pageBuf
     pageBuf = String(24 * 80, " ")
-    pageBuf = SetRow(pageBuf, 9, BuildHeaderRow("A", techCode, lineDesc))
+    pageBuf = SetRow(pageBuf, 9, BuildHeaderRow("A"))
+    pageBuf = SetRow(pageBuf, 10, BuildLRow(ltypeCode, lineDesc))
     If includePartLine Then
         pageBuf = SetRow(pageBuf, 12, BuildPartRow(partAmountText))
     End If
@@ -231,8 +241,7 @@ Function EvaluatePartsChargedGate(ByRef skipReason)
     Dim maxPageAdvances
     Dim hasAnyPartLine, hasChargedPart
     Dim firstExceptionEvidence, firstNonExceptionTech
-    Dim firstChar, techCode, lineDesc
-    Dim hasTechException, hasDescException
+    Dim lTypeCode, lDesc, lHasTechEx, lHasDescEx
 
     EvaluatePartsChargedGate = False
     skipReason = "Skipped - No parts charged"
@@ -266,28 +275,25 @@ Function EvaluatePartsChargedGate(ByRef skipReason)
                 End If
             End If
 
-            If Len(buf) >= 44 Then
-                firstChar = Mid(buf, 1, 1)
-                If firstChar >= "A" And firstChar <= "Z" Then
-                    techCode = UCase(Trim(Mid(buf, 42, 8)))
-                    lineDesc = Trim(Mid(buf, 4, 38))
-                    hasTechException = (Len(techCode) > 0 And IsCdkLaborOnlyExceptionTech(techCode))
-                    hasDescException = IsCdkLaborOnlyExceptionDesc(lineDesc)
+            ' L-rows carry LTYPE (col 50-55) and description (col 7-41).
+            ' Matches the same layout used by IsWchLine() and GetPartsNeededLaborDesc().
+            If Len(buf) >= 55 And Mid(buf, 4, 1) = "L" And IsNumeric(Mid(buf, 5, 1)) Then
+                lTypeCode = UCase(Trim(Mid(buf, 50, 6)))
+                lDesc = Trim(Mid(buf, 7, 35))
+                lHasTechEx = (Len(lTypeCode) > 0 And IsCdkLaborOnlyExceptionTech(lTypeCode))
+                lHasDescEx = IsCdkLaborOnlyExceptionDesc(lDesc)
 
-                    If hasTechException Or hasDescException Then
-                        If Len(firstExceptionEvidence) = 0 Then
-                            If hasTechException Then
-                                firstExceptionEvidence = "Line " & firstChar & " tech code " & techCode
-                            Else
-                                firstExceptionEvidence = "Line " & firstChar & " description """ & lineDesc & """"
-                            End If
-                        End If
-                    Else
-                        If Len(techCode) > 0 Then
-                            If Len(firstNonExceptionTech) = 0 Then firstNonExceptionTech = techCode
+                If lHasTechEx Or lHasDescEx Then
+                    If Len(firstExceptionEvidence) = 0 Then
+                        If lHasTechEx Then
+                            firstExceptionEvidence = "LTYPE " & lTypeCode
                         Else
-                            If Len(firstNonExceptionTech) = 0 Then firstNonExceptionTech = "Line " & firstChar
+                            firstExceptionEvidence = "description """ & lDesc & """"
                         End If
+                    End If
+                Else
+                    If Len(lTypeCode) > 0 Then
+                        If Len(firstNonExceptionTech) = 0 Then firstNonExceptionTech = lTypeCode
                     End If
                 End If
             End If
