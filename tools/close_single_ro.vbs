@@ -449,13 +449,14 @@ End Function
 ' Returns True when a success prompt is reached.
 '-----------------------------------------------------------
 Function ProcessPromptSequence(prompts, timeoutMs)
-    Dim elapsedMs, promptKey, lineToCheck, lineText, lineNotFinishedResult
+    Dim startTime, elapsed, promptKey, lineToCheck, lineText, lineNotFinishedResult
     Dim bestMatchKey, bestMatchLength, promptDetails, mainPromptText, bestMatchLineText
 
     If timeoutMs <= 0 Then timeoutMs = 10000
 
     ProcessPromptSequence = False
-    elapsedMs = 0
+    elapsed = 0
+    startTime = Timer
 
     Do
         mainPromptText = GetScreenLine(23)
@@ -492,27 +493,25 @@ Function ProcessPromptSequence(prompts, timeoutMs)
             If lineNotFinishedResult = -1 Then Exit Do
 
             If lineNotFinishedResult = 1 Then
-                elapsedMs = elapsedMs + (REVIEW_PAUSE * 3)
+                startTime = Timer  ' handler consumed real time; reset per-prompt window
             Else
             Set promptDetails = prompts.Item(bestMatchKey)
 
             If promptDetails.ResponseText <> "" And Not (HasDefaultValueInPrompt(bestMatchLineText) And Not IsYesNoPrompt(bestMatchLineText)) Then
                 bzhao.SendKey promptDetails.ResponseText
                 bzhao.Pause 100
-                elapsedMs = elapsedMs + 100
             End If
 
             If promptDetails.KeyPress <> "" Then
                 bzhao.SendKey promptDetails.KeyPress
                 bzhao.Pause 500
-                elapsedMs = elapsedMs + 500
             End If
 
             If promptDetails.IsSuccess Then
                 ProcessPromptSequence = True
                 Exit Function
             End If
-
+            startTime = Timer  ' successful prompt transition; reset per-prompt window
             End If
         Else
             If InStr(1, mainPromptText, "COMMAND:", vbTextCompare) = 1 Then
@@ -520,13 +519,14 @@ Function ProcessPromptSequence(prompts, timeoutMs)
                 Exit Function
             End If
             bzhao.Pause 250
-            elapsedMs = elapsedMs + 250
         End If
 
-        If elapsedMs > timeoutMs Then Exit Do
+        elapsed = Timer - startTime
+        If elapsed < 0 Then elapsed = elapsed + 86400
+        If elapsed * 1000 > timeoutMs Then Exit Do
     Loop
 
-    Call LogErrorMessage("Prompt sequence timed out after " & elapsedMs & " ms (limit " & timeoutMs & " ms)." & vbCrLf & BuildPromptAreaSnapshot())
+    Call LogErrorMessage("Prompt sequence timed out after " & Int(elapsed * 1000) & " ms (limit " & timeoutMs & " ms)." & vbCrLf & BuildPromptAreaSnapshot())
 End Function
 
 Function HandleLineNotFinishedPrompt(promptText)
@@ -562,7 +562,11 @@ Function HandleLineNotFinishedPrompt(promptText)
         Exit Function
     End If
 
-    WaitForTextAtBottom "COMMAND:"
+    If Not WaitForTextAtBottom("COMMAND:") Then
+        Call LogErrorMessage("COMMAND: prompt not found after finishing line '" & lineLetter & "'." & vbCrLf & BuildPromptAreaSnapshot())
+        HandleLineNotFinishedPrompt = -1
+        Exit Function
+    End If
     bzhao.SendKey "R " & lineLetter
     bzhao.Pause 100
     bzhao.SendKey "<NumpadEnter>"
@@ -733,19 +737,20 @@ End Function
 '-----------------------------------------------------------
 ' Waits for text to appear at bottom of screen (rows 23-24)
 '-----------------------------------------------------------
-Sub WaitForTextAtBottom(targetText)
+Function WaitForTextAtBottom(targetText)
     Dim elapsed, screenContentBuffer, screenLength, found, col
     elapsed = 0
     col = 1
     screenLength = 80
-    
+    WaitForTextAtBottom = False
+
     Dim targets: targets = Split(targetText, "|")
     Dim i
-    
+
     Do
         bzhao.Pause 500
         elapsed = elapsed + 500
-        
+
         Dim buffer23, buffer24
         bzhao.ReadScreen buffer23, screenLength, 23, col
         bzhao.ReadScreen buffer24, screenLength, 24, col
@@ -758,15 +763,18 @@ Sub WaitForTextAtBottom(targetText)
                 Exit For
             End If
         Next
-        
-        If found Then Exit Do
-        
+
+        If found Then
+            WaitForTextAtBottom = True
+            Exit Function
+        End If
+
         If elapsed >= 10000 Then
-            bzhao.msgBox "ERROR: Timeout waiting for '" & targetText & "'" & vbCrLf & "Last 2 lines: " & vbCrLf & buffer23 & vbCrLf & buffer24, 16
-            Exit Sub
+            Call LogErrorMessage("Timeout waiting for '" & targetText & "'" & vbCrLf & "Last 2 lines: " & vbCrLf & buffer23 & vbCrLf & buffer24)
+            Exit Function
         End If
     Loop
-End Sub
+End Function
 
 '-----------------------------------------------------------
 ' Sends text and presses Enter

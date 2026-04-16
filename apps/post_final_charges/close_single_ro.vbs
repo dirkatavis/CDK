@@ -397,6 +397,7 @@ Function CreateReviewPromptDictionary()
     Call AddPromptToDictEx(dict, "TECHNICIAN \(Y/N\)", "Y", "<NumpadEnter>", True, False)
     Call AddPromptToDictEx(dict, "ACTUAL HOURS \(\d+\)", "0", "<NumpadEnter>", False, True)
     Call AddPromptToDictEx(dict, "SOLD HOURS( \(\d+\))?\?", "0", "<NumpadEnter>", False, True)
+    Call AddPromptToDict(dict, "LINE\s+[A-Z0-9]+\s+IS\s+NOT\s+FINISHED\.\s+REVIEW\s+IT\s+ANYWAY\s*\(Y/N\)", "Y", "<NumpadEnter>", False)
     Call AddPromptToDict(dict, "ADD\s+A\s+LABOR\s+OPERATION(\s*\(N\)\?)?", "", "<Enter>", False)
     Call AddPromptToDict(dict, "ADD A LABOR OPERATION", "", "<Enter>", False)
     Call AddPromptToDict(dict, "PRESS RETURN TO CONTINUE", "", "<Enter>", False)
@@ -453,13 +454,14 @@ End Function
 ' Returns True when a success prompt is reached.
 '-----------------------------------------------------------
 Function ProcessPromptSequence(prompts, timeoutMs)
-    Dim elapsedMs, promptKey, lineToCheck, lineText, lineNotFinishedResult
+    Dim startTime, elapsed, promptKey, lineToCheck, lineText, lineNotFinishedResult
     Dim bestMatchKey, bestMatchLength, promptDetails, mainPromptText, bestMatchLineText
 
     If timeoutMs <= 0 Then timeoutMs = 10000
 
     ProcessPromptSequence = False
-    elapsedMs = 0
+    elapsed = 0
+    startTime = Timer
 
     Do
         mainPromptText = GetScreenLine(23)
@@ -496,26 +498,25 @@ Function ProcessPromptSequence(prompts, timeoutMs)
             If lineNotFinishedResult = -1 Then Exit Do
 
             If lineNotFinishedResult = 1 Then
-                elapsedMs = elapsedMs + (REVIEW_PAUSE * 3)
+                startTime = Timer  ' handler consumed real time; reset per-prompt window
             Else
             Set promptDetails = prompts.Item(bestMatchKey)
 
             If promptDetails.ResponseText <> "" And Not (HasDefaultValueInPrompt(bestMatchLineText) And Not IsYesNoPrompt(bestMatchLineText)) Then
                 bzhao.SendKey promptDetails.ResponseText
                 bzhao.Pause 100
-                elapsedMs = elapsedMs + 100
             End If
 
             If promptDetails.KeyPress <> "" Then
                 bzhao.SendKey promptDetails.KeyPress
                 bzhao.Pause 500
-                elapsedMs = elapsedMs + 500
             End If
 
             If promptDetails.IsSuccess Then
                 ProcessPromptSequence = True
                 Exit Function
             End If
+            startTime = Timer  ' successful prompt transition; reset per-prompt window
             End If
         Else
             If InStr(1, mainPromptText, "COMMAND:", vbTextCompare) = 1 Then
@@ -523,13 +524,14 @@ Function ProcessPromptSequence(prompts, timeoutMs)
                 Exit Function
             End If
             bzhao.Pause 250
-            elapsedMs = elapsedMs + 250
         End If
 
-        If elapsedMs > timeoutMs Then Exit Do
+        elapsed = Timer - startTime
+        If elapsed < 0 Then elapsed = elapsed + 86400
+        If elapsed * 1000 > timeoutMs Then Exit Do
     Loop
 
-    Call LogErrorMessage("Prompt sequence timed out after " & elapsedMs & " ms (limit " & timeoutMs & " ms)." & vbCrLf & BuildPromptAreaSnapshot())
+    Call LogErrorMessage("Prompt sequence timed out after " & Int(elapsed * 1000) & " ms (limit " & timeoutMs & " ms)." & vbCrLf & BuildPromptAreaSnapshot())
 End Function
 
 Function HandleLineNotFinishedPrompt(promptText)
