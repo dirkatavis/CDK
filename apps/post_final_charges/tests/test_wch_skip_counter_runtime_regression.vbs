@@ -4,9 +4,9 @@
 ' **AUTHOR:** GitHub Copilot
 '
 ' **FUNCTIONALITY:**
-' Regression guard for exception-aware parts gate and WCH skip gates in
-' PostFinalCharges. Verifies no-parts bypass wiring, config-driven exception
-' codes, and pagination command sequence expectations.
+' Regression guard for the exception-aware parts gate and warranty review flow
+' in PostFinalCharges. Verifies no-parts bypass wiring, config-driven exception
+' codes, blacklist gate wiring, and warranty review flow wiring.
 '-----------------------------------------------------------------------------------
 
 Option Explicit
@@ -37,6 +37,15 @@ Sub AssertContains(label, needle)
     End If
 End Sub
 
+Sub AssertAbsent(label, needle)
+    If InStr(1, g_content, needle, vbTextCompare) = 0 Then
+        WScript.Echo "[PASS] " & label
+    Else
+        WScript.Echo "[FAIL] " & label & " (should be absent: " & needle & ")"
+        failures = failures + 1
+    End If
+End Sub
+
 Function IndexOf(needle)
     IndexOf = InStr(1, g_content, needle, vbTextCompare)
 End Function
@@ -63,7 +72,7 @@ AssertContains "Description exception helper exists", "Function IsCdkLaborOnlyEx
 AssertContains "Parts gate scans P-line indicator", "Mid(buf, 6, 1) = ""P"""
 AssertContains "Parts gate reads SALE AMT column", "Mid(buf, 70, 11)"
 AssertContains "Parts gate supports labor-only bypass", "Labor-only exception matched - bypassing no-parts skip"
-AssertContains "Parts gate checks line description exceptions", "hasDescException = IsCdkLaborOnlyExceptionDesc(lineDesc)"
+AssertContains "Parts gate checks line description exceptions", "IsCdkLaborOnlyExceptionDesc("
 AssertContains "Parts gate sets explicit offending-code result", "Skipped - No parts charged: "
 
 ' Guard is wired into Closeout_Ro before status routing
@@ -80,15 +89,39 @@ AssertContains "Exception list is normalized to uppercase", "g_arrCDKExceptions(
 AssertContains "Config reader loads labor-only description exceptions", "GetIniSetting(""PostFinalCharges"", ""CDKLaborOnlyDescriptionExceptions"", ""check and adjust"")"
 AssertContains "Description exceptions normalized lowercase", "g_arrCDKDescriptionExceptions(di) = LCase(Trim(g_arrCDKDescriptionExceptions(di)))"
 
-' WCH gate is enabled/disabled by config and uses paginated detection
-AssertContains "WCH feature flag exists", "Dim g_SkipWchEnabled"
-AssertContains "WCH pagination helper is declared", "Function HasWchOnAnyDetailPage()"
-AssertContains "WCH gate uses pagination helper", "If g_SkipWchEnabled And HasWchOnAnyDetailPage() Then"
-AssertContains "WCH skip result label is preserved", "lastRoResult = ""Skipped - WCH labor type"""
-AssertContains "WCH summary line is present", "Skips - Warranty (WCH):"
-AssertContains "WCH pagination uses next-screen command", "g_bzhao.SendKey ""N"""
-AssertContains "WCH pagination uses ENTER command", "g_bzhao.SendKey ""<NumpadEnter>"""
-AssertContains "WCH pagination waits after page advance", "g_bzhao.Pause 500"
+' Blacklist gate is retained (general-purpose full-screen scan)
+AssertContains "Blacklist raw terms global is declared", "Dim g_BlacklistTermsRaw"
+AssertContains "Blacklist helper is called in main flow", "BZH_GetMatchedBlacklistTerm("
+
+' Retired WCH gate is gone
+AssertAbsent "WCH-specific skip gate is removed", "g_SkipWchEnabled"
+AssertAbsent "HasWchOnAnyDetailPage is removed", "Function HasWchOnAnyDetailPage()"
+AssertAbsent "FCA field-filling handler is removed", "Sub HandleFcaDialog("
+AssertAbsent "FCA prompt dictionary builder is removed", "Function CreateFcaPromptDictionary("
+AssertAbsent "IsWchLine hardcoded check is removed", "Function IsWchLine("
+AssertAbsent "ExtractPartNumberForFca is removed", "Function ExtractPartNumberForFca()"
+
+' Warranty review flow is present
+AssertContains "IsWarrantyLine function is declared", "Function IsWarrantyLine(lineLetterChar)"
+AssertContains "IsWarrantyLine checks config-driven array", "g_arrWarrantyLTypes"
+AssertContains "HandleWarrantyClaimsDialog sub is declared", "Sub HandleWarrantyClaimsDialog()"
+AssertContains "Dialog detects LABOR OP: prompt", "InStr(1, buf, ""LABOR OP:"", vbTextCompare)"
+AssertContains "Dialog detects COMMAND: prompt", "InStr(1, buf, ""COMMAND:"", vbTextCompare)"
+AssertContains "Dialog sends blank Enter for LABOR OP: state", "WaitForPrompt(""LABOR OP:"", """", True"
+AssertContains "Dialog sends period to skip fields in COMMAND: state", "FastText(""."")"
+AssertContains "Dialog sends E to exit in COMMAND: state", "FastText(""E"")"
+AssertContains "WarrantyLTypes config key is read", "GetIniSetting(""PostFinalCharges"", ""WarrantyLTypes"", ""WCH,WV,WF"")"
+AssertContains "WarrantyCauseText config key is read", "GetIniSetting(""PostFinalCharges"", ""WarrantyCauseText"", ""Device failure"")"
+AssertContains "g_WarrantyCauseText global is declared", "Dim g_WarrantyCauseText"
+AssertContains "CAUSE L prefix detection is present", "CAUSE L"
+AssertContains "IsWarrantyLine is called before FNL in ProcessLinesSequentially", "lineIsWarranty = IsWarrantyLine(lineLetterChar)"
+AssertContains "HandleWarrantyClaimsDialog is called after R review", "If lineIsWarranty Then"
+
+' Warranty review fires after R prompts, not after FNL
+AssertOrder "HandleWarrantyClaimsDialog fires after R review prompts", _
+    "Call ProcessPromptSequence(lineItemPrompts)", "If lineIsWarranty Then"
+AssertOrder "HandleWarrantyClaimsDialog fires after R review prompts (not FNL)", _
+    "lineIsWarranty = IsWarrantyLine(lineLetterChar)", "If lineIsWarranty Then"
 
 WScript.Echo ""
 If failures = 0 Then

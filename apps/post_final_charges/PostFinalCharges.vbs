@@ -60,8 +60,8 @@ Dim g_SkipOtherStates
 Dim g_SkipRoListRaw
 Dim g_SkipRoLookup
 Dim g_SkipConfiguredCount
-Dim g_SkipWarrantyCount
-Dim g_SkipWchEnabled
+Dim g_arrWarrantyLTypes
+Dim g_WarrantyCauseText
 Dim g_SkipPartsOrderNeededCount
 Dim g_PartsOrderKeywords
 Dim g_PartsOrderNegators
@@ -75,8 +75,7 @@ Dim g_SkipVehidNotOnFileCount
 Dim g_SkipNoCloseoutTextCount
 Dim g_SkipNoPartsChargedCount
 Dim g_LeftOpenManualCount
-Dim g_FcaMissingPartFlagCount
-Dim g_FcaHandlerNotConfiguredCount
+
 Dim g_ErrorInMainCount
 Dim g_NoResultRecordedCount
 Dim g_SummaryOtherOutcomeCount
@@ -1185,141 +1184,30 @@ Function EvaluatePartsChargedGate(ByRef skipReason)
 End Function
 
 '-----------------------------------------------------------------------------------
-' **FUNCTION NAME:** HasWchOnAnyDetailPage
-' **DATE CREATED:** 2026-04-15
-' **AUTHOR:** GitHub Copilot
-'
-' **FUNCTIONALITY:**
-' Scans RO detail pages for WCH labor type with pagination awareness.
-' Stops scanning as soon as WCH is found or when END OF DISPLAY is reached.
-' Uses row 22 pagination markers and advances via N + <NumpadEnter>.
-'
-' **RETURNS:** True when WCH is found on any page; otherwise False.
-'-----------------------------------------------------------------------------------
-Function HasWchOnAnyDetailPage()
-    Dim row, buf, pageIndicator
-    Dim foundWch, doneScanning
-    Dim pagesAdvanced, p
-    Dim preSig, postSig, preSig2, postSig2, preMarker, postMarker
-    Dim maxPageAdvances
-
-    HasWchOnAnyDetailPage = False
-    pagesAdvanced = 0
-    doneScanning = False
-    maxPageAdvances = 50
-
-    Do While Not doneScanning
-        foundWch = False
-
-        ' Scan current detail page (rows 9-22)
-        On Error Resume Next
-        For row = 9 To 22
-            buf = ""
-            g_bzhao.ReadScreen buf, 80, row, 1
-            If Err.Number <> 0 Then
-                Err.Clear
-            Else
-                If InStr(1, buf, "WCH", vbTextCompare) > 0 Then
-                    foundWch = True
-                    Exit For
-                End If
-            End If
-        Next
-        On Error GoTo 0
-
-        If foundWch Then
-            HasWchOnAnyDetailPage = True
-            doneScanning = True
-        Else
-            pageIndicator = ""
-            On Error Resume Next
-            g_bzhao.ReadScreen pageIndicator, 80, 22, 1
-            If Err.Number <> 0 Then Err.Clear
-            On Error GoTo 0
-
-            If InStr(1, pageIndicator, "(END OF DISPLAY)", vbTextCompare) > 0 Then
-                doneScanning = True
-            ElseIf InStr(1, pageIndicator, "(MORE ON NEXT SCREEN)", vbTextCompare) > 0 Then
-                preMarker = pageIndicator
-                preSig = ""
-                preSig2 = ""
-                On Error Resume Next
-                g_bzhao.ReadScreen preSig, 80, 9, 1
-                If Err.Number <> 0 Then Err.Clear
-                g_bzhao.ReadScreen preSig2, 80, 10, 1
-                If Err.Number <> 0 Then Err.Clear
-                On Error GoTo 0
-
-                On Error Resume Next
-                g_bzhao.SendKey "N"
-                g_bzhao.SendKey "<NumpadEnter>"
-                If Err.Number <> 0 Then Err.Clear
-                On Error GoTo 0
-                g_bzhao.Pause 500
-
-                postMarker = ""
-                postSig = ""
-                postSig2 = ""
-                On Error Resume Next
-                g_bzhao.ReadScreen postMarker, 80, 22, 1
-                If Err.Number <> 0 Then Err.Clear
-                g_bzhao.ReadScreen postSig, 80, 9, 1
-                If Err.Number <> 0 Then Err.Clear
-                g_bzhao.ReadScreen postSig2, 80, 10, 1
-                If Err.Number <> 0 Then Err.Clear
-                On Error GoTo 0
-
-                If postMarker = preMarker And postSig = preSig And postSig2 = preSig2 Then
-                    doneScanning = True
-                Else
-                    pagesAdvanced = pagesAdvanced + 1
-                    If pagesAdvanced >= maxPageAdvances Then
-                        doneScanning = True
-                    End If
-                End If
-            Else
-                doneScanning = True
-            End If
-        End If
-    Loop
-
-    ' Return to page 1 so downstream flow remains on a known screen state.
-    If pagesAdvanced > 0 Then
-        For p = 1 To pagesAdvanced
-            On Error Resume Next
-            g_bzhao.SendKey "B"
-            g_bzhao.SendKey "<NumpadEnter>"
-            If Err.Number <> 0 Then Err.Clear
-            On Error GoTo 0
-            g_bzhao.Pause 500
-        Next
-    End If
-End Function
-
-'-----------------------------------------------------------------------------------
-' **FUNCTION NAME:** IsWchLine
-' **DATE CREATED:** 2026-04-10
+' **FUNCTION NAME:** IsWarrantyLine
+' **DATE CREATED:** 2026-04-16
 ' **AUTHOR:** GitHub Copilot
 '
 ' **FUNCTIONALITY:**
 ' Scans rows 9-22 for L-operations belonging to the given line letter and checks
-' whether any carry a LABOR TYPE of "WCH" (col 50-55, 1-indexed).
+' whether any carry a warranty LABOR TYPE from g_arrWarrantyLTypes (col 50-55,
+' 1-indexed). The array is loaded from config key WarrantyLTypes (default WCH,WV,WF).
 '
 ' Screen layout (from RO DETAIL header row):
 '   LC DESCRIPTION                           TECH... LTYPE    ACT   SOLD    SALE AMT
 ' Line letter headers have the letter at col 1. L-operation rows have:
 '   - col 1 = " " (space-indented)
 '   - col 4 = "L", col 5 = digit (e.g., L1, L2)
-'   - col 50-55 = LTYPE value (e.g., "WCH", "I", "B")
+'   - col 50-55 = LTYPE value (e.g., "WCH", "WV", "WF", "I", "B")
 '
 ' **PARAMETERS:**
 ' lineLetterChar - Single uppercase letter identifying the line (e.g., "A")
 '
-' **RETURNS:** True if any L-row for the given line has LTYPE = "WCH".
+' **RETURNS:** True if any L-row for the given line has a warranty LTYPE.
 '-----------------------------------------------------------------------------------
-Function IsWchLine(lineLetterChar)
-    IsWchLine = False
-    Dim row, buf, inTargetLine, firstChar
+Function IsWarrantyLine(lineLetterChar)
+    IsWarrantyLine = False
+    Dim row, buf, inTargetLine, firstChar, lTypeCode, wi
     inTargetLine = False
     For row = 9 To 22
         buf = ""
@@ -1336,51 +1224,20 @@ Function IsWchLine(lineLetterChar)
             End If
             ' Within target line, check L-rows (col 4 = "L", col 5 = digit) for LTYPE
             If inTargetLine And Mid(buf, 4, 1) = "L" And IsNumeric(Mid(buf, 5, 1)) Then
-                If Trim(Mid(buf, 50, 6)) = "WCH" Then
-                    IsWchLine = True
-                    Exit Function
+                lTypeCode = UCase(Trim(Mid(buf, 50, 6)))
+                If Len(lTypeCode) > 0 And IsArray(g_arrWarrantyLTypes) Then
+                    For wi = 0 To UBound(g_arrWarrantyLTypes)
+                        If Len(g_arrWarrantyLTypes(wi)) > 0 And lTypeCode = g_arrWarrantyLTypes(wi) Then
+                            IsWarrantyLine = True
+                            Exit Function
+                        End If
+                    Next
                 End If
             End If
         End If
     Next
 End Function
 
-'-----------------------------------------------------------------------------------
-' **FUNCTION NAME:** ExtractPartNumberForFca
-' **DATE CREATED:** 2026-04-10
-' **AUTHOR:** GitHub Copilot
-'
-' **FUNCTIONALITY:**
-' Scans rows 9-22 for the first P-line (col 6 = "P", col 7 = digit) and extracts
-' the part number from cols 9 onwards. Intended to be called BEFORE the FNL
-' command is issued (while the detail screen is clean, no dialog overlay), since
-' IsWchLine() can predict when the FCA dialog will appear.
-'
-' **RETURNS:** Part number string (e.g., "BBH6A001AA"), or "" if not found.
-'-----------------------------------------------------------------------------------
-Function ExtractPartNumberForFca()
-    Dim row, buf, partToken, spacePos
-    ExtractPartNumberForFca = ""
-    For row = 9 To 22
-        buf = ""
-        On Error Resume Next
-        g_bzhao.ReadScreen buf, 80, row, 1
-        If Err.Number <> 0 Then Err.Clear
-        On Error GoTo 0
-        If Len(buf) >= 20 Then
-            If Mid(buf, 6, 1) = "P" And IsNumeric(Mid(buf, 7, 1)) Then
-                partToken = Trim(Mid(buf, 9, 20))
-                spacePos = InStr(1, partToken, " ")
-                If spacePos > 1 Then partToken = Left(partToken, spacePos - 1)
-                If Len(partToken) > 0 Then
-                    ExtractPartNumberForFca = partToken
-                    Exit Function
-                End If
-            End If
-        End If
-    Next
-    Call LogWarn("No P-line found on screen - cannot extract part number for FCA dialog", "ExtractPartNumberForFca")
-End Function
 
 '-----------------------------------------------------------------------------------
 ' **FUNCTION NAME:** DescMatchesPartsKeyword
@@ -1496,7 +1353,7 @@ End Function
 ' Screen layout (1-indexed):
 '   Col 1     = line letter (A, B, C ...)
 '   Cols 4-41 = description (38 chars)
-'   Cols 42+  = tech code (e.g. "C92", "I91")
+'   Col 73+   = tech code (e.g. "C92", "H20", "I91") — under the TECH... header
 '
 ' An empty or blank tech code on a header row is treated as compliant
 ' (no tech assigned yet, not an unauthorized code).
@@ -1518,10 +1375,11 @@ Function GetFirstNonCompliantLineTech()
         g_bzhao.ReadScreen buf, 80, row, 1
         If Err.Number <> 0 Then Err.Clear
         On Error GoTo 0
-        If Len(buf) >= 44 Then
+        If Len(buf) >= 75 Then
             firstChar = Mid(buf, 1, 1)
             If firstChar >= "A" And firstChar <= "Z" Then
-                techCode = UCase(Trim(Mid(buf, 42, 8)))
+                techCode = UCase(Trim(Mid(buf, 73, 6)))
+                Call LogInfo("Tech gate: Line " & firstChar & " raw read [" & techCode & "]", "GetFirstNonCompliantLineTech")
                 If Len(techCode) > 0 Then
                     isAllowed = False
                     For i = 0 To UBound(g_AllowedTechCodes)
@@ -1541,87 +1399,107 @@ Function GetFirstNonCompliantLineTech()
 End Function
 
 '-----------------------------------------------------------------------------------
-' **FUNCTION NAME:** CreateFcaPromptDictionary
-' **DATE CREATED:** 2026-04-10
+' **PROCEDURE NAME:** HandleWarrantyClaimsDialog
+' **DATE CREATED:** 2026-04-16
 ' **AUTHOR:** GitHub Copilot
 '
 ' **FUNCTIONALITY:**
-' Builds the prompt dictionary for the FCA Global Claims Information dialog.
-' Uses the same AddPromptToDict pattern as CreateLineItemPromptDictionary().
+' Navigates the FCA Global Claims Information dialog that appears as an overlay
+' during the R command review flow for warranty labor-type lines (WCH, WV, WF, etc.).
 '
-' The Condition Code footer prompt is confirmed from screen capture.
-' Remaining field footer prompts are marked TODO and require a live WCH POC
-' session to determine exact text before those entries can be activated.
+' The dialog opens in one of two states depending on how many L-operations are on
+' the line:
 '
-' **PARAMETERS:**
-' partNumber   - Failed Part Number extracted from P1 line on RO detail screen
-' condCode     - Condition Code value ("1", "2", or "3") from config
-' causalLop    - Causal LOP answer ("Y" or "N") from config
-' calEmissions - Cal. Emissions answer ("Y" or "N") from config
+'   LABOR OP: (multiple L-ops) — CDK cannot auto-select which op the claim is for;
+'     blank Enter closes the dialog. After closing, CDK may issue one or more
+'     CAUSE Ln: prompts at the terminal prompt line (lower left); each receives the
+'     configured WarrantyCauseText response (default "Device failure").
+'
+'   COMMAND: (single L-op) — CDK pre-fills the form; cursor starts at Claim Type:.
+'     Send . + Enter to skip all fields to COMMAND:, then E + Enter to exit.
+'
+' Polls rows 20-24 to detect which prompt is present, then responds accordingly.
 '-----------------------------------------------------------------------------------
-Function CreateFcaPromptDictionary(partNumber, condCode, causalLop, calEmissions)
-    Dim dict
-    Set dict = CreateObject("Scripting.Dictionary")
-    ' Condition Code: footer confirmed from screen capture (2026-04-10)
-    Call AddPromptToDict(dict, "Enter 1, 2, or 3 for the Condition Code.", condCode, "<NumpadEnter>", False)
-    ' TODO POC: Add footer prompts for Causal LOP, Cal. Emissions, Failure Code,
-    '           and Failed Part Number once verified via live WCH session.
-    ' Example (uncomment and update text after POC):
-    '   Call AddPromptToDict(dict, "<causal lop footer text>", causalLop, "<NumpadEnter>", False)
-    '   Call AddPromptToDict(dict, "<cal emissions footer text>", calEmissions, "<NumpadEnter>", False)
-    '   Call AddPromptToDict(dict, "<failed part number footer text>", partNumber, "<NumpadEnter>", False)
-    '   Call AddPromptToDict(dict, "<failure code footer text>", "", "<NumpadEnter>", False)
-    Set CreateFcaPromptDictionary = dict
-End Function
+Sub HandleWarrantyClaimsDialog()
+    Call LogInfo("Warranty claims dialog: detecting prompt", "HandleWarrantyClaimsDialog")
 
-'-----------------------------------------------------------------------------------
-' **PROCEDURE NAME:** HandleFcaDialog
-' **DATE CREATED:** 2026-04-10
-' **AUTHOR:** GitHub Copilot
-'
-' **FUNCTIONALITY:**
-' Detects and handles the FCA Global Claims Information dialog that appears when
-' a WCH labor-type line is finalized. Extracts the Failed Part Number from the
-' background RO detail screen (left portion, unobscured by dialog overlay), reads
-' config values for Condition Code and Y/N fields, then drives field entry via
-' ProcessPromptSequence.
-'
-' If no part number is found, the RO is flagged for manual review and the script
-' is halted (g_ShouldAbort = True) so the operator can intervene.
-'-----------------------------------------------------------------------------------
-Sub HandleFcaDialog(prePartNumber)
-    Call LogInfo("FCA warranty dialog detected", "HandleFcaDialog")
+    Dim buf, row, detected, i
+    detected = ""
+    For i = 1 To 50
+        For row = 20 To 24
+            buf = ""
+            On Error Resume Next
+            g_bzhao.ReadScreen buf, 80, row, 1
+            If Err.Number <> 0 Then Err.Clear
+            On Error GoTo 0
+            If InStr(1, buf, "LABOR OP:", vbTextCompare) > 0 Then
+                detected = "LABOROP"
+                Exit For
+            End If
+            If InStr(1, buf, "COMMAND:", vbTextCompare) > 0 Then
+                detected = "COMMAND"
+                Exit For
+            End If
+        Next
+        If Len(detected) > 0 Then Exit For
+        Call WaitMs(100)
+    Next
 
-    ' Feature flag: disabled until field values are confirmed with management
-    If LCase(Trim(GetIniSetting("PostFinalCharges", "FcaDialogEnabled", "false"))) <> "true" Then
-        Call LogWarn("FCA dialog handler is disabled (FcaDialogEnabled=false). WCH RO requires manual review.", "HandleFcaDialog")
-        lastRoResult = "Skipped - FCA dialog handler not yet configured"
-        Exit Sub
+    If detected = "LABOROP" Then
+        Call LogInfo("Warranty claims dialog: LABOR OP prompt detected (multiple L-ops)", "HandleWarrantyClaimsDialog")
+        Call LogInfo("Warranty claims dialog: sending blank Enter to close LABOR OP: dialog", "HandleWarrantyClaimsDialog")
+        Call WaitForPrompt("LABOR OP:", "", True, 5000, "")
+        Call WaitMs(2000)
+
+        ' After the LABOR OP: dialog closes, CDK may issue CAUSE Ln: prompts
+        ' (e.g. CAUSE L1:, CAUSE L2:) at the terminal prompt line. The suffix
+        ' number varies by L-op count so we match on the "CAUSE L" prefix.
+        ' Cap at 10 CAUSE prompts.
+        Dim causeRow, causeBuf, causeFound, ci
+        For ci = 1 To 10
+            causeFound = False
+            For causeRow = 20 To 24
+                causeBuf = ""
+                On Error Resume Next
+                g_bzhao.ReadScreen causeBuf, 80, causeRow, 1
+                If Err.Number <> 0 Then Err.Clear
+                On Error GoTo 0
+                If InStr(1, causeBuf, "CAUSE L", vbTextCompare) > 0 Then
+                    causeFound = True
+                    Exit For
+                End If
+            Next
+            If Not causeFound Then Exit For
+            Call LogInfo("Warranty claims dialog: CAUSE L prompt detected", "HandleWarrantyClaimsDialog")
+            Call WaitMs(2000)
+            Call LogInfo("Warranty claims dialog: sending cause text [" & g_WarrantyCauseText & "]", "HandleWarrantyClaimsDialog")
+            Call FastText(g_WarrantyCauseText)
+            Call WaitMs(1000)
+            Call LogInfo("Warranty claims dialog: sending Enter to confirm cause text", "HandleWarrantyClaimsDialog")
+            Call FastKey("<NumpadEnter>")
+            Call WaitMs(1000)
+        Next
+
+    ElseIf detected = "COMMAND" Then
+        Call LogInfo("Warranty claims dialog: COMMAND prompt detected (single L-op)", "HandleWarrantyClaimsDialog")
+        Call WaitMs(2000)
+        Call LogInfo("Warranty claims dialog: sending . to skip all fields to COMMAND:", "HandleWarrantyClaimsDialog")
+        Call FastText(".")
+        Call WaitMs(1000)
+        Call LogInfo("Warranty claims dialog: sending Enter after .", "HandleWarrantyClaimsDialog")
+        Call FastKey("<NumpadEnter>")
+        Call WaitMs(2000)
+        Call LogInfo("Warranty claims dialog: sending E to exit", "HandleWarrantyClaimsDialog")
+        Call FastText("E")
+        Call WaitMs(1000)
+        Call LogInfo("Warranty claims dialog: sending Enter to confirm exit", "HandleWarrantyClaimsDialog")
+        Call FastKey("<NumpadEnter>")
+        Call WaitMs(1000)
+    Else
+        Call LogWarn("Warranty claims dialog: no known prompt detected within timeout", "HandleWarrantyClaimsDialog")
     End If
 
-    Call LogInfo("Beginning automated FCA field entry", "HandleFcaDialog")
-
-    ' Read config values
-    Dim condCode, causalLop, calEmissions
-    condCode     = Trim(GetIniSetting("PostFinalCharges", "FcaConditionCode", "1"))
-    causalLop    = Trim(GetIniSetting("PostFinalCharges", "FcaCausalLop", "Y"))
-    calEmissions = Trim(GetIniSetting("PostFinalCharges", "FcaCalEmissions", "N"))
-
-    ' Use pre-captured part number (extracted before FNL, no dialog overlay).
-    ' prePartNumber is supplied by the caller who called IsWchLine() + ExtractPartNumberForFca()
-    ' before issuing the FNL command.
-    If Len(prePartNumber) = 0 Then
-        Call LogWarn("Cannot automate FCA dialog: no part number was pre-captured. Flagging for manual review.", "HandleFcaDialog")
-        lastRoResult = "Flagged - Missing part number for FCA dialog"
-        g_ShouldAbort = True
-        Exit Sub
-    End If
-    Call LogInfo("Using pre-captured part number for FCA dialog: " & prePartNumber, "HandleFcaDialog")
-
-    ' Drive field entry via prompt sequence
-    Call ProcessPromptSequence(CreateFcaPromptDictionary(prePartNumber, condCode, causalLop, calEmissions))
-
-    Call LogInfo("FCA dialog processing complete", "HandleFcaDialog")
+    Call LogInfo("Warranty claims dialog: complete", "HandleWarrantyClaimsDialog")
 End Sub
 
 '-----------------------------------------------------------------------------------
@@ -2059,7 +1937,6 @@ Sub RunMainProcess()
 
             accountedTotal = g_FiledROCount + _
                 g_SkipConfiguredCount + _
-                g_SkipWarrantyCount + _
                 g_SkipTechCodeCount + _
                 g_SkipPartsOrderNeededCount + _
                 g_SkipBlacklistCount + _
@@ -2072,8 +1949,6 @@ Sub RunMainProcess()
                 g_SkipNoCloseoutTextCount + _
                 g_SkipNoPartsChargedCount + _
                 g_LeftOpenManualCount + _
-                g_FcaMissingPartFlagCount + _
-                g_FcaHandlerNotConfiguredCount + _
                 g_ErrorInMainCount + _
                 g_NoResultRecordedCount + _
                 g_SummaryOtherOutcomeCount
@@ -2082,7 +1957,6 @@ Sub RunMainProcess()
                 "ROs Reviewed: " & g_ReviewedROCount & vbCrLf & _
                 "ROs Posted: " & g_FiledROCount & vbCrLf & _
                 "Skips - Specific ROs: " & g_SkipConfiguredCount & vbCrLf & _
-                "Skips - Warranty (WCH): " & g_SkipWarrantyCount & vbCrLf & _
                 "Skips - Non-compliant tech code: " & g_SkipTechCodeCount & vbCrLf & _
                 "Skips - Parts Order Needed: " & g_SkipPartsOrderNeededCount & vbCrLf & _
                 "Skips - Other Terms: " & g_SkipBlacklistCount & vbCrLf & _
@@ -2095,8 +1969,6 @@ Sub RunMainProcess()
                 "Skipped - No closeout text: " & g_SkipNoCloseoutTextCount & vbCrLf & _
                 "Skipped - No parts charged: " & g_SkipNoPartsChargedCount & vbCrLf & _
                 "Left Open for manual closing: " & g_LeftOpenManualCount & vbCrLf & _
-                "Flagged - Missing FCA part #: " & g_FcaMissingPartFlagCount & vbCrLf & _
-                "Skipped - FCA handler not configured: " & g_FcaHandlerNotConfiguredCount & vbCrLf & _
                 "Errors in Main: " & g_ErrorInMainCount & vbCrLf & _
                 "No result recorded: " & g_NoResultRecordedCount & vbCrLf & _
                 "Other Outcomes: " & g_SummaryOtherOutcomeCount & vbCrLf & _
@@ -2543,12 +2415,27 @@ Sub InitializeConfig()
     g_EmployeeNumber = GetIniSetting("PostFinalCharges", "EmployeeNumber", "")
     g_EmployeeNameConfirm = GetIniSetting("PostFinalCharges", "EmployeeNameConfirm", "")
 
-    Dim skipWchValue
-    skipWchValue = LCase(Trim(GetIniSetting("PostFinalCharges", "SkipWchLabor", "true")))
-    g_SkipWchEnabled = (skipWchValue = "true" Or skipWchValue = "1" Or skipWchValue = "yes")
-    Dim wchGateState : wchGateState = "disabled"
-    If g_SkipWchEnabled Then wchGateState = "enabled"
-    Call LogEvent("comm", "high", "WCH skip gate: " & wchGateState, "InitializeConfig", "", "")
+    Dim warrantyLTypesRaw, wli
+    warrantyLTypesRaw = GetIniSetting("PostFinalCharges", "WarrantyLTypes", "WCH,WV,WF")
+    Dim warrantyLTypesArr : warrantyLTypesArr = Split(warrantyLTypesRaw, ",")
+    Dim warrantyLTypesFiltered() : ReDim warrantyLTypesFiltered(0)
+    Dim warrantyLTypeCount : warrantyLTypeCount = 0
+    For wli = 0 To UBound(warrantyLTypesArr)
+        Dim wltEntry : wltEntry = UCase(Trim(warrantyLTypesArr(wli)))
+        If Len(wltEntry) > 0 Then
+            If warrantyLTypeCount > 0 Then ReDim Preserve warrantyLTypesFiltered(warrantyLTypeCount)
+            warrantyLTypesFiltered(warrantyLTypeCount) = wltEntry
+            warrantyLTypeCount = warrantyLTypeCount + 1
+        End If
+    Next
+    If warrantyLTypeCount = 0 Then
+        g_arrWarrantyLTypes = Array()
+    Else
+        g_arrWarrantyLTypes = warrantyLTypesFiltered
+    End If
+    Call LogEvent("comm", "high", "Warranty review configured", "InitializeConfig", "LTypes: " & warrantyLTypesRaw, "")
+
+    g_WarrantyCauseText = GetIniSetting("PostFinalCharges", "WarrantyCauseText", "Device failure")
 
     Dim partsOrderKeywordsRaw, partsOrderNegatorsRaw, ki
     partsOrderKeywordsRaw = GetIniSetting("PostFinalCharges", "PartsOrderKeywords", "")
@@ -2772,7 +2659,6 @@ Sub ProcessRONumbers()
     g_SkipStatusPreassignedCount = 0
     g_SkipStatusOtherCount = 0
     g_SkipConfiguredCount = 0
-    g_SkipWarrantyCount = 0
     g_SkipPartsOrderNeededCount = 0
     g_SkipTechCodeCount = 0
     g_ClosedRoCount = 0
@@ -2781,8 +2667,6 @@ Sub ProcessRONumbers()
     g_SkipNoCloseoutTextCount = 0
     g_SkipNoPartsChargedCount = 0
     g_LeftOpenManualCount = 0
-    g_FcaMissingPartFlagCount = 0
-    g_FcaHandlerNotConfiguredCount = 0
     g_ErrorInMainCount = 0
     g_NoResultRecordedCount = 0
     g_SummaryOtherOutcomeCount = 0
@@ -2916,14 +2800,6 @@ Sub TrackPrimaryOutcomeCounters(resultText)
     End If
     If InStr(1, normalized, "LEFT OPEN FOR MANUAL CLOSING", vbTextCompare) = 1 Then
         g_LeftOpenManualCount = g_LeftOpenManualCount + 1
-        Exit Sub
-    End If
-    If InStr(1, normalized, "FLAGGED - MISSING PART NUMBER FOR FCA DIALOG", vbTextCompare) = 1 Then
-        g_FcaMissingPartFlagCount = g_FcaMissingPartFlagCount + 1
-        Exit Sub
-    End If
-    If InStr(1, normalized, "SKIPPED - FCA DIALOG HANDLER NOT YET CONFIGURED", vbTextCompare) = 1 Then
-        g_FcaHandlerNotConfiguredCount = g_FcaHandlerNotConfiguredCount + 1
         Exit Sub
     End If
     If InStr(1, normalized, "ERROR IN MAIN:", vbTextCompare) = 1 Then
@@ -3370,19 +3246,6 @@ Sub Main(roNumber)
         Call FastKey("<NumpadEnter>")
         Call WaitForPrompt("COMMAND:", "", False, 5000, "")
         lastRoResult = "Skipped - Configured RO skip list"
-        Exit Sub
-    End If
-
-    ' --- WARRANTY SKIP GATE ---
-    ' Allow 1000ms for RO detail lines (including LTYPE) to fully render before scanning.
-    Call WaitMs(1000)
-    If g_SkipWchEnabled And HasWchOnAnyDetailPage() Then
-        g_SkipWarrantyCount = g_SkipWarrantyCount + 1
-        Call LogEvent("comm", "med", "Warranty labor type detected - skipping RO", "Main", "WCH found on RO: " & currentRODisplay, "")
-        Call FastText("E")
-        Call FastKey("<NumpadEnter>")
-        Call WaitForPrompt("COMMAND:", "", False, 5000, "")
-        lastRoResult = "Skipped - WCH labor type"
         Exit Sub
     End If
 
@@ -4627,18 +4490,9 @@ Sub ProcessLineItems()
 
     ' Phase 1: Run FNL commands for all lines (A through Z)
     Call LogEvent("comm", "high", "Phase 1: Running FNL commands for all lines", "ProcessLineItems", "", "")
-    Dim pliPrePartNum
     For i = 65 To 90 ' ASCII for A to Z
         lineLetterChar = Chr(i)
         Call LogEvent("comm", "high", "Running FNL " & lineLetterChar & " command", "ProcessLineItems", "", "")
-
-        ' Pre-detect WCH labor type BEFORE sending FNL so part number can be captured
-        ' from the clean detail screen (no dialog overlay yet).
-        pliPrePartNum = ""
-        If IsWchLine(lineLetterChar) Then
-            Call LogInfo("WCH labor type detected on line " & lineLetterChar & " - pre-capturing part number", "ProcessLineItems")
-            pliPrePartNum = ExtractPartNumberForFca()
-        End If
 
         ' Send the FNL command and let ProcessPromptSequence handle any prompts that appear
         Call FastText("FNL " & lineLetterChar)
@@ -4663,12 +4517,6 @@ Sub ProcessLineItems()
 
         ' Track successful line for better reporting
         g_LastSuccessfulLine = lineLetterChar
-
-        ' Handle FCA warranty dialog if it appeared after FNL (predicted by IsWchLine above)
-        If IsTextPresent("FCA GLOBAL CLAIMS INFORMATION") Then
-            Call LogInfo("FCA warranty dialog present on line " & lineLetterChar & " - handling", "ProcessLineItems")
-            Call HandleFcaDialog(pliPrePartNum)
-        End If
 
         ' Process any other prompts that appear (including technician assignment)
         Call ProcessPromptSequence(lineItemPrompts)
@@ -4886,14 +4734,9 @@ Sub ProcessLinesSequentially()
         lineLetterChar = Chr(i)
         Call LogEvent("comm", "high", "Processing line " & lineLetterChar & " - Finish then Review", "ProcessLinesSequentially", "", "")
         
-        ' Pre-detect WCH labor type BEFORE sending FNL so part number can be captured
-        ' from the clean detail screen (no dialog overlay yet).
-        Dim fcaPrePartNum
-        fcaPrePartNum = ""
-        If IsWchLine(lineLetterChar) Then
-            Call LogInfo("WCH labor type detected on line " & lineLetterChar & " - pre-capturing part number", "ProcessLinesSequentially")
-            fcaPrePartNum = ExtractPartNumberForFca()
-        End If
+        ' Detect warranty labor type so we know to handle the claims dialog after R review.
+        Dim lineIsWarranty
+        lineIsWarranty = IsWarrantyLine(lineLetterChar)
 
         ' Step 1: Finish the line with FNL command FIRST (to ensure it's complete before reviewing)
         Call LogEvent("comm", "high", "Running FNL " & lineLetterChar & " command", "ProcessLinesSequentially", "", "")
@@ -4920,11 +4763,6 @@ Sub ProcessLinesSequentially()
         If IsTextPresent("LINE " & lineLetterChar & " IS ALREADY FINISHED") Then
             Call LogEvent("comm", "high", "Line " & lineLetterChar & " already finished", "ProcessLinesSequentially", "Skipping FNL processing", "")
         Else
-            ' Handle FCA warranty dialog if it appeared after FNL (predicted by IsWchLine above)
-            If IsTextPresent("FCA GLOBAL CLAIMS INFORMATION") Then
-                Call LogInfo("FCA warranty dialog present on line " & lineLetterChar & " - handling", "ProcessLinesSequentially")
-                Call HandleFcaDialog(fcaPrePartNum)
-            End If
             ' Process FNL prompts for this line
             Call LogDebug("Processing FNL " & lineLetterChar & " prompts", "ProcessLinesSequentially")
             Call ProcessPromptSequence(fnlPrompts)
@@ -4941,7 +4779,13 @@ Sub ProcessLinesSequentially()
         ' Process review prompts for this line (R command produces prompts immediately, not a screen)
         Call LogDebug("Processing R " & lineLetterChar & " prompts", "ProcessLinesSequentially")
         Call ProcessPromptSequence(lineItemPrompts)
-        
+
+        ' Handle warranty claims dialog (appears after ADD A LABOR OPERATION prompt for warranty lines)
+        If lineIsWarranty Then
+            Call LogInfo("Warranty line " & lineLetterChar & " - handling claims dialog", "ProcessLinesSequentially")
+            Call HandleWarrantyClaimsDialog()
+        End If
+
         ' Track successful line processing
         g_LastSuccessfulLine = lineLetterChar
         Call LogInfo("Completed sequential processing for line " & lineLetterChar, "ProcessLinesSequentially")
