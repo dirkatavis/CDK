@@ -60,8 +60,8 @@ Dim g_SkipOtherStates
 Dim g_SkipRoListRaw
 Dim g_SkipRoLookup
 Dim g_SkipConfiguredCount
-Dim g_SkipWarrantyCount
-Dim g_SkipWchEnabled
+Dim g_SkipBlockedLTypeCount
+Dim g_arrSkipLaborLTypes
 Dim g_SkipPartsOrderNeededCount
 Dim g_PartsOrderKeywords
 Dim g_PartsOrderNegators
@@ -1185,50 +1185,57 @@ Function EvaluatePartsChargedGate(ByRef skipReason)
 End Function
 
 '-----------------------------------------------------------------------------------
-' **FUNCTION NAME:** HasWchOnAnyDetailPage
-' **DATE CREATED:** 2026-04-15
+' **FUNCTION NAME:** HasBlockedLTypeOnAnyPage
+' **DATE CREATED:** 2026-04-16
 ' **AUTHOR:** GitHub Copilot
 '
 ' **FUNCTIONALITY:**
-' Scans RO detail pages for WCH labor type with pagination awareness.
-' Stops scanning as soon as WCH is found or when END OF DISPLAY is reached.
+' Scans all RO detail pages for L-rows whose LTYPE (col 50-55) matches any entry
+' in g_arrSkipLaborLTypes (e.g. WCH, WV, WF). Stops as soon as a match is found.
 ' Uses row 22 pagination markers and advances via N + <NumpadEnter>.
+' Consistent with IsWchLine() column conventions (col 50-55 for LTYPE).
 '
-' **RETURNS:** True when WCH is found on any page; otherwise False.
+' **RETURNS:** The matched LTYPE string (e.g. "WCH") if blocked; empty string if clear.
 '-----------------------------------------------------------------------------------
-Function HasWchOnAnyDetailPage()
+Function HasBlockedLTypeOnAnyPage()
     Dim row, buf, pageIndicator
-    Dim foundWch, doneScanning
+    Dim matchedLType, doneScanning
     Dim pagesAdvanced, p
     Dim preSig, postSig, preSig2, postSig2, preMarker, postMarker
-    Dim maxPageAdvances
+    Dim maxPageAdvances, i, lTypeCode
 
-    HasWchOnAnyDetailPage = False
+    HasBlockedLTypeOnAnyPage = ""
     pagesAdvanced = 0
     doneScanning = False
     maxPageAdvances = 50
 
     Do While Not doneScanning
-        foundWch = False
+        matchedLType = ""
 
-        ' Scan current detail page (rows 9-22)
+        ' Scan current detail page L-rows (rows 9-22), LTYPE at col 50-55.
         On Error Resume Next
         For row = 9 To 22
             buf = ""
             g_bzhao.ReadScreen buf, 80, row, 1
             If Err.Number <> 0 Then
                 Err.Clear
-            Else
-                If InStr(1, buf, "WCH", vbTextCompare) > 0 Then
-                    foundWch = True
-                    Exit For
+            ElseIf Len(buf) >= 55 And Mid(buf, 4, 1) = "L" And IsNumeric(Mid(buf, 5, 1)) Then
+                lTypeCode = UCase(Trim(Mid(buf, 50, 6)))
+                If IsArray(g_arrSkipLaborLTypes) Then
+                    For i = 0 To UBound(g_arrSkipLaborLTypes)
+                        If lTypeCode = g_arrSkipLaborLTypes(i) Then
+                            matchedLType = lTypeCode
+                            Exit For
+                        End If
+                    Next
                 End If
+                If Len(matchedLType) > 0 Then Exit For
             End If
         Next
         On Error GoTo 0
 
-        If foundWch Then
-            HasWchOnAnyDetailPage = True
+        If Len(matchedLType) > 0 Then
+            HasBlockedLTypeOnAnyPage = matchedLType
             doneScanning = True
         Else
             pageIndicator = ""
@@ -2059,7 +2066,7 @@ Sub RunMainProcess()
 
             accountedTotal = g_FiledROCount + _
                 g_SkipConfiguredCount + _
-                g_SkipWarrantyCount + _
+                g_SkipBlockedLTypeCount + _
                 g_SkipTechCodeCount + _
                 g_SkipPartsOrderNeededCount + _
                 g_SkipBlacklistCount + _
@@ -2082,7 +2089,7 @@ Sub RunMainProcess()
                 "ROs Reviewed: " & g_ReviewedROCount & vbCrLf & _
                 "ROs Posted: " & g_FiledROCount & vbCrLf & _
                 "Skips - Specific ROs: " & g_SkipConfiguredCount & vbCrLf & _
-                "Skips - Warranty (WCH): " & g_SkipWarrantyCount & vbCrLf & _
+                "Skips - Blocked LTYPE: " & g_SkipBlockedLTypeCount & vbCrLf & _
                 "Skips - Non-compliant tech code: " & g_SkipTechCodeCount & vbCrLf & _
                 "Skips - Parts Order Needed: " & g_SkipPartsOrderNeededCount & vbCrLf & _
                 "Skips - Other Terms: " & g_SkipBlacklistCount & vbCrLf & _
@@ -2543,12 +2550,13 @@ Sub InitializeConfig()
     g_EmployeeNumber = GetIniSetting("PostFinalCharges", "EmployeeNumber", "")
     g_EmployeeNameConfirm = GetIniSetting("PostFinalCharges", "EmployeeNameConfirm", "")
 
-    Dim skipWchValue
-    skipWchValue = LCase(Trim(GetIniSetting("PostFinalCharges", "SkipWchLabor", "true")))
-    g_SkipWchEnabled = (skipWchValue = "true" Or skipWchValue = "1" Or skipWchValue = "yes")
-    Dim wchGateState : wchGateState = "disabled"
-    If g_SkipWchEnabled Then wchGateState = "enabled"
-    Call LogEvent("comm", "high", "WCH skip gate: " & wchGateState, "InitializeConfig", "", "")
+    Dim skipLaborLTypesRaw, sli
+    skipLaborLTypesRaw = GetIniSetting("PostFinalCharges", "SkipLaborLTypes", "WCH,WV,WF")
+    g_arrSkipLaborLTypes = Split(skipLaborLTypesRaw, ",")
+    For sli = 0 To UBound(g_arrSkipLaborLTypes)
+        g_arrSkipLaborLTypes(sli) = UCase(Trim(g_arrSkipLaborLTypes(sli)))
+    Next
+    Call LogEvent("comm", "high", "Blocked LTYPE gate configured", "InitializeConfig", "SkipLaborLTypes: " & skipLaborLTypesRaw, "")
 
     Dim partsOrderKeywordsRaw, partsOrderNegatorsRaw, ki
     partsOrderKeywordsRaw = GetIniSetting("PostFinalCharges", "PartsOrderKeywords", "")
@@ -2772,7 +2780,7 @@ Sub ProcessRONumbers()
     g_SkipStatusPreassignedCount = 0
     g_SkipStatusOtherCount = 0
     g_SkipConfiguredCount = 0
-    g_SkipWarrantyCount = 0
+    g_SkipBlockedLTypeCount = 0
     g_SkipPartsOrderNeededCount = 0
     g_SkipTechCodeCount = 0
     g_ClosedRoCount = 0
@@ -3373,16 +3381,19 @@ Sub Main(roNumber)
         Exit Sub
     End If
 
-    ' --- WARRANTY SKIP GATE ---
+    ' --- BLOCKED LTYPE GATE ---
     ' Allow 1000ms for RO detail lines (including LTYPE) to fully render before scanning.
+    ' Scans L-rows on all detail pages; skips if any LTYPE matches SkipLaborLTypes (e.g. WCH, WV, WF).
     Call WaitMs(1000)
-    If g_SkipWchEnabled And HasWchOnAnyDetailPage() Then
-        g_SkipWarrantyCount = g_SkipWarrantyCount + 1
-        Call LogEvent("comm", "med", "Warranty labor type detected - skipping RO", "Main", "WCH found on RO: " & currentRODisplay, "")
+    Dim blockedLType
+    blockedLType = HasBlockedLTypeOnAnyPage()
+    If Len(blockedLType) > 0 Then
+        g_SkipBlockedLTypeCount = g_SkipBlockedLTypeCount + 1
+        Call LogEvent("comm", "med", "Blocked labor type detected - skipping RO", "Main", "LTYPE: " & blockedLType & " on RO: " & currentRODisplay, "")
         Call FastText("E")
         Call FastKey("<NumpadEnter>")
         Call WaitForPrompt("COMMAND:", "", False, 5000, "")
-        lastRoResult = "Skipped - WCH labor type"
+        lastRoResult = "Skipped - Blocked LTYPE: " & blockedLType
         Exit Sub
     End If
 
