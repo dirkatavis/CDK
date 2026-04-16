@@ -4,9 +4,9 @@
 ' **AUTHOR:** GitHub Copilot
 '
 ' **FUNCTIONALITY:**
-' Regression guard for HasPartsCharged() and WCH skip gates in PostFinalCharges.
-' Verifies parts-charged guard placement and confirms the WCH gate is present,
-' feature-flagged, and wired through pagination-aware detection.
+' Regression guard for exception-aware parts gate and WCH skip gates in
+' PostFinalCharges. Verifies no-parts bypass wiring, config-driven exception
+' codes, and pagination command sequence expectations.
 '-----------------------------------------------------------------------------------
 
 Option Explicit
@@ -56,19 +56,29 @@ End Sub
 WScript.Echo "Parts-Charged Gate Runtime Regression Test"
 WScript.Echo "==========================================="
 
-' HasPartsCharged function is present
-AssertContains "HasPartsCharged function is declared", "Function HasPartsCharged()"
-AssertContains "HasPartsCharged scans P-line indicator", "Mid(buf, 6, 1) = ""P"""
-AssertContains "HasPartsCharged reads SALE AMT column", "Mid(buf, 70, 11)"
-AssertContains "HasPartsCharged returns True on positive amount", "HasPartsCharged = True"
+' Exception-aware parts gate functions are present
+AssertContains "EvaluatePartsChargedGate function is declared", "Function EvaluatePartsChargedGate(ByRef skipReason)"
+AssertContains "Exception tech-code helper exists", "Function IsCdkLaborOnlyExceptionTech(techCode)"
+AssertContains "Description exception helper exists", "Function IsCdkLaborOnlyExceptionDesc(descText)"
+AssertContains "Parts gate scans P-line indicator", "Mid(buf, 6, 1) = ""P"""
+AssertContains "Parts gate reads SALE AMT column", "Mid(buf, 70, 11)"
+AssertContains "Parts gate supports labor-only bypass", "Labor-only exception matched - bypassing no-parts skip"
+AssertContains "Parts gate checks line description exceptions", "hasDescException = IsCdkLaborOnlyExceptionDesc(lineDesc)"
+AssertContains "Parts gate sets explicit offending-code result", "Skipped - No parts charged: "
 
 ' Guard is wired into Closeout_Ro before status routing
-AssertContains "Closeout_Ro calls HasPartsCharged", "If Not HasPartsCharged() Then"
-AssertContains "Skip result label is correct", "lastRoResult = ""Skipped - No parts charged"""
+AssertContains "Closeout_Ro calls EvaluatePartsChargedGate", "If Not EvaluatePartsChargedGate(noPartsSkipReason) Then"
+AssertContains "Closeout_Ro writes dynamic skip reason", "lastRoResult = noPartsSkipReason"
 
 ' Guard fires before FC/F commands (guard appears before Closeout_ReadyToPost)
 AssertOrder "Parts guard precedes READY TO POST closeout", _
-    "If Not HasPartsCharged() Then", "Call Closeout_ReadyToPost()"
+    "If Not EvaluatePartsChargedGate(noPartsSkipReason) Then", "Call Closeout_ReadyToPost()"
+
+' Exception list is config-driven
+AssertContains "Config reader loads labor-only exceptions", "GetIniSetting(""PostFinalCharges"", ""CDKLaborOnlyLTypeExceptions"", ""WCH,WT,WF"")"
+AssertContains "Exception list is normalized to uppercase", "g_arrCDKExceptions(ei) = UCase(Trim(g_arrCDKExceptions(ei)))"
+AssertContains "Config reader loads labor-only description exceptions", "GetIniSetting(""PostFinalCharges"", ""CDKLaborOnlyDescriptionExceptions"", ""check and adjust"")"
+AssertContains "Description exceptions normalized lowercase", "g_arrCDKDescriptionExceptions(di) = LCase(Trim(g_arrCDKDescriptionExceptions(di)))"
 
 ' WCH gate is enabled/disabled by config and uses paginated detection
 AssertContains "WCH feature flag exists", "Dim g_SkipWchEnabled"

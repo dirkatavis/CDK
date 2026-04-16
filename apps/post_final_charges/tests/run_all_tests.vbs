@@ -125,6 +125,9 @@ Sub Main()
     ' Test 22: Process-lock recovery runtime regression
     RunTest "Process Lock Runtime Regression", "cscript.exe test_process_lock_runtime_regression.vbs"
 
+    ' Test 23: Labor-only exception + no-parts pagination behavior
+    RunTest "CDK Labor Exceptions Pagination", "cscript.exe test_cdk_labor_exceptions_pagination.vbs"
+
     ' Summary
     WScript.Echo ""
     WScript.Echo "=== Test Results Summary ==="
