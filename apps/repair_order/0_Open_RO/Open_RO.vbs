@@ -18,8 +18,8 @@ ExecuteGlobal g_fso.OpenTextFile(g_fso.BuildPath(g_root, "framework\BZHelper.vbs
 ' --- Configuration Constants ---
 Const POLL_INTERVAL = 1000   ' Check every 1000ms (1 time per second)
 Const POST_ENTRY_WAIT = 200  ' Minimal wait after entry
-Const PRE_KEY_WAIT = 150     ' Pause before sending special keys
-Const POST_KEY_WAIT = 350    ' Pause after sending special keys
+Const PRE_KEY_WAIT = 1000    ' Pause before sending special keys
+Const POST_KEY_WAIT = 1000   ' Pause after sending special keys
 Const PROMPT_TIMEOUT_MS = 5000 ' Default prompt timeout
 Const LOG_LEVEL_LOW = 1
 Const LOG_LEVEL_MED = 2
@@ -90,7 +90,7 @@ Sub Main(mva, mileage)
     '==== INPUT POINT 1: BEFORE ENTERING MVA ====
     ' NEED TO IDENTIFY: What prompt appears when CDK is ready for Vehicle ID?
     ' CURRENT: Using "Vehid....." - NEEDS VERIFICATION
-    WaitForPrompt "Vehid.....", mva, True, PROMPT_TIMEOUT_MS, ""
+    WaitForPromptSlow "Vehid.....", mva, True, PROMPT_TIMEOUT_MS, ""
     ' g_bzhao.Pause 1000
 
 
@@ -99,94 +99,94 @@ Sub Main(mva, mileage)
 
     '==== INPUT POINT 1B: SEQUENCE NUMBER SELECTION ====
     ' Handles "CHOOSE ONE" or "SEQUENCE NUMBER" prompt - select option #1
-    WaitForPrompt "CHOOSE ONE|SEQUENCE NUMBER", "1", True, PROMPT_TIMEOUT_MS, ""
+    WaitForPromptSlow "CHOOSE ONE|SEQUENCE NUMBER", "1", True, PROMPT_TIMEOUT_MS, ""
 
     '==== INPUT POINT 2: BEFORE ENTERING COMMAND SELECTION ====
     ' NEED TO IDENTIFY: What menu/prompt shows before selecting command?
     ' CURRENT: Looking for "Command?" - NEEDS VERIFICATION
-    WaitForPrompt "Command?", "<NumpadEnter>", False, PROMPT_TIMEOUT_MS, ""
+    WaitForPromptSlow "Command?", "<NumpadEnter>", False, PROMPT_TIMEOUT_MS, ""
     
 
 
     '==== INPUT POINT 4: BEFORE ENTERING MILEAGE ====
     ' NEED TO IDENTIFY: What prompt shows when mileage field is ready?
     ' CURRENT: Using "Miles In...:" - NEEDS VERIFICATION
-    WaitForPrompt "Miles In", mileage, True, PROMPT_TIMEOUT_MS, ""
+    WaitForPromptSlow "Miles In", mileage, True, PROMPT_TIMEOUT_MS, ""
     
 
     '==== INPUT POINT 6: BEFORE ENTERING TAG ====
     ' NEED TO IDENTIFY: What field label appears for tag entry?
     ' CURRENT: Using "Tag......" - NEEDS VERIFICATION
-    WaitForPrompt "Tag......", mva, True, PROMPT_TIMEOUT_MS, ""
+    WaitForPromptSlow "Tag......", mva, True, PROMPT_TIMEOUT_MS, ""
     ' g_bzhao.Pause 1000
 
     '==== INPUT POINT 7: BEFORE ENTERING VENDOR ====
     ' NEED TO IDENTIFY: What prompt shows for vendor field?
     ' CURRENT: Using "PMVEND" - NEEDS VERIFICATION
-    WaitForPrompt "Quick Codes", "PMVEND", True, PROMPT_TIMEOUT_MS, ""
+    WaitForPromptSlow "Quick Codes", "PMVEND", True, PROMPT_TIMEOUT_MS, ""
     ' g_bzhao.Pause 1000
 
     '==== INPUT POINT 8: BEFORE F3 KEY ====
     ' NEED TO IDENTIFY: What screen/text indicates ready for F3?
     ' CURRENT: No verification - NEEDS PROMPT DETECTION
-    WaitForPrompt "Quick Code Description", "<F3>", False, PROMPT_TIMEOUT_MS, ""
+    WaitForPromptSlow "Quick Code Description", "<F3>", False, PROMPT_TIMEOUT_MS, ""
     ' g_bzhao.Pause 1000
 
     '==== INPUT POINT 9: BEFORE F8 KEY ====
     ' NEED to IDENTIFY: What screen/text indicates ready for F8?
     ' CURRENT: No verification - NEEDS PROMPT DETECTION
-    WaitForPrompt "Quick Codes", "<F8>", False, PROMPT_TIMEOUT_MS, ""
+    WaitForPromptSlow "Quick Codes", "<F8>", False, PROMPT_TIMEOUT_MS, ""
     ' g_bzhao.Pause 1000
     
     '==== INPUT POINT 10: BEFORE ENTERING "99" ====
     ' NEED TO IDENTIFY: What prompt shows for "99" entry?
     ' CURRENT: No verification - NEEDS PROMPT DETECTION
-    WaitForPrompt "Tech", "99", False, PROMPT_TIMEOUT_MS, ""
+    WaitForPromptSlow "Tech", "99", False, PROMPT_TIMEOUT_MS, ""
     ' g_bzhao.Pause 1000
     
     '==== INPUT POINT 11: BEFORE SECOND F3 ====
     ' NEED TO IDENTIFY: What indicates ready for second F3?
     ' CURRENT: No verification - NEEDS PROMPT DETECTION
-    WaitForPrompt "Tech", "<F3>", False, PROMPT_TIMEOUT_MS, ""
+    WaitForPromptSlow "Tech", "<F3>", False, PROMPT_TIMEOUT_MS, ""
     ' g_bzhao.Pause 1000
     
     '==== INPUT POINT 12: BEFORE THIRD F3 ====
     ' NEED TO IDENTIFY: What indicates ready for third F3?
     ' CURRENT: No verification - NEEDS PROMPT DETECTION
-    WaitForPrompt "Quick Codes", "<F3>", False, PROMPT_TIMEOUT_MS, ""
+    WaitForPromptSlow "Quick Codes", "<F3>", False, PROMPT_TIMEOUT_MS, ""
     ' g_bzhao.Pause 1000    
     
     '==== INPUT POINT 13: BEFORE FIRST ENTER KEY ====
     ' NEED TO IDENTIFY: What text shows system is ready for Enter?
     ' CURRENT: No verification - NEEDS PROMPT DETECTION
-    WaitForPrompt "Choose an option", "<NumpadEnter>", False, PROMPT_TIMEOUT_MS, ""
+    WaitForPromptSlow "Choose an option", "<NumpadEnter>", False, PROMPT_TIMEOUT_MS, ""
     ' g_bzhao.Pause 1000
     
     '==== INPUT POINT 14: BEFORE SECOND ENTER KEY ====
     ' NEED TO IDENTIFY: What prompt appears before second Enter?
     ' CURRENT: No verification - NEEDS PROMPT DETECTION
-    WaitForPrompt "MILEAGE OUT", "<NumpadEnter>", False, 30000, ""
+    WaitForPromptSlow "MILEAGE OUT", "<NumpadEnter>", False, 30000, ""
     ' g_bzhao.Pause 1000
     
     '==== INPUT POINT 15: BEFORE THIRD ENTER KEY ====
     ' NEED TO IDENTIFY: What prompt appears before third Enter?
     ' CURRENT: No verification - NEEDS PROMPT DETECTION
 
-    WaitForPrompt "MILEAGE IN", "<NumpadEnter>", False, 10000, ""
+    WaitForPromptSlow "MILEAGE IN", "<NumpadEnter>", False, 10000, ""
     ' g_bzhao.Pause 1000
     
     '==== INPUT POINT 16: BEFORE ENTERING FINAL "N" ====
     ' NEED TO IDENTIFY: What question/prompt is asking for N response?
     ' CURRENT: No verification - NEEDS PROMPT DETECTION
-    WaitForPrompt "O.K. TO CLOSE RO", "N", True, 30000, ""
+    WaitForPromptSlow "O.K. TO CLOSE RO", "N", True, 30000, ""
     ' g_bzhao.Pause 1000
 
     '==== INPUT POINT 17: WAIT FOR CONFIRMATION SCREEN, SCRAPE RO, THEN DISMISS ====
     ' Wait for the "Created repair order" confirmation screen before scraping.
-    ' Scrape must happen AFTER this wait — the screen has not transitioned yet
+    ' Scrape must happen AFTER this wait - the screen has not transitioned yet
     ' when called immediately after INPUT POINT 16.
     Dim confirmFound
-    confirmFound = WaitForPrompt("Created repair order|R.O. NUMBER", "", False, 10000, "")
+    confirmFound = WaitForPromptSlow("Created repair order|R.O. NUMBER", "", False, 10000, "")
 
     ' Scrape and log
     Dim roNumber
@@ -198,9 +198,32 @@ Sub Main(mva, mileage)
     If confirmFound Then
         g_bzhao.SendKey "<F3>"
     Else
-        LOG "WARNING: Confirmation screen not detected — F3 not sent for MVA: " & mva, "med"
+        LOG "WARNING: Confirmation screen not detected - F3 not sent for MVA: " & mva, "med"
     End If
 End Sub
+
+'--------------------------------------------------------------------
+' Function: WaitForPromptSlow
+' Enforces per-action pacing: waits for the prompt, then applies
+' PRE_KEY_WAIT before sending and POST_KEY_WAIT after sending.
+'--------------------------------------------------------------------
+Function WaitForPromptSlow(promptText, inputValue, sendEnter, timeoutMs, description)
+    ' Phase 1: wait for the prompt to appear (no send)
+    Dim found
+    found = WaitForPrompt(promptText, "", False, timeoutMs, description)
+
+    ' Phase 2: if found, apply delays around the send
+    If found Then
+        If Len(inputValue) > 0 Or sendEnter Then
+            WaitMs PRE_KEY_WAIT
+            If Len(inputValue) > 0 Then g_bzhao.SendKey inputValue
+            If sendEnter Then g_bzhao.SendKey "<NumpadEnter>"
+            WaitMs POST_KEY_WAIT
+        End If
+    End If
+
+    WaitForPromptSlow = found
+End Function
 
 
 
@@ -212,11 +235,7 @@ End Sub
 Sub FastText(text)
     LOG "Sending text: " & text, "high"
     g_bzhao.SendKey text
-    If IsSlowModeEnabled() Then
-        Call WaitMs(1000)
-    Else
-        Call WaitMs(100)
-    End If
+    Call WaitMs(POST_KEY_WAIT)
 End Sub
 
 '--------------------------------------------------------------------
@@ -225,18 +244,10 @@ End Sub
 Sub FastKey(key)
     LOG "Sending key command: " & key, "high"
     ' Pause briefly before sending a special key to avoid injecting escape sequences into active fields
-    If IsSlowModeEnabled() Then
-        Call WaitMs(1000)
-    Else
-        Call WaitMs(PRE_KEY_WAIT)
-    End If
+    Call WaitMs(PRE_KEY_WAIT)
     g_bzhao.SendKey key
     ' Allow the host some time to process the special key and transition screens
-    If IsSlowModeEnabled() Then
-        Call WaitMs(1000)
-    Else
-        Call WaitMs(POST_KEY_WAIT)
-    End If
+    Call WaitMs(POST_KEY_WAIT)
 End Sub
 
 '--------------------------------------------------------------------
@@ -410,3 +421,4 @@ Sub LOG(msg, level)
     If Err.Number <> 0 Then Err.Clear
     On Error GoTo 0
 End Sub
+
