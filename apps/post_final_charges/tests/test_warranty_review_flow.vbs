@@ -4,12 +4,18 @@
 ' **AUTHOR:** GitHub Copilot
 '
 ' **FUNCTIONALITY:**
-' Behavioral tests for IsWarrantyLine() and HandleWarrantyClaimsDialog().
-' Validates:
-'   1) IsWarrantyLine returns True for WCH, WV, WF (entries in WarrantyLTypes).
-'   2) IsWarrantyLine returns False for LTYPE=I, blank LTYPE, and unrecognized codes.
-'   3) HandleWarrantyClaimsDialog detects COMMAND: (single L-op) and sends E + Enter.
-'   4) HandleWarrantyClaimsDialog detects LABOR OP: (multiple L-ops) and sends blank Enter.
+' Behavioral tests for IsWarrantyLine(), DetectWarrantyDialog(),
+' HandleWarrantyClaimsDialog() (dispatcher), HandleFcaClaimsDialog(),
+' and HandleVwWarrantyDialog() (stub).
+'
+' Tests:
+'   1-6)  IsWarrantyLine: True for WCH/WV/WF, False for I/blank/unknown
+'   7)    FCA COMMAND: dialog — dispatcher routes to FCA handler; correct keys sent
+'   8)    FCA LABOR OP: dialog — dispatcher routes to FCA handler; blank Enter only
+'   9)    FCA LABOR OP: + CAUSE L1: sub-prompt — correct 3-key sequence
+'   10)   WV dialog — dispatcher routes to WV stub; no keys sent
+'   11)   Unknown dialog type — dispatcher logs warning; no keys sent
+'   12)   No dialog detected within timeout — dispatcher logs warning; no keys sent
 '-----------------------------------------------------------------------------------
 
 Option Explicit
@@ -20,6 +26,14 @@ g_Fail = 0
 
 Dim g_bzhao
 Dim g_arrWarrantyLTypes
+Dim g_WarrantyCauseText
+Dim g_WarrantyDialogStepDelayMs
+Dim g_WarrantyDialogSignatureTexts()
+Dim g_WarrantyDialogSignatureTypes()
+
+' Tracking variables for stub/dispatcher verification
+Dim g_VwDialogHandlerCalled
+Dim g_LastWarnMessage
 
 '--------------------------------------------------------------------
 ' Fake BlueZone for IsWarrantyLine tests
@@ -39,7 +53,7 @@ Class FakeBzhaoSinglePage
 End Class
 
 '--------------------------------------------------------------------
-' Fake BlueZone for HandleWarrantyClaimsDialog tests
+' Fake BlueZone for dialog tests
 ' Serves a stable page for detection polling; records all keys sent
 '--------------------------------------------------------------------
 Class FakeBzhaoDialog
@@ -156,15 +170,37 @@ Function BuildSinglePage(row9, row10)
     BuildSinglePage = buf
 End Function
 
-' Places prompt text at row 22 — inside the dialog box bottom row
-Function BuildDialogPage(promptText)
+' FCA single-op dialog: CLAIM TYPE: at row 21 (outer detection), COMMAND: at row 22 (inner branch)
+Function BuildFcaCommandDialogPage()
     Dim buf : buf = String(24 * 80, " ")
-    Mid(buf, 21 * 80 + 1, Len(promptText)) = Left(promptText, 80)
-    BuildDialogPage = buf
+    Mid(buf, 20 * 80 + 1, 11) = "CLAIM TYPE:"
+    Mid(buf, 21 * 80 + 1, 8)  = "COMMAND:"
+    BuildFcaCommandDialogPage = buf
+End Function
+
+' FCA multi-op dialog: LABOR OP: at row 22 (serves as both outer and inner detection)
+Function BuildFcaLaborOpDialogPage()
+    Dim buf : buf = String(24 * 80, " ")
+    Mid(buf, 21 * 80 + 1, 9) = "LABOR OP:"
+    BuildFcaLaborOpDialogPage = buf
+End Function
+
+' WV dialog: FAILURE CODE: at row 22 (outer detection → WV type)
+Function BuildVwDialogPage()
+    Dim buf : buf = String(24 * 80, " ")
+    Mid(buf, 21 * 80 + 1, 13) = "FAILURE CODE:"
+    BuildVwDialogPage = buf
+End Function
+
+' Dialog with a custom signature text at row 22
+Function BuildCustomDialogPage(signatureText)
+    Dim buf : buf = String(24 * 80, " ")
+    Mid(buf, 21 * 80 + 1, Len(signatureText)) = Left(signatureText, 80)
+    BuildCustomDialogPage = buf
 End Function
 
 '--------------------------------------------------------------------
-' Stubs required by HandleWarrantyClaimsDialog
+' Stubs required by the dialog handlers
 '--------------------------------------------------------------------
 Sub WaitMs(ms)
     ' No-op in tests
@@ -187,7 +223,12 @@ Sub LogInfo(msg, context)
 End Sub
 
 Sub LogWarn(msg, context)
+    g_LastWarnMessage = msg
 End Sub
+
+Function GetScreenSnapshot(numLines)
+    GetScreenSnapshot = "[test-screen-snapshot]"
+End Function
 
 '--------------------------------------------------------------------
 ' Local copy of IsWarrantyLine (mirrors PostFinalCharges.vbs)
@@ -224,14 +265,59 @@ Function IsWarrantyLine(lineLetterChar)
 End Function
 
 '--------------------------------------------------------------------
-' Local copy of HandleWarrantyClaimsDialog (mirrors PostFinalCharges.vbs)
+' Local copy of DetectWarrantyDialog (mirrors PostFinalCharges.vbs)
+'--------------------------------------------------------------------
+Function DetectWarrantyDialog()
+    DetectWarrantyDialog = ""
+    If Not IsArray(g_WarrantyDialogSignatureTexts) Then Exit Function
+    If UBound(g_WarrantyDialogSignatureTexts) < 0 Then Exit Function
+
+    Dim buf, row, poll, si
+    For poll = 1 To 20
+        For row = 1 To 24
+            buf = ""
+            On Error Resume Next
+            g_bzhao.ReadScreen buf, 80, row, 1
+            If Err.Number <> 0 Then Err.Clear
+            On Error GoTo 0
+            For si = 0 To UBound(g_WarrantyDialogSignatureTexts)
+                If InStr(1, buf, g_WarrantyDialogSignatureTexts(si), vbTextCompare) > 0 Then
+                    DetectWarrantyDialog = g_WarrantyDialogSignatureTypes(si)
+                    Exit Function
+                End If
+            Next
+        Next
+        Call WaitMs(500)
+    Next
+End Function
+
+'--------------------------------------------------------------------
+' Local copy of HandleWarrantyClaimsDialog — dispatcher
+' (mirrors PostFinalCharges.vbs)
 '--------------------------------------------------------------------
 Sub HandleWarrantyClaimsDialog()
-    Call LogInfo("Warranty claims dialog: detecting prompt", "HandleWarrantyClaimsDialog")
+    Dim dialogType
+    dialogType = DetectWarrantyDialog()
 
+    If dialogType = "" Then
+        Call LogWarn("Warranty claims dialog: no dialog detected within timeout", "HandleWarrantyClaimsDialog")
+    ElseIf dialogType = "FCA" Then
+        Call HandleFcaClaimsDialog()
+    ElseIf dialogType = "WV" Then
+        Call HandleVwWarrantyDialog()
+    Else
+        Call LogWarn("Warranty claims dialog: unhandled dialog type [" & dialogType & "] - no handler implemented", "HandleWarrantyClaimsDialog")
+        Call GetScreenSnapshot(24)
+    End If
+End Sub
+
+'--------------------------------------------------------------------
+' Local copy of HandleFcaClaimsDialog (mirrors PostFinalCharges.vbs)
+'--------------------------------------------------------------------
+Sub HandleFcaClaimsDialog()
     Dim buf, row, detected, i
     detected = ""
-    For i = 1 To 50
+    For i = 1 To 20
         For row = 20 To 24
             buf = ""
             On Error Resume Next
@@ -248,13 +334,12 @@ Sub HandleWarrantyClaimsDialog()
             End If
         Next
         If Len(detected) > 0 Then Exit For
-        Call WaitMs(100)
+        Call WaitMs(500)
     Next
 
     If detected = "LABOROP" Then
-        Call LogInfo("Warranty claims dialog: LABOR OP prompt (multiple L-ops) - sending blank Enter", "HandleWarrantyClaimsDialog")
         Call WaitForPrompt("LABOR OP:", "", True, 5000, "")
-        Call WaitMs(2000)
+        Call WaitMs(g_WarrantyDialogStepDelayMs)
 
         Dim causeRow, causeBuf, causeFound, ci
         For ci = 1 To 10
@@ -271,30 +356,35 @@ Sub HandleWarrantyClaimsDialog()
                 End If
             Next
             If Not causeFound Then Exit For
-            Call LogInfo("Warranty claims dialog: CAUSE L prompt detected - sending cause text", "HandleWarrantyClaimsDialog")
-            Call WaitMs(2000)
+            Call WaitMs(g_WarrantyDialogStepDelayMs)
             Call FastText(g_WarrantyCauseText)
-            Call WaitMs(1000)
+            Call WaitMs(g_WarrantyDialogStepDelayMs \ 2)
             Call FastKey("<NumpadEnter>")
-            Call WaitMs(1000)
+            Call WaitMs(g_WarrantyDialogStepDelayMs \ 2)
         Next
 
     ElseIf detected = "COMMAND" Then
-        Call LogInfo("Warranty claims dialog: COMMAND prompt (single L-op) - sending . to skip fields then E to exit", "HandleWarrantyClaimsDialog")
-        Call WaitMs(2000)
+        Call WaitMs(g_WarrantyDialogStepDelayMs)
         Call FastText(".")
-        Call WaitMs(1000)
+        Call WaitMs(g_WarrantyDialogStepDelayMs \ 2)
         Call FastKey("<NumpadEnter>")
-        Call WaitMs(2000)
+        Call WaitMs(g_WarrantyDialogStepDelayMs)
         Call FastText("E")
-        Call WaitMs(1000)
+        Call WaitMs(g_WarrantyDialogStepDelayMs \ 2)
         Call FastKey("<NumpadEnter>")
-        Call WaitMs(1000)
+        Call WaitMs(g_WarrantyDialogStepDelayMs \ 2)
     Else
-        Call LogWarn("Warranty claims dialog: no known prompt detected within timeout", "HandleWarrantyClaimsDialog")
+        Call LogWarn("FCA claims dialog: no internal prompt detected within timeout", "HandleFcaClaimsDialog")
     End If
+End Sub
 
-    Call LogInfo("Warranty claims dialog: complete", "HandleWarrantyClaimsDialog")
+'--------------------------------------------------------------------
+' Local copy of HandleVwWarrantyDialog — stub (no MsgBox in tests)
+' (mirrors PostFinalCharges.vbs behavior minus the MsgBox)
+'--------------------------------------------------------------------
+Sub HandleVwWarrantyDialog()
+    g_VwDialogHandlerCalled = True
+    Call LogWarn("VW warranty dialog detected - step sequence not yet known", "HandleVwWarrantyDialog")
 End Sub
 
 '--------------------------------------------------------------------
@@ -318,6 +408,16 @@ Sub AssertFalse(label, value)
     AssertEqual label, False, value
 End Sub
 
+Sub AssertContainsStr(label, needle, haystack)
+    If InStr(1, haystack, needle, vbTextCompare) > 0 Then
+        g_Pass = g_Pass + 1
+        WScript.Echo "[PASS] " & label
+    Else
+        g_Fail = g_Fail + 1
+        WScript.Echo "[FAIL] " & label & " (expected to find """ & needle & """ in """ & haystack & """)"
+    End If
+End Sub
+
 '--------------------------------------------------------------------
 ' Tests
 '--------------------------------------------------------------------
@@ -326,6 +426,13 @@ WScript.Echo "=========================="
 
 g_arrWarrantyLTypes = Array("WCH", "WV", "WF")
 g_WarrantyCauseText = "Device failure"
+g_WarrantyDialogStepDelayMs = 0
+g_VwDialogHandlerCalled = False
+g_LastWarnMessage = ""
+
+' Default signature arrays (mirrors config.ini defaults)
+g_WarrantyDialogSignatureTexts = Array("LABOR OP:", "CLAIM TYPE:", "FAILURE CODE:", "MODIFY WARRANTY INFORMATION")
+g_WarrantyDialogSignatureTypes = Array("FCA", "FCA", "WV", "WV")
 
 Dim fake, result
 
@@ -365,35 +472,39 @@ fake.SetPage BuildSinglePage(BuildHeaderRow("A"), BuildLRow("ZZZ", "UNKNOWN LTYP
 Set g_bzhao = fake
 AssertFalse "IsWarrantyLine False for unrecognized LTYPE ZZZ", IsWarrantyLine("A")
 
-' --- Test 7: COMMAND: dialog — sends . + Enter (skip fields) then E + Enter (exit) ---
+' --- Test 7: FCA COMMAND: dialog (single L-op) ---
+' Page has CLAIM TYPE: (outer detection → FCA) and COMMAND: (inner FCA branch → COMMAND)
+' Expected: . + Enter + E + Enter (4 keys)
 Set fake = New FakeBzhaoDialog
-fake.SetPage BuildDialogPage("        COMMAND:                                                        ")
+fake.SetPage BuildFcaCommandDialogPage()
 Set g_bzhao = fake
 HandleWarrantyClaimsDialog()
 Dim keys7 : keys7 = fake.GetKeys()
+AssertEqual "COMMAND: dialog - routed through dispatcher to FCA handler", 4, fake.KeyCount
 AssertEqual "COMMAND: dialog - first key is period (.)", ".", keys7(0)
 AssertEqual "COMMAND: dialog - second key is NumpadEnter (skip fields)", "<NumpadEnter>", keys7(1)
 AssertEqual "COMMAND: dialog - third key is E (exit)", "E", keys7(2)
 AssertEqual "COMMAND: dialog - fourth key is NumpadEnter (confirm exit)", "<NumpadEnter>", keys7(3)
-AssertEqual "COMMAND: dialog - exactly four keys sent", 4, fake.KeyCount
 
-' --- Test 8: LABOR OP: dialog — sends blank Enter only (no CAUSE L follows) ---
+' --- Test 8: FCA LABOR OP: dialog (multiple L-ops, no CAUSE L follows) ---
+' LABOR OP: serves as both outer detection (FCA) and inner FCA branch (LABOROP)
+' Expected: blank Enter only (1 key)
 Set fake = New FakeBzhaoDialog
-fake.SetPage BuildDialogPage("      LABOR OP:                                                         ")
+fake.SetPage BuildFcaLaborOpDialogPage()
 Set g_bzhao = fake
 HandleWarrantyClaimsDialog()
 Dim keys8 : keys8 = fake.GetKeys()
+AssertEqual "LABOR OP: dialog - routed through dispatcher to FCA handler", 1, fake.KeyCount
 AssertEqual "LABOR OP: dialog - first key is NumpadEnter", "<NumpadEnter>", keys8(0)
-AssertEqual "LABOR OP: dialog - only one key sent", 1, fake.KeyCount
 
-' --- Test 9: LABOR OP: dialog followed by CAUSE L1: sub-prompt ---
-' Page 0: LABOR OP: (initial detection + WaitForPrompt; Enter advances to page 1)
+' --- Test 9: FCA LABOR OP: dialog followed by CAUSE L1: sub-prompt ---
+' Page 0: LABOR OP: (outer FCA detection + inner LABOROP branch; Enter advances to page 1)
 ' Page 1: CAUSE L1: (CAUSE L poll finds it; FastText advances to page 2)
-' Page 2: blank     (FastKey Enter advances to page 3; next CAUSE L poll finds nothing)
-' Page 3: blank     (stable blank page for any further polling)
+' Page 2: blank     (FastKey Enter advances to page 3; next CAUSE L poll exits loop)
+' Page 3: blank     (stable blank page)
 Dim fakeSeq : Set fakeSeq = New FakeBzhaoDialogSequenced
-fakeSeq.AddPage BuildDialogPage("      LABOR OP:                                                         ")
-fakeSeq.AddPage BuildDialogPage("      CAUSE L1:                                                         ")
+fakeSeq.AddPage BuildFcaLaborOpDialogPage()
+fakeSeq.AddPage BuildCustomDialogPage("      CAUSE L1:")
 fakeSeq.AddPage String(24 * 80, " ")
 fakeSeq.AddPage String(24 * 80, " ")
 Set g_bzhao = fakeSeq
@@ -403,6 +514,41 @@ AssertEqual "CAUSE L1: - first key is NumpadEnter (LABOR OP: response)", "<Numpa
 AssertEqual "CAUSE L1: - second key is cause text", "Device failure", keys9(1)
 AssertEqual "CAUSE L1: - third key is NumpadEnter (CAUSE L1: response)", "<NumpadEnter>", keys9(2)
 AssertEqual "CAUSE L1: - exactly three keys sent", 3, fakeSeq.KeyCount
+
+' --- Test 10: WV dialog — dispatcher routes to WV stub, no keys sent ---
+g_VwDialogHandlerCalled = False
+Set fake = New FakeBzhaoDialog
+fake.SetPage BuildVwDialogPage()
+Set g_bzhao = fake
+HandleWarrantyClaimsDialog()
+AssertTrue  "WV dialog - VW handler stub was called", g_VwDialogHandlerCalled
+AssertEqual "WV dialog - no keys sent by stub", 0, fake.KeyCount
+
+' --- Test 11: Unknown dialog type — dispatcher logs warning, no keys sent ---
+' Temporarily add an unknown-type signature, use a page that matches it
+Dim savedSigTexts, savedSigTypes
+savedSigTexts = g_WarrantyDialogSignatureTexts
+savedSigTypes  = g_WarrantyDialogSignatureTypes
+g_WarrantyDialogSignatureTexts = Array("LABOR OP:", "CLAIM TYPE:", "FAILURE CODE:", "MODIFY WARRANTY INFORMATION", "FUTURE MAKER DIALOG:")
+g_WarrantyDialogSignatureTypes = Array("FCA", "FCA", "WV", "WV", "FUTUREMAKER")
+g_LastWarnMessage = ""
+Set fake = New FakeBzhaoDialog
+fake.SetPage BuildCustomDialogPage("FUTURE MAKER DIALOG:")
+Set g_bzhao = fake
+HandleWarrantyClaimsDialog()
+AssertEqual "Unknown type - no keys sent", 0, fake.KeyCount
+AssertContainsStr "Unknown type - warning contains type key", "FUTUREMAKER", g_LastWarnMessage
+g_WarrantyDialogSignatureTexts = savedSigTexts
+g_WarrantyDialogSignatureTypes = savedSigTypes
+
+' --- Test 12: No dialog detected — dispatcher logs warning, no keys sent ---
+g_LastWarnMessage = ""
+Set fake = New FakeBzhaoDialog
+fake.SetPage String(24 * 80, " ")
+Set g_bzhao = fake
+HandleWarrantyClaimsDialog()
+AssertEqual "No dialog - no keys sent", 0, fake.KeyCount
+AssertContainsStr "No dialog - warning mentions timeout", "no dialog detected", g_LastWarnMessage
 
 '--------------------------------------------------------------------
 ' Summary

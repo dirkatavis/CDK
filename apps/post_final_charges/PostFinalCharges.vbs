@@ -62,6 +62,9 @@ Dim g_SkipRoLookup
 Dim g_SkipConfiguredCount
 Dim g_arrWarrantyLTypes
 Dim g_WarrantyCauseText
+Dim g_WarrantyDialogStepDelayMs
+Dim g_WarrantyDialogSignatureTexts()
+Dim g_WarrantyDialogSignatureTypes()
 Dim g_SkipPartsOrderNeededCount
 Dim g_PartsOrderKeywords
 Dim g_PartsOrderNegators
@@ -1399,33 +1402,120 @@ Function GetFirstNonCompliantLineTech()
 End Function
 
 '-----------------------------------------------------------------------------------
+' WARRANTY DIALOG ARCHITECTURE
+'
+' Warranty lines trigger manufacturer-specific dialog overlays after the R-command
+' review prompts complete. The flow is:
+'
+'   1. DetectWarrantyDialog() — scans the full screen for any configured signature
+'      string and returns a dialog type key (e.g. "FCA", "WV") or "" if none found.
+'
+'   2. HandleWarrantyClaimsDialog() — dispatcher: calls DetectWarrantyDialog, then
+'      routes to the appropriate handler sub based on the returned type key.
+'
+'   3. Handler subs (HandleFcaClaimsDialog, HandleVwWarrantyDialog, etc.) — each
+'      owns the complete step sequence for its manufacturer's dialog. Unknown
+'      manufacturers show a MsgBox so the operator can handle it manually.
+'
+' ADDING A NEW MANUFACTURER:
+'   1. config.ini: append ",DetectionString|TYPE" to WarrantyDialogSignatures
+'   2. PostFinalCharges.vbs: add Sub HandleXxxWarrantyDialog() as a stub
+'   3. HandleWarrantyClaimsDialog: add ElseIf detected = "TYPE" dispatch branch
+'   4. Once steps confirmed via prod testing, replace stub with full implementation
+'-----------------------------------------------------------------------------------
+
+'-----------------------------------------------------------------------------------
+' **FUNCTION NAME:** DetectWarrantyDialog
+' **DATE CREATED:** 2026-04-17
+' **AUTHOR:** GitHub Copilot
+'
+' **FUNCTIONALITY:**
+' Scans the full screen (rows 1-24) for any signature string in
+' g_WarrantyDialogSignatureTexts. Polls up to 20 times with 500ms between
+' attempts (~10s total) to allow for variable dialog render delays.
+'
+' Returns the corresponding dialog type key from g_WarrantyDialogSignatureTypes
+' on first match, or "" if no signature is found within the timeout.
+'-----------------------------------------------------------------------------------
+Function DetectWarrantyDialog()
+    DetectWarrantyDialog = ""
+    If Not IsArray(g_WarrantyDialogSignatureTexts) Then Exit Function
+    If UBound(g_WarrantyDialogSignatureTexts) < 0 Then Exit Function
+
+    Dim buf, row, poll, si
+    For poll = 1 To 20
+        For row = 1 To 24
+            buf = ""
+            On Error Resume Next
+            g_bzhao.ReadScreen buf, 80, row, 1
+            If Err.Number <> 0 Then Err.Clear
+            On Error GoTo 0
+            For si = 0 To UBound(g_WarrantyDialogSignatureTexts)
+                If InStr(1, buf, g_WarrantyDialogSignatureTexts(si), vbTextCompare) > 0 Then
+                    Call LogInfo("Warranty dialog detected: " & g_WarrantyDialogSignatureTypes(si) & " (signature: " & g_WarrantyDialogSignatureTexts(si) & ")", "DetectWarrantyDialog")
+                    DetectWarrantyDialog = g_WarrantyDialogSignatureTypes(si)
+                    Exit Function
+                End If
+            Next
+        Next
+        Call WaitMs(500)
+    Next
+
+    Call LogInfo("Warranty dialog: no dialog detected within timeout", "DetectWarrantyDialog")
+End Function
+
+'-----------------------------------------------------------------------------------
 ' **PROCEDURE NAME:** HandleWarrantyClaimsDialog
 ' **DATE CREATED:** 2026-04-16
 ' **AUTHOR:** GitHub Copilot
 '
 ' **FUNCTIONALITY:**
-' Navigates the FCA Global Claims Information dialog that appears as an overlay
-' during the R command review flow for warranty labor-type lines (WCH, WV, WF, etc.).
+' Dispatcher. Calls DetectWarrantyDialog to identify which manufacturer dialog has
+' appeared, then routes to the appropriate handler sub.
+'-----------------------------------------------------------------------------------
+Sub HandleWarrantyClaimsDialog()
+    Call LogInfo("Warranty claims dialog: starting detection", "HandleWarrantyClaimsDialog")
+
+    Dim dialogType
+    dialogType = DetectWarrantyDialog()
+
+    If dialogType = "" Then
+        Call LogWarn("Warranty claims dialog: no dialog detected within timeout", "HandleWarrantyClaimsDialog")
+    ElseIf dialogType = "FCA" Then
+        Call HandleFcaClaimsDialog()
+    ElseIf dialogType = "WV" Then
+        Call HandleVwWarrantyDialog()
+    Else
+        Call LogWarn("Warranty claims dialog: unhandled dialog type [" & dialogType & "] - no handler implemented", "HandleWarrantyClaimsDialog")
+        Call LogInfo("Warranty claims dialog: screen snapshot: " & GetScreenSnapshot(24), "HandleWarrantyClaimsDialog")
+    End If
+
+    Call LogInfo("Warranty claims dialog: complete", "HandleWarrantyClaimsDialog")
+End Sub
+
+'-----------------------------------------------------------------------------------
+' **PROCEDURE NAME:** HandleFcaClaimsDialog
+' **DATE CREATED:** 2026-04-17
+' **AUTHOR:** GitHub Copilot
+'
+' **FUNCTIONALITY:**
+' Navigates the FCA Global Claims Information dialog (WCH lines).
 '
 ' The dialog opens in one of two states depending on how many L-operations are on
 ' the line:
 '
-'   LABOR OP: (multiple L-ops) — CDK cannot auto-select which op the claim is for;
-'     blank Enter closes the dialog. After closing, CDK may issue one or more
-'     CAUSE Ln: prompts at the terminal prompt line (lower left); each receives the
-'     configured WarrantyCauseText response (default "Device failure").
+'   LABOR OP: (multiple L-ops) — blank Enter closes the dialog. CDK may then
+'     issue one or more CAUSE Ln: prompts; each receives WarrantyCauseText.
 '
-'   COMMAND: (single L-op) — CDK pre-fills the form; cursor starts at Claim Type:.
-'     Send . + Enter to skip all fields to COMMAND:, then E + Enter to exit.
-'
-' Polls rows 20-24 to detect which prompt is present, then responds accordingly.
+'   COMMAND: (single L-op) — cursor starts at Claim Type:. Send . + Enter to
+'     skip all fields to COMMAND:, then E + Enter to exit.
 '-----------------------------------------------------------------------------------
-Sub HandleWarrantyClaimsDialog()
-    Call LogInfo("Warranty claims dialog: detecting prompt", "HandleWarrantyClaimsDialog")
+Sub HandleFcaClaimsDialog()
+    Call LogInfo("FCA claims dialog: detecting internal prompt", "HandleFcaClaimsDialog")
 
     Dim buf, row, detected, i
     detected = ""
-    For i = 1 To 50
+    For i = 1 To 20
         For row = 20 To 24
             buf = ""
             On Error Resume Next
@@ -1442,14 +1532,14 @@ Sub HandleWarrantyClaimsDialog()
             End If
         Next
         If Len(detected) > 0 Then Exit For
-        Call WaitMs(100)
+        Call WaitMs(500)
     Next
 
     If detected = "LABOROP" Then
-        Call LogInfo("Warranty claims dialog: LABOR OP prompt detected (multiple L-ops)", "HandleWarrantyClaimsDialog")
-        Call LogInfo("Warranty claims dialog: sending blank Enter to close LABOR OP: dialog", "HandleWarrantyClaimsDialog")
+        Call LogInfo("FCA claims dialog: LABOR OP prompt detected (multiple L-ops)", "HandleFcaClaimsDialog")
+        Call LogInfo("FCA claims dialog: sending blank Enter to close LABOR OP: dialog", "HandleFcaClaimsDialog")
         Call WaitForPrompt("LABOR OP:", "", True, 5000, "")
-        Call WaitMs(2000)
+        Call WaitMs(g_WarrantyDialogStepDelayMs)
 
         ' After the LABOR OP: dialog closes, CDK may issue CAUSE Ln: prompts
         ' (e.g. CAUSE L1:, CAUSE L2:) at the terminal prompt line. The suffix
@@ -1470,36 +1560,57 @@ Sub HandleWarrantyClaimsDialog()
                 End If
             Next
             If Not causeFound Then Exit For
-            Call LogInfo("Warranty claims dialog: CAUSE L prompt detected", "HandleWarrantyClaimsDialog")
-            Call WaitMs(2000)
-            Call LogInfo("Warranty claims dialog: sending cause text [" & g_WarrantyCauseText & "]", "HandleWarrantyClaimsDialog")
+            Call LogInfo("FCA claims dialog: CAUSE L prompt detected", "HandleFcaClaimsDialog")
+            Call WaitMs(g_WarrantyDialogStepDelayMs)
+            Call LogInfo("FCA claims dialog: sending cause text [" & g_WarrantyCauseText & "]", "HandleFcaClaimsDialog")
             Call FastText(g_WarrantyCauseText)
-            Call WaitMs(1000)
-            Call LogInfo("Warranty claims dialog: sending Enter to confirm cause text", "HandleWarrantyClaimsDialog")
+            Call WaitMs(g_WarrantyDialogStepDelayMs \ 2)
+            Call LogInfo("FCA claims dialog: sending Enter to confirm cause text", "HandleFcaClaimsDialog")
             Call FastKey("<NumpadEnter>")
-            Call WaitMs(1000)
+            Call WaitMs(g_WarrantyDialogStepDelayMs \ 2)
         Next
 
     ElseIf detected = "COMMAND" Then
-        Call LogInfo("Warranty claims dialog: COMMAND prompt detected (single L-op)", "HandleWarrantyClaimsDialog")
-        Call WaitMs(2000)
-        Call LogInfo("Warranty claims dialog: sending . to skip all fields to COMMAND:", "HandleWarrantyClaimsDialog")
+        Call LogInfo("FCA claims dialog: COMMAND prompt detected (single L-op)", "HandleFcaClaimsDialog")
+        Call WaitMs(g_WarrantyDialogStepDelayMs)
+        Call LogInfo("FCA claims dialog: sending . to skip all fields to COMMAND:", "HandleFcaClaimsDialog")
         Call FastText(".")
-        Call WaitMs(1000)
-        Call LogInfo("Warranty claims dialog: sending Enter after .", "HandleWarrantyClaimsDialog")
+        Call WaitMs(g_WarrantyDialogStepDelayMs \ 2)
+        Call LogInfo("FCA claims dialog: sending Enter after .", "HandleFcaClaimsDialog")
         Call FastKey("<NumpadEnter>")
-        Call WaitMs(2000)
-        Call LogInfo("Warranty claims dialog: sending E to exit", "HandleWarrantyClaimsDialog")
+        Call WaitMs(g_WarrantyDialogStepDelayMs)
+        Call LogInfo("FCA claims dialog: sending E to exit", "HandleFcaClaimsDialog")
         Call FastText("E")
-        Call WaitMs(1000)
-        Call LogInfo("Warranty claims dialog: sending Enter to confirm exit", "HandleWarrantyClaimsDialog")
+        Call WaitMs(g_WarrantyDialogStepDelayMs \ 2)
+        Call LogInfo("FCA claims dialog: sending Enter to confirm exit", "HandleFcaClaimsDialog")
         Call FastKey("<NumpadEnter>")
-        Call WaitMs(1000)
+        Call WaitMs(g_WarrantyDialogStepDelayMs \ 2)
     Else
-        Call LogWarn("Warranty claims dialog: no known prompt detected within timeout", "HandleWarrantyClaimsDialog")
+        Call LogWarn("FCA claims dialog: no internal prompt detected within timeout", "HandleFcaClaimsDialog")
     End If
 
-    Call LogInfo("Warranty claims dialog: complete", "HandleWarrantyClaimsDialog")
+    Call LogInfo("FCA claims dialog: complete", "HandleFcaClaimsDialog")
+End Sub
+
+'-----------------------------------------------------------------------------------
+' **PROCEDURE NAME:** HandleVwWarrantyDialog
+' **DATE CREATED:** 2026-04-17
+' **AUTHOR:** GitHub Copilot
+'
+' **FUNCTIONALITY:**
+' Stub handler for the VW/Volvo warranty dialog ("MODIFY WARRANTY INFORMATION").
+' Step sequence is not yet known. Logs a screen snapshot and displays a MsgBox
+' so the operator can handle the dialog manually and observe the correct steps.
+' Once the steps are confirmed through prod testing, replace this stub with a
+' full implementation following the HandleFcaClaimsDialog pattern.
+'-----------------------------------------------------------------------------------
+Sub HandleVwWarrantyDialog()
+    Call LogWarn("VW warranty dialog detected — step sequence not yet known; manual intervention required", "HandleVwWarrantyDialog")
+    Call LogInfo("VW warranty dialog: screen snapshot: " & GetScreenSnapshot(24), "HandleVwWarrantyDialog")
+    MsgBox "Warranty dialog detected (VW/Volvo)" & vbCrLf & vbCrLf & _
+           "Please complete this dialog manually, then click OK to continue.", _
+           vbOKOnly + vbInformation, "Manual Warranty Dialog Intervention"
+    Call LogInfo("VW warranty dialog: operator dismissed MsgBox - continuing", "HandleVwWarrantyDialog")
 End Sub
 
 '-----------------------------------------------------------------------------------
@@ -2436,6 +2547,38 @@ Sub InitializeConfig()
     Call LogEvent("comm", "high", "Warranty review configured", "InitializeConfig", "LTypes: " & warrantyLTypesRaw, "")
 
     g_WarrantyCauseText = GetIniSetting("PostFinalCharges", "WarrantyCauseText", "Device failure")
+
+    Dim warrantyDialogStepDelayValue
+    warrantyDialogStepDelayValue = GetIniSetting("PostFinalCharges", "WarrantyDialogStepDelayMs", "2000")
+    On Error Resume Next
+    g_WarrantyDialogStepDelayMs = CInt(warrantyDialogStepDelayValue)
+    If Err.Number <> 0 Or g_WarrantyDialogStepDelayMs < 0 Then
+        g_WarrantyDialogStepDelayMs = 2000
+        Err.Clear
+    End If
+    On Error GoTo 0
+    Call LogEvent("comm", "high", "Warranty dialog step delay configured", "InitializeConfig", "WarrantyDialogStepDelayMs: " & g_WarrantyDialogStepDelayMs, "")
+
+    Dim warrantyDialogSignaturesRaw, warrantyDialogSigArr, wdsi, wdsPair, wdsPairArr
+    warrantyDialogSignaturesRaw = GetIniSetting("PostFinalCharges", "WarrantyDialogSignatures", "LABOR OP:|FCA,CLAIM TYPE:|FCA,FAILURE CODE:|WV,MODIFY WARRANTY INFORMATION|WV")
+    warrantyDialogSigArr = Split(warrantyDialogSignaturesRaw, ",")
+    Dim warrantyDialogSigCount : warrantyDialogSigCount = 0
+    ReDim g_WarrantyDialogSignatureTexts(UBound(warrantyDialogSigArr))
+    ReDim g_WarrantyDialogSignatureTypes(UBound(warrantyDialogSigArr))
+    For wdsi = 0 To UBound(warrantyDialogSigArr)
+        wdsPair = Trim(warrantyDialogSigArr(wdsi))
+        If Len(wdsPair) > 0 And InStr(wdsPair, "|") > 0 Then
+            wdsPairArr = Split(wdsPair, "|", 2)
+            g_WarrantyDialogSignatureTexts(warrantyDialogSigCount) = Trim(wdsPairArr(0))
+            g_WarrantyDialogSignatureTypes(warrantyDialogSigCount) = UCase(Trim(wdsPairArr(1)))
+            warrantyDialogSigCount = warrantyDialogSigCount + 1
+        End If
+    Next
+    If warrantyDialogSigCount < UBound(g_WarrantyDialogSignatureTexts) + 1 Then
+        ReDim Preserve g_WarrantyDialogSignatureTexts(warrantyDialogSigCount - 1)
+        ReDim Preserve g_WarrantyDialogSignatureTypes(warrantyDialogSigCount - 1)
+    End If
+    Call LogEvent("comm", "high", "Warranty dialog signatures configured", "InitializeConfig", "Count: " & warrantyDialogSigCount & " | Raw: " & warrantyDialogSignaturesRaw, "")
 
     Dim partsOrderKeywordsRaw, partsOrderNegatorsRaw, ki
     partsOrderKeywordsRaw = GetIniSetting("PostFinalCharges", "PartsOrderKeywords", "")
