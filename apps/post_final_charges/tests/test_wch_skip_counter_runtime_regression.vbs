@@ -104,7 +104,7 @@ AssertAbsent "ExtractPartNumberForFca is removed", "Function ExtractPartNumberFo
 ' Warranty review flow is present
 AssertContains "IsWarrantyLine function is declared", "Function IsWarrantyLine(lineLetterChar)"
 AssertContains "IsWarrantyLine checks config-driven array", "g_arrWarrantyLTypes"
-AssertContains "HandleWarrantyClaimsDialog sub is declared", "Sub HandleWarrantyClaimsDialog()"
+AssertContains "HandleWarrantyClaimsDialog sub is declared", "Sub HandleWarrantyClaimsDialog(maxPolls)"
 AssertContains "Dialog detects LABOR OP: prompt", "InStr(1, buf, ""LABOR OP:"", vbTextCompare)"
 AssertContains "Dialog detects COMMAND: prompt", "InStr(1, buf, ""COMMAND:"", vbTextCompare)"
 AssertContains "Dialog sends blank Enter for LABOR OP: state", "WaitForPrompt(""LABOR OP:"", """", True"
@@ -119,17 +119,20 @@ AssertContains "g_WarrantyDialogStepDelayMs global is declared", "Dim g_Warranty
 AssertContains "g_WarrantyDialogSignatureTexts global is declared", "Dim g_WarrantyDialogSignatureTexts()"
 AssertContains "g_WarrantyDialogSignatureTypes global is declared", "Dim g_WarrantyDialogSignatureTypes()"
 AssertContains "CAUSE L prefix detection is present", "CAUSE L"
-AssertContains "DetectWarrantyDialog function is declared", "Function DetectWarrantyDialog()"
+AssertContains "DetectWarrantyDialog function is declared", "Function DetectWarrantyDialog(maxPolls)"
+AssertContains "HandleWarrantyClaimsDialog accepts maxPolls", "Sub HandleWarrantyClaimsDialog(maxPolls)"
 AssertContains "HandleFcaClaimsDialog sub is declared", "Sub HandleFcaClaimsDialog()"
 AssertContains "HandleVwWarrantyDialog sub is declared", "Sub HandleVwWarrantyDialog()"
 AssertContains "IsWarrantyLine is called before FNL in ProcessLinesSequentially", "lineIsWarranty = IsWarrantyLine(lineLetterChar)"
-AssertContains "HandleWarrantyClaimsDialog is called after R review", "If lineIsWarranty Then"
+AssertContains "warrantyPolls computed from lineIsWarranty", "warrantyPolls = IIf(lineIsWarranty, 20, 3)"
+AssertContains "HandleWarrantyClaimsDialog always called with poll count", "Call HandleWarrantyClaimsDialog(warrantyPolls)"
+AssertContains "fnlPrompts has ADD A LABOR OPER safety net", "ADD A LABOR OPER"
 
-' Warranty review fires after R prompts, not after FNL
+' Warranty dialog handler fires after R prompts, not after FNL
 AssertOrder "HandleWarrantyClaimsDialog fires after R review prompts", _
-    "Call ProcessPromptSequence(lineItemPrompts)", "If lineIsWarranty Then"
+    "Call ProcessPromptSequence(lineItemPrompts)", "Call HandleWarrantyClaimsDialog(warrantyPolls)"
 AssertOrder "HandleWarrantyClaimsDialog fires after R review prompts (not FNL)", _
-    "lineIsWarranty = IsWarrantyLine(lineLetterChar)", "If lineIsWarranty Then"
+    "lineIsWarranty = IsWarrantyLine(lineLetterChar)", "Call HandleWarrantyClaimsDialog(warrantyPolls)"
 
 WScript.Echo ""
 If failures = 0 Then

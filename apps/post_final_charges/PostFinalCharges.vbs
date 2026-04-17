@@ -346,9 +346,13 @@ Function CreateFnlPromptDictionary()
     Call AddPromptToDictEx(dict, "ACTUAL HOURS \(\d+\)", "0", "<NumpadEnter>", False, True)
     Call AddPromptToDictEx(dict, "SOLD HOURS( \(\d+\))?\?", "0", "<NumpadEnter>", False, True)
     
+    ' Safety net: if an FCA dialog was left open from a paginated warranty line and a subsequent
+    ' FNL command lands inside it, CDK may re-issue ADD A LABOR OPERATION. Answer N and continue.
+    Call AddPromptToDict(dict, "ADD A LABOR OPER", "", "<Enter>", False)
+
     ' Success condition - back to command prompt
     Call AddPromptToDict(dict, "COMMAND:", "", "", True)
-    
+
     Set CreateFnlPromptDictionary = dict
 End Function
 
@@ -1438,13 +1442,14 @@ End Function
 ' Returns the corresponding dialog type key from g_WarrantyDialogSignatureTypes
 ' on first match, or "" if no signature is found within the timeout.
 '-----------------------------------------------------------------------------------
-Function DetectWarrantyDialog()
+Function DetectWarrantyDialog(maxPolls)
     DetectWarrantyDialog = ""
     If Not IsArray(g_WarrantyDialogSignatureTexts) Then Exit Function
     If UBound(g_WarrantyDialogSignatureTexts) < 0 Then Exit Function
+    If maxPolls < 1 Then maxPolls = 1
 
     Dim buf, row, poll, si
-    For poll = 1 To 20
+    For poll = 1 To maxPolls
         For row = 1 To 24
             buf = ""
             On Error Resume Next
@@ -1474,11 +1479,11 @@ End Function
 ' Dispatcher. Calls DetectWarrantyDialog to identify which manufacturer dialog has
 ' appeared, then routes to the appropriate handler sub.
 '-----------------------------------------------------------------------------------
-Sub HandleWarrantyClaimsDialog()
+Sub HandleWarrantyClaimsDialog(maxPolls)
     Call LogInfo("Warranty claims dialog: starting detection", "HandleWarrantyClaimsDialog")
 
     Dim dialogType
-    dialogType = DetectWarrantyDialog()
+    dialogType = DetectWarrantyDialog(maxPolls)
 
     If dialogType = "" Then
         Call LogWarn("Warranty claims dialog: no dialog detected within timeout", "HandleWarrantyClaimsDialog")
@@ -4956,11 +4961,16 @@ Sub ProcessLinesSequentially()
         Call LogDebug("Processing R " & lineLetterChar & " prompts", "ProcessLinesSequentially")
         Call ProcessPromptSequence(lineItemPrompts)
 
-        ' Handle warranty claims dialog (appears after ADD A LABOR OPERATION prompt for warranty lines)
+        ' Handle warranty claims dialog. Always called so that warranty lines on paginated
+        ' screens (not visible to IsWarrantyLine on page 1) are not missed.
+        ' Known warranty lines get full 20-poll detection; all others get a 3-poll quick
+        ' check (~1.5s) so non-warranty lines don't incur a long unnecessary wait.
+        Dim warrantyPolls
+        warrantyPolls = IIf(lineIsWarranty, 20, 3)
         If lineIsWarranty Then
             Call LogInfo("Warranty line " & lineLetterChar & " - handling claims dialog", "ProcessLinesSequentially")
-            Call HandleWarrantyClaimsDialog()
         End If
+        Call HandleWarrantyClaimsDialog(warrantyPolls)
 
         ' Track successful line processing
         g_LastSuccessfulLine = lineLetterChar
