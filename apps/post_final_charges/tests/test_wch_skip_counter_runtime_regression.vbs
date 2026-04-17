@@ -124,7 +124,7 @@ AssertContains "HandleWarrantyClaimsDialog accepts maxPolls", "Sub HandleWarrant
 AssertContains "HandleFcaClaimsDialog sub is declared", "Sub HandleFcaClaimsDialog()"
 AssertContains "HandleVwWarrantyDialog sub is declared", "Sub HandleVwWarrantyDialog()"
 AssertContains "IsWarrantyLine is called before FNL in ProcessLinesSequentially", "lineIsWarranty = IsWarrantyLine(lineLetterChar)"
-AssertContains "warrantyPolls computed from lineIsWarranty", "warrantyPolls = IIf(lineIsWarranty, 20, 3)"
+AssertContains "warrantyPolls computed from lineIsWarranty", "warrantyPolls = 20"
 AssertContains "HandleWarrantyClaimsDialog always called with poll count", "Call HandleWarrantyClaimsDialog(warrantyPolls)"
 AssertContains "fnlPrompts has ADD A LABOR OPER safety net", "ADD A LABOR OPER"
 

@@ -4966,7 +4966,11 @@ Sub ProcessLinesSequentially()
         ' Known warranty lines get full 20-poll detection; all others get a 3-poll quick
         ' check (~1.5s) so non-warranty lines don't incur a long unnecessary wait.
         Dim warrantyPolls
-        warrantyPolls = IIf(lineIsWarranty, 20, 3)
+        If lineIsWarranty Then
+            warrantyPolls = 20
+        Else
+            warrantyPolls = 3
+        End If
         If lineIsWarranty Then
             Call LogInfo("Warranty line " & lineLetterChar & " - handling claims dialog", "ProcessLinesSequentially")
         End If
