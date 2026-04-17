@@ -56,8 +56,8 @@ testCount = testCount + 1
 WScript.Echo "Test " & testCount & ": Plain text patterns still work with InStr()"
 
 Dim plainPromptKey, plainIsRegex
-plainPromptKey = "ADD A LABOR OPERATION"
-lineText = "ADD A LABOR OPERATION prompt appeared"
+plainPromptKey = "ADD A LABOR OPER"
+lineText = "ADD A LABOR OPER prompt appeared"
 plainIsRegex = False
 
 shouldUseInStr = Not plainIsRegex

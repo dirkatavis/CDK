@@ -299,9 +299,10 @@ Function CreateLineItemPromptDictionary()
     ' "SOLD HOURS (10)?" -> accepts default 10, "SOLD HOURS?" -> sends "0"
     Call AddPromptToDictEx(dict, "SOLD HOURS( \(\d+\))?\?", "0", "<NumpadEnter>", False, True)
     Call AddPromptToDict(dict, "ADD A LABOR OPERATION( \(N\)\?)?", "N", "<NumpadEnter>", True)
-    ' Fallback watcher: some terminals render spacing/default text variably on this prompt.
-    ' Enter accepts the default (N) and safely returns to COMMAND.
-    Call AddPromptToDict(dict, "ADD A LABOR OPERATION", "", "<Enter>", True)
+    ' Fallback watcher: when the FCA dialog box starts rendering simultaneously with this
+    ' prompt, its border (+---...---+) overwrites columns 20+ on row 23, truncating
+    ' "OPERATION" to "OPERATI". The shorter prefix survives that truncation via InStr.
+    Call AddPromptToDict(dict, "ADD A LABOR OPER", "", "<Enter>", True)
     ' Note: COMMAND: success condition removed - handled by checking MainPromptLine specifically
     ' to avoid false positives when COMMAND appears elsewhere on screen
     Call AddPromptToDict(dict, "Is this a comeback \(Y/N\)\.\.\.", "Y", "<NumpadEnter>", False)
@@ -764,7 +765,7 @@ Sub ProcessPromptSequence(prompts)
             End If
             
             ' Add extra logging for problematic prompts
-            If InStr(bestMatchKey, "ADD A LABOR OPERATION") > 0 Then
+            If InStr(bestMatchKey, "ADD A LABOR OPER") > 0 Then
                 Call LogEvent("comm", "high", "Responded to ADD A LABOR OPERATION prompt", "ProcessPromptSequence", "Waiting for screen to stabilize", "")
                 Call WaitMs(2000) ' Extra wait for this specific prompt
                 Call LogEvent("comm", "high", "Screen after ADD A LABOR OPERATION response", "ProcessPromptSequence", "", GetScreenSnapshot(5))
