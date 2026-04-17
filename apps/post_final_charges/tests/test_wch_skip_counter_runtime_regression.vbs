@@ -119,6 +119,7 @@ AssertContains "g_WarrantyDialogStepDelayMs global is declared", "Dim g_Warranty
 AssertContains "g_WarrantyDialogSignatureTexts global is declared", "Dim g_WarrantyDialogSignatureTexts()"
 AssertContains "g_WarrantyDialogSignatureTypes global is declared", "Dim g_WarrantyDialogSignatureTypes()"
 AssertContains "CAUSE L prefix detection is present", "CAUSE L"
+AssertContains "CAUSE L loop uses inner poll to avoid premature exit", "For causePoll = 1 To 6"
 AssertContains "DetectWarrantyDialog function is declared", "Function DetectWarrantyDialog(maxPolls)"
 AssertContains "HandleWarrantyClaimsDialog accepts maxPolls", "Sub HandleWarrantyClaimsDialog(maxPolls)"
 AssertContains "HandleFcaClaimsDialog sub is declared", "Sub HandleFcaClaimsDialog()"

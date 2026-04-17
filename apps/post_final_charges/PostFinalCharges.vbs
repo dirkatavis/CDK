@@ -1550,20 +1550,26 @@ Sub HandleFcaClaimsDialog()
         ' After the LABOR OP: dialog closes, CDK may issue CAUSE Ln: prompts
         ' (e.g. CAUSE L1:, CAUSE L2:) at the terminal prompt line. The suffix
         ' number varies by L-op count so we match on the "CAUSE L" prefix.
-        ' Cap at 10 CAUSE prompts.
-        Dim causeRow, causeBuf, causeFound, ci
+        ' Cap at 10 CAUSE prompts. Each occurrence is polled for up to ~3s
+        ' (6 x 500ms) because the first instance on a cold session can lag;
+        ' without the poll the loop exits instantly and FNL gets sent instead.
+        Dim causeRow, causeBuf, causeFound, ci, causePoll
         For ci = 1 To 10
             causeFound = False
-            For causeRow = 20 To 24
-                causeBuf = ""
-                On Error Resume Next
-                g_bzhao.ReadScreen causeBuf, 80, causeRow, 1
-                If Err.Number <> 0 Then Err.Clear
-                On Error GoTo 0
-                If InStr(1, causeBuf, "CAUSE L", vbTextCompare) > 0 Then
-                    causeFound = True
-                    Exit For
-                End If
+            For causePoll = 1 To 6
+                For causeRow = 20 To 24
+                    causeBuf = ""
+                    On Error Resume Next
+                    g_bzhao.ReadScreen causeBuf, 80, causeRow, 1
+                    If Err.Number <> 0 Then Err.Clear
+                    On Error GoTo 0
+                    If InStr(1, causeBuf, "CAUSE L", vbTextCompare) > 0 Then
+                        causeFound = True
+                        Exit For
+                    End If
+                Next
+                If causeFound Then Exit For
+                Call WaitMs(500)
             Next
             If Not causeFound Then Exit For
             Call LogInfo("FCA claims dialog: CAUSE L prompt detected", "HandleFcaClaimsDialog")
