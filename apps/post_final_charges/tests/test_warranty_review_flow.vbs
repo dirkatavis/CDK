@@ -379,12 +379,40 @@ Sub HandleFcaClaimsDialog()
 End Sub
 
 '--------------------------------------------------------------------
-' Local copy of HandleVwWarrantyDialog — stub (no MsgBox in tests)
-' (mirrors PostFinalCharges.vbs behavior minus the MsgBox)
+' Local copy of HandleVwWarrantyDialog (mirrors PostFinalCharges.vbs)
 '--------------------------------------------------------------------
 Sub HandleVwWarrantyDialog()
     g_VwDialogHandlerCalled = True
-    Call LogWarn("VW warranty dialog detected - step sequence not yet known", "HandleVwWarrantyDialog")
+
+    Dim buf, row, fi, commandFound
+    commandFound = False
+    For fi = 1 To 15
+        For row = 20 To 24
+            buf = ""
+            On Error Resume Next
+            g_bzhao.ReadScreen buf, 80, row, 1
+            If Err.Number <> 0 Then Err.Clear
+            On Error GoTo 0
+            If InStr(1, buf, "WARRANTY COMMAND:", vbTextCompare) > 0 Then
+                commandFound = True
+                Exit For
+            End If
+        Next
+        If commandFound Then Exit For
+        Call WaitMs(g_WarrantyDialogStepDelayMs)
+        Call FastKey("<NumpadEnter>")
+        Call WaitMs(g_WarrantyDialogStepDelayMs \ 2)
+    Next
+
+    If commandFound Then
+        Call WaitMs(g_WarrantyDialogStepDelayMs)
+        Call FastText("E")
+        Call WaitMs(g_WarrantyDialogStepDelayMs \ 2)
+        Call FastKey("<NumpadEnter>")
+        Call WaitMs(g_WarrantyDialogStepDelayMs \ 2)
+    Else
+        Call LogWarn("VW warranty dialog: WARRANTY COMMAND: prompt not found within field limit", "HandleVwWarrantyDialog")
+    End If
 End Sub
 
 '--------------------------------------------------------------------
@@ -515,14 +543,30 @@ AssertEqual "CAUSE L1: - second key is cause text", "Device failure", keys9(1)
 AssertEqual "CAUSE L1: - third key is NumpadEnter (CAUSE L1: response)", "<NumpadEnter>", keys9(2)
 AssertEqual "CAUSE L1: - exactly three keys sent", 3, fakeSeq.KeyCount
 
-' --- Test 10: WV dialog — dispatcher routes to WV stub, no keys sent ---
+' --- Test 10: WV dialog — 7 blank Enters through fields, then E at WARRANTY COMMAND: ---
+' Page sequence using FakeBzhaoDialogSequenced:
+'   Pages 0-6: blank fields (no WARRANTY COMMAND: yet) — each Enter advances page
+'   Page 7:    WARRANTY COMMAND: visible — handler sends E + Enter
+'   Page 8:    blank (stable after exit)
 g_VwDialogHandlerCalled = False
-Set fake = New FakeBzhaoDialog
-fake.SetPage BuildVwDialogPage()
-Set g_bzhao = fake
+Dim fakeVw : Set fakeVw = New FakeBzhaoDialogSequenced
+Dim vwField
+For vwField = 1 To 7
+    fakeVw.AddPage BuildVwDialogPage()   ' FAILURE CODE: visible but no WARRANTY COMMAND:
+Next
+' Page 7: WARRANTY COMMAND: prompt appears after 7th field
+Dim vwCommandPage : vwCommandPage = String(24 * 80, " ")
+Mid(vwCommandPage, 21 * 80 + 1, 17) = "WARRANTY COMMAND:"
+fakeVw.AddPage vwCommandPage
+fakeVw.AddPage String(24 * 80, " ")
+Set g_bzhao = fakeVw
 HandleWarrantyClaimsDialog()
-AssertTrue  "WV dialog - VW handler stub was called", g_VwDialogHandlerCalled
-AssertEqual "WV dialog - no keys sent by stub", 0, fake.KeyCount
+AssertTrue  "WV dialog - VW handler was called", g_VwDialogHandlerCalled
+' 7 Enters (one per field) + E + Enter = 9 keys total
+AssertEqual "WV dialog - total keys sent", 9, fakeVw.KeyCount
+Dim keysVw : keysVw = fakeVw.GetKeys()
+AssertEqual "WV dialog - last-but-one key is E", "E", keysVw(7)
+AssertEqual "WV dialog - last key is NumpadEnter (confirm exit)", "<NumpadEnter>", keysVw(8)
 
 ' --- Test 11: Unknown dialog type — dispatcher logs warning, no keys sent ---
 ' Temporarily add an unknown-type signature, use a page that matches it

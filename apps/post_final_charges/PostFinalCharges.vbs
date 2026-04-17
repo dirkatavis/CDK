@@ -1598,19 +1598,53 @@ End Sub
 ' **AUTHOR:** GitHub Copilot
 '
 ' **FUNCTIONALITY:**
-' Stub handler for the VW/Volvo warranty dialog ("MODIFY WARRANTY INFORMATION").
-' Step sequence is not yet known. Logs a screen snapshot and displays a MsgBox
-' so the operator can handle the dialog manually and observe the correct steps.
-' Once the steps are confirmed through prod testing, replace this stub with a
-' full implementation following the HandleFcaClaimsDialog pattern.
+' Navigates the VW/Volvo "MODIFY WARRANTY INFORMATION FOR LINE X" dialog.
+'
+' The dialog presents 7 fields (FAILURE CODE, FAILED PART NO, FAILED PARTS COUNT,
+' CLAIM TYPE, AUTHORIZATION CODE, CONCERN CODE, CAUSE). Each is accepted with a
+' blank Enter. After the last field, CDK presents a "WARRANTY COMMAND:" prompt at
+' the bottom of the screen; sending E exits the dialog.
+'
+' Rather than counting fields, the handler polls for "WARRANTY COMMAND:" after each
+' Enter so it handles any future variation in field count without code changes.
 '-----------------------------------------------------------------------------------
 Sub HandleVwWarrantyDialog()
-    Call LogWarn("VW warranty dialog detected — step sequence not yet known; manual intervention required", "HandleVwWarrantyDialog")
-    Call LogInfo("VW warranty dialog: screen snapshot: " & GetScreenSnapshot(24), "HandleVwWarrantyDialog")
-    MsgBox "Warranty dialog detected (VW/Volvo)" & vbCrLf & vbCrLf & _
-           "Please complete this dialog manually, then click OK to continue.", _
-           vbOKOnly + vbInformation, "Manual Warranty Dialog Intervention"
-    Call LogInfo("VW warranty dialog: operator dismissed MsgBox - continuing", "HandleVwWarrantyDialog")
+    Call LogInfo("VW warranty dialog: navigating fields with blank Enter until WARRANTY COMMAND: prompt", "HandleVwWarrantyDialog")
+
+    Dim buf, row, fi, commandFound
+    commandFound = False
+    For fi = 1 To 15
+        ' Check whether WARRANTY COMMAND: is now visible
+        For row = 20 To 24
+            buf = ""
+            On Error Resume Next
+            g_bzhao.ReadScreen buf, 80, row, 1
+            If Err.Number <> 0 Then Err.Clear
+            On Error GoTo 0
+            If InStr(1, buf, "WARRANTY COMMAND:", vbTextCompare) > 0 Then
+                commandFound = True
+                Exit For
+            End If
+        Next
+        If commandFound Then Exit For
+        Call LogInfo("VW warranty dialog: sending blank Enter for field " & fi, "HandleVwWarrantyDialog")
+        Call WaitMs(g_WarrantyDialogStepDelayMs)
+        Call FastKey("<NumpadEnter>")
+        Call WaitMs(g_WarrantyDialogStepDelayMs \ 2)
+    Next
+
+    If commandFound Then
+        Call LogInfo("VW warranty dialog: WARRANTY COMMAND: prompt detected - sending E to exit", "HandleVwWarrantyDialog")
+        Call WaitMs(g_WarrantyDialogStepDelayMs)
+        Call FastText("E")
+        Call WaitMs(g_WarrantyDialogStepDelayMs \ 2)
+        Call FastKey("<NumpadEnter>")
+        Call WaitMs(g_WarrantyDialogStepDelayMs \ 2)
+    Else
+        Call LogWarn("VW warranty dialog: WARRANTY COMMAND: prompt not found within field limit", "HandleVwWarrantyDialog")
+    End If
+
+    Call LogInfo("VW warranty dialog: complete", "HandleVwWarrantyDialog")
 End Sub
 
 '-----------------------------------------------------------------------------------
