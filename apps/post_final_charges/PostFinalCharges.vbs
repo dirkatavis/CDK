@@ -1494,6 +1494,9 @@ Sub HandleWarrantyClaimsDialog(maxPolls)
     Else
         Call LogWarn("Warranty claims dialog: unhandled dialog type [" & dialogType & "] - no handler implemented", "HandleWarrantyClaimsDialog")
         Call LogInfo("Warranty claims dialog: screen snapshot: " & GetScreenSnapshot(24), "HandleWarrantyClaimsDialog")
+        MsgBox "Unhandled warranty dialog type detected (" & dialogType & ")." & vbCrLf & _
+               "Please handle this dialog manually, then click OK to continue.", _
+               vbExclamation, "Warranty Dialog — Manual Intervention Required"
     End If
 
     Call LogInfo("Warranty claims dialog: complete", "HandleWarrantyClaimsDialog")
@@ -2618,7 +2621,10 @@ Sub InitializeConfig()
             warrantyDialogSigCount = warrantyDialogSigCount + 1
         End If
     Next
-    If warrantyDialogSigCount < UBound(g_WarrantyDialogSignatureTexts) + 1 Then
+    If warrantyDialogSigCount = 0 Then
+        g_WarrantyDialogSignatureTexts = Array()
+        g_WarrantyDialogSignatureTypes = Array()
+    ElseIf warrantyDialogSigCount < UBound(g_WarrantyDialogSignatureTexts) + 1 Then
         ReDim Preserve g_WarrantyDialogSignatureTexts(warrantyDialogSigCount - 1)
         ReDim Preserve g_WarrantyDialogSignatureTypes(warrantyDialogSigCount - 1)
     End If
