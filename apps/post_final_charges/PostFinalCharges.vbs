@@ -1361,7 +1361,7 @@ End Function
 ' Screen layout (1-indexed):
 '   Col 1     = line letter (A, B, C ...)
 '   Cols 4-41 = description (38 chars)
-'   Col 73+   = tech code (e.g. "C92", "H20", "I91") — under the TECH... header
+'   Col 42+   = tech code (e.g. "C92", "H20", "I91") — under the TECH... header
 '
 ' An empty or blank tech code on a header row is treated as compliant
 ' (no tech assigned yet, not an unauthorized code).
@@ -1383,10 +1383,10 @@ Function GetFirstNonCompliantLineTech()
         g_bzhao.ReadScreen buf, 80, row, 1
         If Err.Number <> 0 Then Err.Clear
         On Error GoTo 0
-        If Len(buf) >= 75 Then
+        If Len(buf) >= 44 Then
             firstChar = Mid(buf, 1, 1)
             If firstChar >= "A" And firstChar <= "Z" Then
-                techCode = UCase(Trim(Mid(buf, 73, 6)))
+                techCode = UCase(Trim(Mid(buf, 42, 8)))
                 Call LogInfo("Tech gate: Line " & firstChar & " raw read [" & techCode & "]", "GetFirstNonCompliantLineTech")
                 If Len(techCode) > 0 Then
                     isAllowed = False
