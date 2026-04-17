@@ -2084,7 +2084,6 @@ Sub RunMainProcess()
             accountedTotal = g_FiledROCount + _
                 g_SkipConfiguredCount + _
                 g_SkipTechCodeCount + _
-                g_SkipPartsOrderNeededCount + _
                 g_SkipBlacklistCount + _
                 g_SkipStatusOpenCount + _
                 g_SkipStatusPreassignedCount + _
@@ -2104,7 +2103,6 @@ Sub RunMainProcess()
                 "ROs Posted: " & g_FiledROCount & vbCrLf & _
                 "Skips - Specific ROs: " & g_SkipConfiguredCount & vbCrLf & _
                 "Skips - Non-compliant tech code: " & g_SkipTechCodeCount & vbCrLf & _
-                "Skips - Parts Order Needed: " & g_SkipPartsOrderNeededCount & vbCrLf & _
                 "Skips - Other Terms: " & g_SkipBlacklistCount & vbCrLf & _
                 "Skips - Open: " & g_SkipStatusOpenCount & vbCrLf & _
                 "Skips - Pre-Assigned: " & g_SkipStatusPreassignedCount & vbCrLf & _
@@ -3516,7 +3514,7 @@ Sub Main(roNumber)
     Dim matchedPartsDesc
     matchedPartsDesc = GetPartsNeededLaborDesc()
     If Len(Trim(matchedPartsDesc)) > 0 Then
-        g_SkipPartsOrderNeededCount = g_SkipPartsOrderNeededCount + 1
+        g_SkipNoPartsChargedCount = g_SkipNoPartsChargedCount + 1
         Call LogEvent("comm", "med", "Parts likely needed on RO - skipping closeout", "Main", "Matched labor: " & matchedPartsDesc & " | RO: " & currentRODisplay, "")
         Call FastText("E")
         Call FastKey("<NumpadEnter>")
