@@ -1574,8 +1574,11 @@ Sub HandleFcaClaimsDialog()
                 If causeFound Then Exit For
                 Call WaitMs(500)
             Next
-            If Not causeFound Then Exit For
-            Call LogInfo("FCA claims dialog: CAUSE L prompt detected", "HandleFcaClaimsDialog")
+            If Not causeFound Then
+                Call LogWarn("FCA claims dialog: CAUSE L not detected after " & (6 * 500) & "ms — screen snapshot: " & GetScreenSnapshot(24), "HandleFcaClaimsDialog")
+                Exit For
+            End If
+            Call LogInfo("FCA claims dialog: CAUSE L prompt detected on row " & causeRow & " [" & Trim(causeBuf) & "]", "HandleFcaClaimsDialog")
             Call WaitMs(g_WarrantyDialogStepDelayMs)
             Call LogInfo("FCA claims dialog: sending cause text [" & g_WarrantyCauseText & "]", "HandleFcaClaimsDialog")
             Call FastText(g_WarrantyCauseText)
