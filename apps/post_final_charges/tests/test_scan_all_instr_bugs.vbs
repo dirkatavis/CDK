@@ -147,7 +147,7 @@ WScript.Echo "Test " & testCount & ": Review other InStr() usages for potential 
 ' Check the other InStr usages we found
 Dim otherUsages
 otherUsages = Array( _
-    Array("bestMatchKey contains ADD A LABOR OPERATION", "If InStr(bestMatchKey, ""ADD A LABOR OPERATION"") > 0", "OK - literal text check"), _
+    Array("bestMatchKey contains ADD A LABOR OPER", "If InStr(bestMatchKey, ""ADD A LABOR OPER"") > 0", "OK - literal text check"), _
     Array("bestMatchKey contains SOLD HOURS", "If InStr(bestMatchKey, ""SOLD HOURS"") > 0", "OK - literal text check"), _
     Array("mainPromptText contains COMMAND:", "If InStr(1, mainPromptText, ""COMMAND:"", vbTextCompare) > 0", "OK - literal text search"), _
     Array("trimmedPromptText starts with COMMAND:", "If InStr(1, trimmedPromptText, ""COMMAND:"", vbTextCompare) = 1", "OK - literal text search"), _

@@ -110,23 +110,20 @@ Sub Main()
     ' Test 17: HasPartsCharged unit tests using screen fixture files
     RunTest "HasPartsCharged Unit Tests", "cscript.exe test_has_parts_charged.vbs"
 
-    ' Test 18: ExtractPartNumberForFca unit tests using screen fixture files
-    RunTest "FCA Dialog Handler Unit Tests", "cscript.exe test_fca_dialog_handler.vbs"
-
-    ' Test 19: FCA dialog runtime wiring regression
-    RunTest "FCA Dialog Runtime Regression", "cscript.exe test_fca_dialog_runtime_regression.vbs"
-
-    ' Test 20: WCH pagination detection regression
+    ' Test 18: WCH pagination detection regression
     RunTest "WCH Pagination Detection", "cscript.exe test_wch_pagination_detection.vbs"
 
-    ' Test 21: Summary accounting runtime regression
+    ' Test 19: Summary accounting runtime regression
     RunTest "Summary Accounting Runtime Regression", "cscript.exe test_summary_accounting_runtime_regression.vbs"
 
-    ' Test 22: Process-lock recovery runtime regression
+    ' Test 20: Process-lock recovery runtime regression
     RunTest "Process Lock Runtime Regression", "cscript.exe test_process_lock_runtime_regression.vbs"
 
-    ' Test 23: Labor-only exception + no-parts pagination behavior
+    ' Test 21: Labor-only exception + no-parts pagination behavior
     RunTest "CDK Labor Exceptions Pagination", "cscript.exe test_cdk_labor_exceptions_pagination.vbs"
+
+    ' Test 22: Warranty review flow (IsWarrantyLine + HandleWarrantyClaimsDialog)
+    RunTest "Warranty Review Flow", "cscript.exe test_warranty_review_flow.vbs"
 
     ' Summary
     WScript.Echo ""
