@@ -69,7 +69,6 @@ Dim g_SkipPartsOrderNeededCount
 Dim g_PartsOrderKeywords
 Dim g_PartsOrderNegators
 Dim g_AllowedTechCodes
-Dim g_arrCDKExceptions
 Dim g_arrCDKDescriptionExceptions
 Dim g_SkipTechCodeCount
 Dim g_ClosedRoCount
@@ -958,30 +957,6 @@ Function HasPartsCharged()
     Next
 End Function
 
-'-----------------------------------------------------------------------------------
-' **FUNCTION NAME:** IsCdkLaborOnlyExceptionTech
-' **DATE CREATED:** 2026-04-15
-' **AUTHOR:** GitHub Copilot
-'
-' **FUNCTIONALITY:**
-' Returns True when the provided labor type code is present in g_arrCDKExceptions.
-' Exception LTYPE codes are configured via [PostFinalCharges] CDKLaborOnlyLTypeExceptions.
-'-----------------------------------------------------------------------------------
-Function IsCdkLaborOnlyExceptionTech(techCode)
-    IsCdkLaborOnlyExceptionTech = False
-    If Not IsArray(g_arrCDKExceptions) Then Exit Function
-
-    Dim i, normalized
-    normalized = UCase(Trim(CStr(techCode)))
-    If Len(normalized) = 0 Then Exit Function
-
-    For i = 0 To UBound(g_arrCDKExceptions)
-        If normalized = g_arrCDKExceptions(i) Then
-            IsCdkLaborOnlyExceptionTech = True
-            Exit Function
-        End If
-    Next
-End Function
 
 '-----------------------------------------------------------------------------------
 ' **FUNCTION NAME:** IsCdkLaborOnlyExceptionDesc
@@ -1011,16 +986,171 @@ Function IsCdkLaborOnlyExceptionDesc(descText)
 End Function
 
 '-----------------------------------------------------------------------------------
+' **FUNCTION NAME:** EvaluateLaborOnlyGate
+' **DATE CREATED:** 2026-04-18
+' **AUTHOR:** GitHub Copilot
+'
+' **FUNCTIONALITY:**
+' Early disqualification gate. Runs on the RO detail screen before any closeout
+' work begins. Every L-row on the RO is assumed to require parts unless either:
+'   - The parent line header description (A/B/C... row) contains a listed keyword, OR
+'   - The L-row operation description contains a listed keyword
+' Keywords are loaded from CDKLaborOnlyDescriptionExceptions in config.ini.
+' If any L-row fails both checks the RO is skipped immediately.
+'
+' **SCREEN LAYOUT:**
+' Line header rows: col 1 = letter (A-Z), col 2 = space, description at col 4-41
+' L-rows: col 4 = "L", col 5 = digit, description at col 7-41
+'
+' **PAGINATION:**
+' Uses N + <NumpadEnter> to advance pages, B + <NumpadEnter> to return to page 1.
+'
+' **PARAMETERS:**
+' skipReason (ByRef) - Human-readable skip reason when the gate fails.
+'
+' **RETURNS:**
+' True when all L-rows contain a listed keyword; False if any L-row does not.
+'-----------------------------------------------------------------------------------
+Function EvaluateLaborOnlyGate(ByRef skipReason)
+    Dim row, buf
+    Dim pageIndicator
+    Dim doneScanning, pagesAdvanced, p
+    Dim preSig, postSig, preSig2, postSig2, preMarker, postMarker
+    Dim maxPageAdvances
+    Dim currentLineHeaderDesc, lRowDesc, hasLRows
+    Dim lineHeaderPasses, lRowPasses
+
+    EvaluateLaborOnlyGate = True
+    skipReason = ""
+
+    doneScanning = False
+    pagesAdvanced = 0
+    maxPageAdvances = 50
+    currentLineHeaderDesc = ""
+    hasLRows = False
+
+    Do While Not doneScanning
+        For row = 9 To 22
+            buf = ""
+            On Error Resume Next
+            g_bzhao.ReadScreen buf, 80, row, 1
+            If Err.Number <> 0 Then Err.Clear
+            On Error GoTo 0
+
+            If Len(buf) >= 5 Then
+                ' Detect line header row (A, B, C...): col 1 is A-Z, col 2 is space, col 4 is not "L"
+                If Mid(buf, 1, 1) >= "A" And Mid(buf, 1, 1) <= "Z" And Mid(buf, 2, 1) = " " And Mid(buf, 4, 1) <> "L" Then
+                    currentLineHeaderDesc = Trim(Mid(buf, 4, 38))
+                End If
+
+                ' Detect L-row: col 4 = "L", col 5 = digit
+                If Mid(buf, 4, 1) = "L" And IsNumeric(Mid(buf, 5, 1)) Then
+                    hasLRows = True
+                    lRowDesc = Trim(Mid(buf, 7, 35))
+
+                    lineHeaderPasses = IsCdkLaborOnlyExceptionDesc(currentLineHeaderDesc)
+                    lRowPasses = IsCdkLaborOnlyExceptionDesc(lRowDesc)
+
+                    Call LogEvent("comm", "med", "Labor-only gate L-row scanned", "EvaluateLaborOnlyGate", _
+                        "lineHeader=[" & currentLineHeaderDesc & "] lRowDesc=[" & lRowDesc & "] headerPass=" & lineHeaderPasses & " lRowPass=" & lRowPasses, "")
+
+                    If Not lineHeaderPasses And Not lRowPasses Then
+                        skipReason = "Skipped - Labor line requires parts: [" & lRowDesc & "] / [" & currentLineHeaderDesc & "]"
+                        Call LogEvent("comm", "low", "Labor-only gate SKIP — L-row does not contain a listed keyword", "EvaluateLaborOnlyGate", _
+                            "lineHeader=[" & currentLineHeaderDesc & "] lRowDesc=[" & lRowDesc & "]", "")
+                        EvaluateLaborOnlyGate = False
+                        doneScanning = True
+                        Exit For
+                    End If
+                End If
+            End If
+        Next
+
+        If Not doneScanning Then
+            pageIndicator = ""
+            On Error Resume Next
+            g_bzhao.ReadScreen pageIndicator, 80, 22, 1
+            If Err.Number <> 0 Then Err.Clear
+            On Error GoTo 0
+
+            If InStr(1, pageIndicator, "(END OF DISPLAY)", vbTextCompare) > 0 Then
+                doneScanning = True
+            ElseIf InStr(1, pageIndicator, "(MORE ON NEXT SCREEN)", vbTextCompare) > 0 Then
+                preMarker = pageIndicator
+                preSig = ""
+                preSig2 = ""
+
+                On Error Resume Next
+                g_bzhao.ReadScreen preSig, 80, 9, 1
+                If Err.Number <> 0 Then Err.Clear
+                g_bzhao.ReadScreen preSig2, 80, 10, 1
+                If Err.Number <> 0 Then Err.Clear
+                On Error GoTo 0
+
+                On Error Resume Next
+                g_bzhao.SendKey "N"
+                g_bzhao.SendKey "<NumpadEnter>"
+                If Err.Number <> 0 Then Err.Clear
+                On Error GoTo 0
+                g_bzhao.Pause 500
+
+                postMarker = ""
+                postSig = ""
+                postSig2 = ""
+
+                On Error Resume Next
+                g_bzhao.ReadScreen postMarker, 80, 22, 1
+                If Err.Number <> 0 Then Err.Clear
+                g_bzhao.ReadScreen postSig, 80, 9, 1
+                If Err.Number <> 0 Then Err.Clear
+                g_bzhao.ReadScreen postSig2, 80, 10, 1
+                If Err.Number <> 0 Then Err.Clear
+                On Error GoTo 0
+
+                If postMarker = preMarker And postSig = preSig And postSig2 = preSig2 Then
+                    doneScanning = True
+                Else
+                    pagesAdvanced = pagesAdvanced + 1
+                    If pagesAdvanced >= maxPageAdvances Then
+                        doneScanning = True
+                    End If
+                End If
+            Else
+                doneScanning = True
+            End If
+        End If
+    Loop
+
+    ' Return to page 1 so downstream flow remains on a known screen state.
+    If pagesAdvanced > 0 Then
+        For p = 1 To pagesAdvanced
+            On Error Resume Next
+            g_bzhao.SendKey "B"
+            g_bzhao.SendKey "<NumpadEnter>"
+            If Err.Number <> 0 Then Err.Clear
+            On Error GoTo 0
+            g_bzhao.Pause 500
+        Next
+    End If
+
+    If EvaluateLaborOnlyGate Then
+        If hasLRows Then
+            Call LogEvent("comm", "low", "Labor-only gate PASS — all L-rows contain a listed keyword", "EvaluateLaborOnlyGate", "", "")
+        Else
+            Call LogEvent("comm", "low", "Labor-only gate PASS — no L-rows found on RO", "EvaluateLaborOnlyGate", "", "")
+        End If
+    End If
+End Function
+
+'-----------------------------------------------------------------------------------
 ' **FUNCTION NAME:** EvaluatePartsChargedGate
 ' **DATE CREATED:** 2026-04-15
 ' **AUTHOR:** GitHub Copilot
 '
 ' **FUNCTIONALITY:**
-' Evaluates the parts-charged closeout gate across all RO detail pages.
-' - Passes immediately when a charged P-line (SALE AMT > 0) is found.
-' - When NO P-lines exist across all pages, allows labor-only exceptions based on
-'   configured header LTYPE codes (g_arrCDKExceptions).
-' - Otherwise returns False with an explicit skip reason.
+' Late safety-net gate called from Closeout_Ro. Scans P-lines (parts rows) across
+' all RO detail pages. Passes when a charged P-line (SALE AMT > 0) is found or
+' when no P-lines exist. Fails when P-lines are present but none are charged.
 '
 ' **PAGINATION:**
 ' Uses N + <NumpadEnter> to advance detail pages and B + <NumpadEnter> to return
@@ -1039,19 +1169,15 @@ Function EvaluatePartsChargedGate(ByRef skipReason)
     Dim preSig, postSig, preSig2, postSig2, preMarker, postMarker
     Dim maxPageAdvances
     Dim hasAnyPartLine, hasChargedPart
-    Dim firstExceptionEvidence, firstNonExceptionTech
-    Dim lTypeCode, lDesc, lHasTechEx, lHasDescEx
 
-    EvaluatePartsChargedGate = False
-    skipReason = "Skipped - No parts charged"
+    EvaluatePartsChargedGate = True
+    skipReason = ""
 
     doneScanning = False
     pagesAdvanced = 0
     maxPageAdvances = 50
     hasAnyPartLine = False
     hasChargedPart = False
-    firstExceptionEvidence = ""
-    firstNonExceptionTech = ""
 
     Do While Not doneScanning
         For row = 9 To 22
@@ -1070,32 +1196,6 @@ Function EvaluatePartsChargedGate(ByRef skipReason)
                     If amtVal > 0 Then
                         hasChargedPart = True
                         Exit For
-                    End If
-                End If
-            End If
-
-            ' L-rows carry LTYPE (col 50-55) and description (col 7-41).
-            ' Matches the same layout used by IsWchLine() and GetPartsNeededLaborDesc().
-            If Len(buf) >= 55 And Mid(buf, 4, 1) = "L" And IsNumeric(Mid(buf, 5, 1)) Then
-                lTypeCode = UCase(Trim(Mid(buf, 50, 6)))
-                lDesc = Trim(Mid(buf, 7, 35))
-                lHasTechEx = (Len(lTypeCode) > 0 And IsCdkLaborOnlyExceptionTech(lTypeCode))
-                lHasDescEx = IsCdkLaborOnlyExceptionDesc(lDesc)
-
-                Call LogEvent("comm", "med", "Parts gate L-row scanned", "EvaluatePartsChargedGate", _
-                    "ltype=[" & lTypeCode & "] desc=[" & lDesc & "] techEx=" & lHasTechEx & " descEx=" & lHasDescEx, "")
-
-                If lHasTechEx Or lHasDescEx Then
-                    If Len(firstExceptionEvidence) = 0 Then
-                        If lHasTechEx Then
-                            firstExceptionEvidence = "LTYPE " & lTypeCode
-                        Else
-                            firstExceptionEvidence = "description """ & lDesc & """"
-                        End If
-                    End If
-                Else
-                    If Len(lTypeCode) > 0 Then
-                        If Len(firstNonExceptionTech) = 0 Then firstNonExceptionTech = lTypeCode
                     End If
                 End If
             End If
@@ -1171,34 +1271,14 @@ Function EvaluatePartsChargedGate(ByRef skipReason)
     End If
 
     If hasChargedPart Then
-        EvaluatePartsChargedGate = True
-        Call LogEvent("comm", "low", "Parts gate PASS — charged part found", "EvaluatePartsChargedGate", "", "")
-        Exit Function
+        Call LogEvent("comm", "low", "Parts charged gate PASS — charged part found", "EvaluatePartsChargedGate", "", "")
+    ElseIf hasAnyPartLine Then
+        skipReason = "Skipped - No parts charged"
+        EvaluatePartsChargedGate = False
+        Call LogEvent("comm", "low", "Parts charged gate SKIP — P-lines present but none have a charged amount", "EvaluatePartsChargedGate", "", "")
+    Else
+        Call LogEvent("comm", "low", "Parts charged gate PASS — no P-lines on RO", "EvaluatePartsChargedGate", "", "")
     End If
-
-    ' Only bypass for labor-only exceptions when there are no P-lines anywhere.
-    If Not hasAnyPartLine Then
-        If Len(firstNonExceptionTech) > 0 Then
-            skipReason = "Skipped - No parts charged: " & firstNonExceptionTech
-            Call LogEvent("comm", "low", "Parts gate SKIP — no P-lines; non-exception ltype present", "EvaluatePartsChargedGate", _
-                "skipReason=[" & skipReason & "] exceptionEvidence=[" & firstExceptionEvidence & "]", "")
-            Exit Function
-        End If
-
-        If Len(firstExceptionEvidence) > 0 Then
-            EvaluatePartsChargedGate = True
-            Call LogEvent("comm", "low", "Parts gate PASS — labor-only exception matched, no P-lines", "EvaluatePartsChargedGate", _
-                firstExceptionEvidence, "")
-            Exit Function
-        End If
-    End If
-
-    If Len(firstNonExceptionTech) > 0 Then
-        skipReason = "Skipped - No parts charged: " & firstNonExceptionTech
-    End If
-
-    Call LogEvent("comm", "low", "Parts gate SKIP — parts present but none charged", "EvaluatePartsChargedGate", _
-        "hasAnyPartLine=" & hasAnyPartLine & " skipReason=[" & skipReason & "] exceptionEvidence=[" & firstExceptionEvidence & "] nonExceptionTech=[" & firstNonExceptionTech & "]", "")
 End Function
 
 '-----------------------------------------------------------------------------------
@@ -2665,14 +2745,6 @@ Sub InitializeConfig()
     Next
     Call LogEvent("comm", "high", "Closure readiness tech-code gate configured", "InitializeConfig", "AllowedTechCodes: " & allowedTechCodesRaw, "")
 
-    Dim cdkLaborExceptionRaw, ei
-    cdkLaborExceptionRaw = GetIniSetting("PostFinalCharges", "CDKLaborOnlyLTypeExceptions", "WCH,WT,WF")
-    g_arrCDKExceptions = Split(cdkLaborExceptionRaw, ",")
-    For ei = 0 To UBound(g_arrCDKExceptions)
-        g_arrCDKExceptions(ei) = UCase(Trim(g_arrCDKExceptions(ei)))
-    Next
-    Call LogEvent("comm", "high", "CDK labor-only exception LTYPE codes configured", "InitializeConfig", "CDKLaborOnlyLTypeExceptions: " & cdkLaborExceptionRaw, "")
-
     Dim cdkLaborDescExceptionRaw, di
     cdkLaborDescExceptionRaw = GetIniSetting("PostFinalCharges", "CDKLaborOnlyDescriptionExceptions", "check and adjust")
     g_arrCDKDescriptionExceptions = Split(cdkLaborDescExceptionRaw, ",")
@@ -3598,6 +3670,21 @@ Sub Main(roNumber)
         Call FastKey("<NumpadEnter>")
         Call WaitForPrompt("COMMAND:", "", False, 5000, "")
         lastRoResult = "Skipped - Parts order needed: " & matchedPartsDesc
+        Exit Sub
+    End If
+
+    ' --- LABOR-ONLY GATE ---
+    ' Skip ROs where any L-row description (or its parent line header description)
+    ' does not contain a keyword from CDKLaborOnlyDescriptionExceptions. All labor
+    ' lines are assumed to require parts unless a keyword confirms labor-only work.
+    Dim laborOnlySkipReason
+    If Not EvaluateLaborOnlyGate(laborOnlySkipReason) Then
+        g_SkipNoPartsChargedCount = g_SkipNoPartsChargedCount + 1
+        Call LogEvent("comm", "med", "Labor-only gate failed - skipping RO", "Main", laborOnlySkipReason & " | RO: " & currentRODisplay, "")
+        Call FastText("E")
+        Call FastKey("<NumpadEnter>")
+        Call WaitForPrompt("COMMAND:", "", False, 5000, "")
+        lastRoResult = laborOnlySkipReason
         Exit Sub
     End If
 

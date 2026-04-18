@@ -65,29 +65,34 @@ End Sub
 WScript.Echo "Parts-Charged Gate Runtime Regression Test"
 WScript.Echo "==========================================="
 
-' Exception-aware parts gate functions are present
+' Labor-only gate and parts-charged gate functions are present
+AssertContains "EvaluateLaborOnlyGate function is declared", "Function EvaluateLaborOnlyGate(ByRef skipReason)"
 AssertContains "EvaluatePartsChargedGate function is declared", "Function EvaluatePartsChargedGate(ByRef skipReason)"
-AssertContains "Exception tech-code helper exists", "Function IsCdkLaborOnlyExceptionTech(techCode)"
 AssertContains "Description exception helper exists", "Function IsCdkLaborOnlyExceptionDesc(descText)"
-AssertContains "Parts gate scans P-line indicator", "Mid(buf, 6, 1) = ""P"""
-AssertContains "Parts gate reads SALE AMT column", "Mid(buf, 70, 11)"
-AssertContains "Parts gate supports labor-only bypass", "Parts gate PASS — labor-only exception matched, no P-lines"
-AssertContains "Parts gate checks line description exceptions", "IsCdkLaborOnlyExceptionDesc("
-AssertContains "Parts gate sets explicit offending-code result", "Skipped - No parts charged: "
+AssertContains "Labor-only gate tracks line header description", "currentLineHeaderDesc"
+AssertContains "Labor-only gate scans P-line indicator", "Mid(buf, 6, 1) = ""P"""
+AssertContains "Labor-only gate reads SALE AMT column", "Mid(buf, 70, 11)"
+AssertContains "Labor-only gate checks description exceptions", "IsCdkLaborOnlyExceptionDesc("
+AssertContains "Labor-only gate sets skip reason with descriptions", "Skipped - Labor line requires parts:"
+AssertAbsent "Ltype exception helper is removed", "Function IsCdkLaborOnlyExceptionTech("
+AssertAbsent "Ltype exception global is removed", "g_arrCDKExceptions"
 
-' Guard is wired into Closeout_Ro before status routing
+' Labor-only gate is wired into main flow before FindTrigger
+AssertContains "Main flow calls EvaluateLaborOnlyGate", "If Not EvaluateLaborOnlyGate(laborOnlySkipReason) Then"
+AssertContains "Labor-only gate skip increments no-parts counter", "g_SkipNoPartsChargedCount = g_SkipNoPartsChargedCount + 1"
+AssertOrder "Labor-only gate precedes FindTrigger", _
+    "If Not EvaluateLaborOnlyGate(laborOnlySkipReason) Then", "trigger = FindTrigger()"
+
+' Parts-charged gate is wired into Closeout_Ro as late safety net
 AssertContains "Closeout_Ro calls EvaluatePartsChargedGate", "If Not EvaluatePartsChargedGate(noPartsSkipReason) Then"
 AssertContains "Closeout_Ro writes dynamic skip reason", "lastRoResult = noPartsSkipReason"
-
-' Guard fires before FC/F commands (guard appears before Closeout_ReadyToPost)
-AssertOrder "Parts guard precedes READY TO POST closeout", _
+AssertOrder "Parts charged guard precedes READY TO POST closeout", _
     "If Not EvaluatePartsChargedGate(noPartsSkipReason) Then", "Call Closeout_ReadyToPost()"
 
-' Exception list is config-driven
-AssertContains "Config reader loads labor-only exceptions", "GetIniSetting(""PostFinalCharges"", ""CDKLaborOnlyLTypeExceptions"", ""WCH,WT,WF"")"
-AssertContains "Exception list is normalized to uppercase", "g_arrCDKExceptions(ei) = UCase(Trim(g_arrCDKExceptions(ei)))"
+' Exception list is config-driven (description only)
 AssertContains "Config reader loads labor-only description exceptions", "GetIniSetting(""PostFinalCharges"", ""CDKLaborOnlyDescriptionExceptions"", ""check and adjust"")"
 AssertContains "Description exceptions normalized lowercase", "g_arrCDKDescriptionExceptions(di) = LCase(Trim(g_arrCDKDescriptionExceptions(di)))"
+AssertAbsent "Ltype exception config key is removed", "CDKLaborOnlyLTypeExceptions"
 
 ' Blacklist gate is retained (general-purpose full-screen scan)
 AssertContains "Blacklist raw terms global is declared", "Dim g_BlacklistTermsRaw"
