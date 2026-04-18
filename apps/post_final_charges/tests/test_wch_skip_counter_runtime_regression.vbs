@@ -73,13 +73,13 @@ AssertContains "Labor-only gate tracks line header description", "currentLineHea
 AssertContains "Labor-only gate scans P-line indicator", "Mid(buf, 6, 1) = ""P"""
 AssertContains "Labor-only gate reads SALE AMT column", "Mid(buf, 70, 11)"
 AssertContains "Labor-only gate checks description exceptions", "IsCdkLaborOnlyExceptionDesc("
-AssertContains "Labor-only gate sets skip reason with descriptions", "Skipped - Labor line requires parts:"
+AssertContains "Labor-only gate sets skip reason with descriptions", "Skipped - No parts charged: lrow=["
 AssertAbsent "Ltype exception helper is removed", "Function IsCdkLaborOnlyExceptionTech("
 AssertAbsent "Ltype exception global is removed", "g_arrCDKExceptions"
 
 ' Labor-only gate is wired into main flow before FindTrigger
 AssertContains "Main flow calls EvaluateLaborOnlyGate", "If Not EvaluateLaborOnlyGate(laborOnlySkipReason) Then"
-AssertContains "Labor-only gate skip increments no-parts counter", "g_SkipNoPartsChargedCount = g_SkipNoPartsChargedCount + 1"
+AssertContains "Labor-only gate result routes through TrackPrimaryOutcomeCounters", "lastRoResult = laborOnlySkipReason"
 AssertOrder "Labor-only gate precedes FindTrigger", _
     "If Not EvaluateLaborOnlyGate(laborOnlySkipReason) Then", "trigger = FindTrigger()"
 
