@@ -2516,6 +2516,7 @@ Sub InitializeConfig()
     If overwriteLogOnStartValue = "1" Or overwriteLogOnStartValue = "true" Or overwriteLogOnStartValue = "yes" Then
         g_OverwriteLogOnStart = True
     End If
+    Call ArchivePreviousDayLog()
     Call ApplyLogStartupMode()
 
     g_LongWait = 2000
@@ -2669,6 +2670,53 @@ Sub InitializeConfig()
         g_arrCDKDescriptionExceptions(di) = LCase(Trim(g_arrCDKDescriptionExceptions(di)))
     Next
     Call LogEvent("comm", "high", "CDK labor-only description exceptions configured", "InitializeConfig", "CDKLaborOnlyDescriptionExceptions: " & cdkLaborDescExceptionRaw, "")
+End Sub
+
+Sub ArchivePreviousDayLog()
+    Dim archiveFSO, logFolder, archiveFolder, archiveDateFolder, archivePath
+    Dim logModDate
+
+    Set archiveFSO = CreateObject("Scripting.FileSystemObject")
+
+    If Not archiveFSO.FileExists(LOG_FILE_PATH) Then
+        Set archiveFSO = Nothing
+        Exit Sub
+    End If
+
+    On Error Resume Next
+    logModDate = archiveFSO.GetFile(LOG_FILE_PATH).DateLastModified
+    If Err.Number <> 0 Then
+        Err.Clear
+        On Error GoTo 0
+        Set archiveFSO = Nothing
+        Exit Sub
+    End If
+    On Error GoTo 0
+
+    If DateDiff("d", DateValue(logModDate), DateValue(Now())) < 1 Then
+        Set archiveFSO = Nothing
+        Exit Sub
+    End If
+
+    logFolder       = archiveFSO.GetParentFolderName(LOG_FILE_PATH)
+    archiveFolder   = archiveFSO.BuildPath(logFolder, "archive")
+    archiveDateFolder = archiveFSO.BuildPath(archiveFolder, Format(Year(logModDate), "0000") & "-" & Format(Month(logModDate), "00") & "-" & Format(Day(logModDate), "00"))
+    archivePath     = archiveFSO.BuildPath(archiveDateFolder, archiveFSO.GetFileName(LOG_FILE_PATH))
+
+    On Error Resume Next
+    Call EnsureFolderExists(archiveFSO, archiveDateFolder)
+    archiveFSO.MoveFile LOG_FILE_PATH, archivePath
+    If Err.Number <> 0 Then
+        Err.Clear
+        On Error GoTo 0
+        Call LogEvent("maj", "low", "Failed to archive previous day log", "ArchivePreviousDayLog", LOG_FILE_PATH & " -> " & archivePath, "")
+        Set archiveFSO = Nothing
+        Exit Sub
+    End If
+    On Error GoTo 0
+
+    Set archiveFSO = Nothing
+    Call LogEvent("comm", "low", "Previous day log archived", "ArchivePreviousDayLog", archivePath, "")
 End Sub
 
 Sub ApplyLogStartupMode()
