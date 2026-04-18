@@ -71,7 +71,7 @@ AssertContains "Exception tech-code helper exists", "Function IsCdkLaborOnlyExce
 AssertContains "Description exception helper exists", "Function IsCdkLaborOnlyExceptionDesc(descText)"
 AssertContains "Parts gate scans P-line indicator", "Mid(buf, 6, 1) = ""P"""
 AssertContains "Parts gate reads SALE AMT column", "Mid(buf, 70, 11)"
-AssertContains "Parts gate supports labor-only bypass", "Labor-only exception matched - bypassing no-parts skip"
+AssertContains "Parts gate supports labor-only bypass", "Parts gate PASS — labor-only exception matched, no P-lines"
 AssertContains "Parts gate checks line description exceptions", "IsCdkLaborOnlyExceptionDesc("
 AssertContains "Parts gate sets explicit offending-code result", "Skipped - No parts charged: "
 

@@ -1082,6 +1082,9 @@ Function EvaluatePartsChargedGate(ByRef skipReason)
                 lHasTechEx = (Len(lTypeCode) > 0 And IsCdkLaborOnlyExceptionTech(lTypeCode))
                 lHasDescEx = IsCdkLaborOnlyExceptionDesc(lDesc)
 
+                Call LogEvent("comm", "med", "Parts gate L-row scanned", "EvaluatePartsChargedGate", _
+                    "ltype=[" & lTypeCode & "] desc=[" & lDesc & "] techEx=" & lHasTechEx & " descEx=" & lHasDescEx, "")
+
                 If lHasTechEx Or lHasDescEx Then
                     If Len(firstExceptionEvidence) = 0 Then
                         If lHasTechEx Then
@@ -1169,6 +1172,7 @@ Function EvaluatePartsChargedGate(ByRef skipReason)
 
     If hasChargedPart Then
         EvaluatePartsChargedGate = True
+        Call LogEvent("comm", "low", "Parts gate PASS — charged part found", "EvaluatePartsChargedGate", "", "")
         Exit Function
     End If
 
@@ -1176,12 +1180,15 @@ Function EvaluatePartsChargedGate(ByRef skipReason)
     If Not hasAnyPartLine Then
         If Len(firstNonExceptionTech) > 0 Then
             skipReason = "Skipped - No parts charged: " & firstNonExceptionTech
+            Call LogEvent("comm", "low", "Parts gate SKIP — no P-lines; non-exception ltype present", "EvaluatePartsChargedGate", _
+                "skipReason=[" & skipReason & "] exceptionEvidence=[" & firstExceptionEvidence & "]", "")
             Exit Function
         End If
 
         If Len(firstExceptionEvidence) > 0 Then
             EvaluatePartsChargedGate = True
-            Call LogEvent("comm", "med", "Labor-only exception matched - bypassing no-parts skip", "Closeout_Ro", firstExceptionEvidence, "")
+            Call LogEvent("comm", "low", "Parts gate PASS — labor-only exception matched, no P-lines", "EvaluatePartsChargedGate", _
+                firstExceptionEvidence, "")
             Exit Function
         End If
     End If
@@ -1189,6 +1196,9 @@ Function EvaluatePartsChargedGate(ByRef skipReason)
     If Len(firstNonExceptionTech) > 0 Then
         skipReason = "Skipped - No parts charged: " & firstNonExceptionTech
     End If
+
+    Call LogEvent("comm", "low", "Parts gate SKIP — parts present but none charged", "EvaluatePartsChargedGate", _
+        "hasAnyPartLine=" & hasAnyPartLine & " skipReason=[" & skipReason & "] exceptionEvidence=[" & firstExceptionEvidence & "] nonExceptionTech=[" & firstNonExceptionTech & "]", "")
 End Function
 
 '-----------------------------------------------------------------------------------
