@@ -1019,6 +1019,7 @@ Function EvaluateLaborOnlyGate(ByRef skipReason)
     Dim maxPageAdvances
     Dim currentLineHeaderDesc, lRowDesc, hasLRows
     Dim lineHeaderPasses, lRowPasses
+    Dim lTypeCode, unsupportedWarranty, warrantyIndex
 
     EvaluateLaborOnlyGate = True
     skipReason = ""
@@ -1047,6 +1048,28 @@ Function EvaluateLaborOnlyGate(ByRef skipReason)
                 If Mid(buf, 4, 1) = "L" And IsNumeric(Mid(buf, 5, 1)) Then
                     hasLRows = True
                     lRowDesc = Trim(Mid(buf, 7, 35))
+                    lTypeCode = UCase(Trim(Mid(buf, 50, 6)))
+
+                    ' Skip RO if ltype starts with W but is not in the supported warranty list
+                    If Left(lTypeCode, 1) = "W" Then
+                        unsupportedWarranty = True
+                        If IsArray(g_arrWarrantyLTypes) Then
+                            For warrantyIndex = 0 To UBound(g_arrWarrantyLTypes)
+                                If lTypeCode = g_arrWarrantyLTypes(warrantyIndex) Then
+                                    unsupportedWarranty = False
+                                    Exit For
+                                End If
+                            Next
+                        End If
+                        If unsupportedWarranty Then
+                            skipReason = "Skipped - Unsupported warranty ltype: [" & lTypeCode & "] lrow=[" & lRowDesc & "]"
+                            Call LogEvent("comm", "low", "Labor-only gate SKIP — unsupported warranty ltype", "EvaluateLaborOnlyGate", _
+                                "ltype=[" & lTypeCode & "] not in WarrantyLTypes", "")
+                            EvaluateLaborOnlyGate = False
+                            doneScanning = True
+                            Exit For
+                        End If
+                    End If
 
                     lineHeaderPasses = IsCdkLaborOnlyExceptionDesc(currentLineHeaderDesc)
                     lRowPasses = IsCdkLaborOnlyExceptionDesc(lRowDesc)
@@ -1055,7 +1078,7 @@ Function EvaluateLaborOnlyGate(ByRef skipReason)
                         "lineHeader=[" & currentLineHeaderDesc & "] lRowDesc=[" & lRowDesc & "] headerPass=" & lineHeaderPasses & " lRowPass=" & lRowPasses, "")
 
                     If Not lineHeaderPasses And Not lRowPasses Then
-                        skipReason = "Skipped - Labor line requires parts: [" & lRowDesc & "] / [" & currentLineHeaderDesc & "]"
+                        skipReason = "Skipped - No parts charged: lrow=[" & lRowDesc & "] header=[" & currentLineHeaderDesc & "]"
                         Call LogEvent("comm", "low", "Labor-only gate SKIP — L-row does not contain a listed keyword", "EvaluateLaborOnlyGate", _
                             "lineHeader=[" & currentLineHeaderDesc & "] lRowDesc=[" & lRowDesc & "]", "")
                         EvaluateLaborOnlyGate = False
@@ -3679,7 +3702,6 @@ Sub Main(roNumber)
     ' lines are assumed to require parts unless a keyword confirms labor-only work.
     Dim laborOnlySkipReason
     If Not EvaluateLaborOnlyGate(laborOnlySkipReason) Then
-        g_SkipNoPartsChargedCount = g_SkipNoPartsChargedCount + 1
         Call LogEvent("comm", "med", "Labor-only gate failed - skipping RO", "Main", laborOnlySkipReason & " | RO: " & currentRODisplay, "")
         Call FastText("E")
         Call FastKey("<NumpadEnter>")
