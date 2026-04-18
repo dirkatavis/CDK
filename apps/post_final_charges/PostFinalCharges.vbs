@@ -1055,7 +1055,7 @@ Function EvaluateLaborOnlyGate(ByRef skipReason)
                         "lineHeader=[" & currentLineHeaderDesc & "] lRowDesc=[" & lRowDesc & "] headerPass=" & lineHeaderPasses & " lRowPass=" & lRowPasses, "")
 
                     If Not lineHeaderPasses And Not lRowPasses Then
-                        skipReason = "Skipped - Labor line requires parts: [" & lRowDesc & "] / [" & currentLineHeaderDesc & "]"
+                        skipReason = "Skipped - No parts charged: lrow=[" & lRowDesc & "] header=[" & currentLineHeaderDesc & "]"
                         Call LogEvent("comm", "low", "Labor-only gate SKIP — L-row does not contain a listed keyword", "EvaluateLaborOnlyGate", _
                             "lineHeader=[" & currentLineHeaderDesc & "] lRowDesc=[" & lRowDesc & "]", "")
                         EvaluateLaborOnlyGate = False
@@ -3679,7 +3679,6 @@ Sub Main(roNumber)
     ' lines are assumed to require parts unless a keyword confirms labor-only work.
     Dim laborOnlySkipReason
     If Not EvaluateLaborOnlyGate(laborOnlySkipReason) Then
-        g_SkipNoPartsChargedCount = g_SkipNoPartsChargedCount + 1
         Call LogEvent("comm", "med", "Labor-only gate failed - skipping RO", "Main", laborOnlySkipReason & " | RO: " & currentRODisplay, "")
         Call FastText("E")
         Call FastKey("<NumpadEnter>")
