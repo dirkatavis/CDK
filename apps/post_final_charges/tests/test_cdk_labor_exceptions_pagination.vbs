@@ -169,7 +169,7 @@ End Function
 
 Function BuildLRow(ByVal ltypeCode, ByVal descText)
     ' Matches real CDK L-row layout: L1 at col 4-5, description at col 7-41, LTYPE at col 50-55.
-    ' Consistent with IsWchLine() (col 50-55) and GetPartsNeededLaborDesc() (col 7, 35 chars).
+    ' Consistent with IsWchLine() (col 50-55) and EvaluateLaborOnlyGate() (col 7, 35 chars).
     Dim rowText
     rowText = String(80, " ")
     rowText = SetColText(rowText, 4, "L1")
@@ -276,7 +276,7 @@ Function EvaluatePartsChargedGate(ByRef skipReason)
             End If
 
             ' L-rows carry LTYPE (col 50-55) and description (col 7-41).
-            ' Matches the same layout used by IsWchLine() and GetPartsNeededLaborDesc().
+            ' Matches the same layout used by IsWchLine() and EvaluateLaborOnlyGate().
             If Len(buf) >= 55 And Mid(buf, 4, 1) = "L" And IsNumeric(Mid(buf, 5, 1)) Then
                 lTypeCode = UCase(Trim(Mid(buf, 50, 6)))
                 lDesc = Trim(Mid(buf, 7, 35))
