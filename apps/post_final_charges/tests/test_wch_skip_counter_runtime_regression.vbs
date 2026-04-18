@@ -115,7 +115,7 @@ AssertContains "Dialog detects COMMAND: prompt", "InStr(1, buf, ""COMMAND:"", vb
 AssertContains "Dialog sends blank Enter for LABOR OP: state", "WaitForPrompt(""LABOR OP:"", """", True"
 AssertContains "Dialog sends period to skip fields in COMMAND: state", "FastText(""."")"
 AssertContains "Dialog sends E to exit in COMMAND: state", "FastText(""E"")"
-AssertContains "WarrantyLTypes config key is read", "GetIniSetting(""PostFinalCharges"", ""WarrantyLTypes"", ""WCH,WV,WF"")"
+AssertContains "WarrantyLTypes config key is read", "GetIniSetting(""PostFinalCharges"", ""WarrantyLTypes"", ""WCH,WV"")"
 AssertContains "WarrantyCauseText config key is read", "GetIniSetting(""PostFinalCharges"", ""WarrantyCauseText"", ""Device failure"")"
 AssertContains "WarrantyDialogStepDelayMs config key is read", "GetIniSetting(""PostFinalCharges"", ""WarrantyDialogStepDelayMs"", ""2000"")"
 AssertContains "WarrantyDialogSignatures config key is read", "GetIniSetting(""PostFinalCharges"", ""WarrantyDialogSignatures"","

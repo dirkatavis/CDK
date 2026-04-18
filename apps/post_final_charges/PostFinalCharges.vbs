@@ -1312,7 +1312,7 @@ End Function
 ' **FUNCTIONALITY:**
 ' Scans rows 9-22 for L-operations belonging to the given line letter and checks
 ' whether any carry a warranty LABOR TYPE from g_arrWarrantyLTypes (col 50-55,
-' 1-indexed). The array is loaded from config key WarrantyLTypes (default WCH,WV,WF).
+' 1-indexed). The array is loaded from config key WarrantyLTypes (default WCH,WV).
 '
 ' Screen layout (from RO DETAIL header row):
 '   LC DESCRIPTION                           TECH... LTYPE    ACT   SOLD    SALE AMT
@@ -2691,7 +2691,7 @@ Sub InitializeConfig()
     g_EmployeeNameConfirm = GetIniSetting("PostFinalCharges", "EmployeeNameConfirm", "")
 
     Dim warrantyLTypesRaw, wli
-    warrantyLTypesRaw = GetIniSetting("PostFinalCharges", "WarrantyLTypes", "WCH,WV,WF")
+    warrantyLTypesRaw = GetIniSetting("PostFinalCharges", "WarrantyLTypes", "WCH,WV")
     Dim warrantyLTypesArr : warrantyLTypesArr = Split(warrantyLTypesRaw, ",")
     Dim warrantyLTypesFiltered() : ReDim warrantyLTypesFiltered(0)
     Dim warrantyLTypeCount : warrantyLTypeCount = 0
