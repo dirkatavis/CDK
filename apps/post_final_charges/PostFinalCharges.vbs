@@ -1019,6 +1019,7 @@ Function EvaluateLaborOnlyGate(ByRef skipReason)
     Dim maxPageAdvances
     Dim currentLineHeaderDesc, lRowDesc, hasLRows
     Dim lineHeaderPasses, lRowPasses
+    Dim lTypeCode, unsupportedWarranty, warrantyIndex
 
     EvaluateLaborOnlyGate = True
     skipReason = ""
@@ -1047,6 +1048,28 @@ Function EvaluateLaborOnlyGate(ByRef skipReason)
                 If Mid(buf, 4, 1) = "L" And IsNumeric(Mid(buf, 5, 1)) Then
                     hasLRows = True
                     lRowDesc = Trim(Mid(buf, 7, 35))
+                    lTypeCode = UCase(Trim(Mid(buf, 50, 6)))
+
+                    ' Skip RO if ltype starts with W but is not in the supported warranty list
+                    If Left(lTypeCode, 1) = "W" Then
+                        unsupportedWarranty = True
+                        If IsArray(g_arrWarrantyLTypes) Then
+                            For warrantyIndex = 0 To UBound(g_arrWarrantyLTypes)
+                                If lTypeCode = g_arrWarrantyLTypes(warrantyIndex) Then
+                                    unsupportedWarranty = False
+                                    Exit For
+                                End If
+                            Next
+                        End If
+                        If unsupportedWarranty Then
+                            skipReason = "Skipped - Unsupported warranty ltype: [" & lTypeCode & "] lrow=[" & lRowDesc & "]"
+                            Call LogEvent("comm", "low", "Labor-only gate SKIP — unsupported warranty ltype", "EvaluateLaborOnlyGate", _
+                                "ltype=[" & lTypeCode & "] not in WarrantyLTypes", "")
+                            EvaluateLaborOnlyGate = False
+                            doneScanning = True
+                            Exit For
+                        End If
+                    End If
 
                     lineHeaderPasses = IsCdkLaborOnlyExceptionDesc(currentLineHeaderDesc)
                     lRowPasses = IsCdkLaborOnlyExceptionDesc(lRowDesc)
