@@ -2138,7 +2138,10 @@ Sub RunMainProcess()
         ProcessRONumbers()
         Dim sessionSummary
         sessionSummary = BuildSessionSummary()
-        Call LogEvent("comm", "high", "Session summary", "RunMainProcess", sessionSummary, "")
+        Call LogEvent("comm", "low", "=========================", "RunMainProcess", "", "")
+        Call LogEvent("comm", "low", "Session Summary", "RunMainProcess", "", "")
+        Call LogEvent("comm", "low", "=========================", "RunMainProcess", sessionSummary, "")
+        Call LogEvent("comm", "low", "=========================", "RunMainProcess", "", "")
         If Not g_IsTestMode Then
             Call SafeMsg(sessionSummary, False, "PostFinalCharges")
         End If
@@ -2999,46 +3002,60 @@ End Sub
 '-----------------------------------------------------------------------------------
 Function BuildSessionSummary()
     Dim accountedTotal, summaryText, otherOutcomeDetails
+    Dim miscTotal, miscDetail
 
-    accountedTotal = g_FiledROCount + _
-        g_SkipConfiguredCount + _
-        g_SkipTechCodeCount + _
+    ' Infrequent counters collapsed into a single Misc line.
+    ' Individual lines shown below Misc only when their value is non-zero.
+    miscTotal = g_SkipConfiguredCount + _
         g_SkipBlacklistCount + _
-        g_SkipStatusOpenCount + _
-        g_SkipStatusPreassignedCount + _
-        g_SkipStatusOtherCount + _
         g_ClosedRoCount + _
         g_NotOnFileRoCount + _
         g_SkipVehidNotOnFileCount + _
         g_SkipNoCloseoutTextCount + _
-        g_SkipNoPartsChargedCount + _
-        g_SkipUnsupportedWarrantyCount + _
         g_LeftOpenManualCount + _
         g_ErrorInMainCount + _
         g_NoResultRecordedCount + _
-        g_SummaryOtherOutcomeCount
+        g_SummaryOtherOutcomeCount + _
+        g_OlderRoAttemptCount
+
+    accountedTotal = g_FiledROCount + _
+        g_SkipTechCodeCount + _
+        g_SkipStatusOpenCount + _
+        g_SkipStatusPreassignedCount + _
+        g_SkipStatusOtherCount + _
+        g_SkipNoPartsChargedCount + _
+        g_SkipUnsupportedWarrantyCount + _
+        miscTotal
 
     summaryText = "DONE" & vbCrLf & _
         "ROs Reviewed: " & g_ReviewedROCount & vbCrLf & _
         "ROs Posted: " & g_FiledROCount & vbCrLf & _
-        "Skips - Specific ROs: " & g_SkipConfiguredCount & vbCrLf & _
         "Skips - Non-compliant tech code: " & g_SkipTechCodeCount & vbCrLf & _
-        "Skips - Other Terms: " & g_SkipBlacklistCount & vbCrLf & _
         "Skips - Open: " & g_SkipStatusOpenCount & vbCrLf & _
         "Skips - Pre-Assigned: " & g_SkipStatusPreassignedCount & vbCrLf & _
         "Skips - Other Statuses: " & g_SkipStatusOtherCount & vbCrLf & _
-        "Closed (already): " & g_ClosedRoCount & vbCrLf & _
-        "Not On File: " & g_NotOnFileRoCount & vbCrLf & _
-        "Skipped - VEHID not on file: " & g_SkipVehidNotOnFileCount & vbCrLf & _
-        "Skipped - No closeout text: " & g_SkipNoCloseoutTextCount & vbCrLf & _
         "Skipped - No parts charged: " & g_SkipNoPartsChargedCount & vbCrLf & _
         "Skipped - Unsupported warranty ltype: " & g_SkipUnsupportedWarrantyCount & vbCrLf & _
-        "Left Open for manual closing: " & g_LeftOpenManualCount & vbCrLf & _
-        "Errors in Main: " & g_ErrorInMainCount & vbCrLf & _
-        "No result recorded: " & g_NoResultRecordedCount & vbCrLf & _
-        "Other Outcomes: " & g_SummaryOtherOutcomeCount & vbCrLf & _
-        "Accounted Total: " & accountedTotal & vbCrLf & _
-        "Older ROs Attempted (subset): " & g_OlderRoAttemptCount
+        "Misc: " & miscTotal & vbCrLf & _
+        "Accounted Total: " & accountedTotal
+
+    ' Expand Misc breakdown — only non-zero lines shown
+    miscDetail = ""
+    If g_SkipConfiguredCount > 0 Then miscDetail = miscDetail & "  Skips - Specific ROs: " & g_SkipConfiguredCount & vbCrLf
+    If g_SkipBlacklistCount > 0 Then miscDetail = miscDetail & "  Skips - Other Terms: " & g_SkipBlacklistCount & vbCrLf
+    If g_ClosedRoCount > 0 Then miscDetail = miscDetail & "  Closed (already): " & g_ClosedRoCount & vbCrLf
+    If g_NotOnFileRoCount > 0 Then miscDetail = miscDetail & "  Not On File: " & g_NotOnFileRoCount & vbCrLf
+    If g_SkipVehidNotOnFileCount > 0 Then miscDetail = miscDetail & "  Skipped - VEHID not on file: " & g_SkipVehidNotOnFileCount & vbCrLf
+    If g_SkipNoCloseoutTextCount > 0 Then miscDetail = miscDetail & "  Skipped - No closeout text: " & g_SkipNoCloseoutTextCount & vbCrLf
+    If g_LeftOpenManualCount > 0 Then miscDetail = miscDetail & "  Left Open for manual closing: " & g_LeftOpenManualCount & vbCrLf
+    If g_ErrorInMainCount > 0 Then miscDetail = miscDetail & "  Errors in Main: " & g_ErrorInMainCount & vbCrLf
+    If g_NoResultRecordedCount > 0 Then miscDetail = miscDetail & "  No result recorded: " & g_NoResultRecordedCount & vbCrLf
+    If g_SummaryOtherOutcomeCount > 0 Then miscDetail = miscDetail & "  Other Outcomes: " & g_SummaryOtherOutcomeCount & vbCrLf
+    If g_OlderRoAttemptCount > 0 Then miscDetail = miscDetail & "  Older ROs Attempted (subset): " & g_OlderRoAttemptCount & vbCrLf
+
+    If Len(miscDetail) > 0 Then
+        summaryText = summaryText & vbCrLf & Left(miscDetail, Len(miscDetail) - Len(vbCrLf))
+    End If
 
     If g_SummaryOtherOutcomeCount > 0 Then
         otherOutcomeDetails = BuildOtherOutcomeBreakdown(8)
