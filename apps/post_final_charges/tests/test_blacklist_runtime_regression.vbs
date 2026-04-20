@@ -58,11 +58,11 @@ WScript.Echo "Blacklist Runtime Regression Test"
 WScript.Echo "================================"
 
 AssertContains "Loads blacklist_terms from config", "GetIniSetting(""PostFinalCharges"", ""blacklist_terms"", """")"
-AssertContains "Has blacklist matcher function", "Function GetMatchedBlacklistTerm(blacklistTermsCsv)"
-AssertContains "Main calls blacklist matcher", "matchedBlacklistTerm = GetMatchedBlacklistTerm(g_BlacklistTermsRaw)"
+AssertContains "Has blacklist matcher function in BZHelper", "BZH_GetMatchedBlacklistTerm"
+AssertContains "Main calls blacklist matcher", "matchedBlacklistTerm = BZH_GetMatchedBlacklistTerm(g_BlacklistTermsRaw"
 AssertContains "Main sets blacklisted skip result", "lastRoResult = ""Skipped - Blacklisted term: "" & matchedBlacklistTerm"
 AssertContains "Main exits blacklisted path", "Exit Sub"
-AssertOrder "Blacklist check occurs before trigger detection", "matchedBlacklistTerm = GetMatchedBlacklistTerm(g_BlacklistTermsRaw)", "trigger = FindTrigger()"
+AssertOrder "Blacklist check occurs before trigger detection", "matchedBlacklistTerm = BZH_GetMatchedBlacklistTerm(g_BlacklistTermsRaw", "trigger = FindTrigger()"
 
 WScript.Echo ""
 If failures = 0 Then
