@@ -5027,12 +5027,12 @@ End Sub
 ' **AUTHOR:** GitHub Copilot
 ' 
 ' **FUNCTIONALITY:**
-' Processes OPEN status lines in proper sequence: R A -> FNL A -> R B -> FNL B, etc.
-' Each line is reviewed then immediately closed before moving to the next line.
+' Processes OPEN status lines in proper sequence: FNL A -> R A -> FNL B -> R B, etc.
+' Each line is finished (FNL) then reviewed (R) before moving to the next line.
 '-----------------------------------------------------------------------------------
 Sub ProcessLinesSequentially()
-    Call LogInfo("Starting sequential line processing (R then FNL per line)", "ProcessLinesSequentially")
-    Call LogEvent("comm", "high", "ProcessLinesSequentially called", "ProcessLinesSequentially", "Processing lines in R->FNL sequence", "Starting line A")
+    Call LogInfo("Starting sequential line processing (FNL then R per line)", "ProcessLinesSequentially")
+    Call LogEvent("comm", "high", "ProcessLinesSequentially called", "ProcessLinesSequentially", "Processing lines in FNL->R sequence", "Starting line A")
     
     Dim lineLetterChar, i, lineItemPrompts, fnlPrompts
     Set lineItemPrompts = CreateLineItemPromptDictionary()
