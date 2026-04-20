@@ -1451,6 +1451,39 @@ Function GetFirstNonCompliantLineTech()
 End Function
 
 '-----------------------------------------------------------------------------------
+' **FUNCTION NAME:** GetLineTechCode
+' **DATE CREATED:** 2026-04-20
+' **AUTHOR:** GitHub Copilot
+'
+' **FUNCTIONALITY:**
+' Reads the RO detail screen (rows 9-22) and returns the tech code for the given
+' line letter. Returns "" if the line header row is not visible on screen or has
+' no tech code assigned. Tech code is at columns 42-49 of the line header row.
+'
+' Called from ProcessLinesSequentially to route per-line FNL/R behavior:
+'   C93 = already finished and reviewed — skip both FNL and R
+'   C92 = already finished, needs review — skip FNL, run R only
+'   ""  = no tech code or line not visible — run normal FNL then R
+'-----------------------------------------------------------------------------------
+Function GetLineTechCode(lineLetterChar)
+    GetLineTechCode = ""
+    Dim row, buf
+    For row = 9 To 22
+        buf = ""
+        On Error Resume Next
+        g_bzhao.ReadScreen buf, 80, row, 1
+        If Err.Number <> 0 Then Err.Clear
+        On Error GoTo 0
+        If Len(buf) >= 49 Then
+            If Mid(buf, 1, 1) = lineLetterChar And Mid(buf, 2, 1) = " " Then
+                GetLineTechCode = UCase(Trim(Mid(buf, 42, 8)))
+                Exit Function
+            End If
+        End If
+    Next
+End Function
+
+'-----------------------------------------------------------------------------------
 ' WARRANTY DIALOG ARCHITECTURE
 '
 ' Warranty lines trigger manufacturer-specific dialog overlays after the R-command
@@ -5140,73 +5173,91 @@ Sub ProcessLinesSequentially()
     For i = 65 To 90 ' ASCII for A to Z
         lineLetterChar = Chr(i)
         Call LogEvent("comm", "high", "Processing line " & lineLetterChar & " - Finish then Review", "ProcessLinesSequentially", "", "")
-        
+
         ' Detect warranty labor type so we know to handle the claims dialog after R review.
         Dim lineIsWarranty
         lineIsWarranty = IsWarrantyLine(lineLetterChar)
 
-        ' Step 1: Finish the line with FNL command FIRST (to ensure it's complete before reviewing)
-        Call LogEvent("comm", "high", "Running FNL " & lineLetterChar & " command", "ProcessLinesSequentially", "", "")
-        Call WaitForPrompt("COMMAND:", "FNL " & lineLetterChar, True, g_PromptWait, "")
+        ' Per-line tech code routing (read from the RO detail screen at COMMAND: prompt):
+        '   C93 = already finished and reviewed — skip both FNL and R
+        '   C92 = already finished, needs review — skip FNL, run R only
+        '   ""  = no tech code assigned or line not visible — run FNL then R (standard path)
+        Dim lineTechCode
+        lineTechCode = GetLineTechCode(lineLetterChar)
 
-        ' Wait for the FNL response
-        Call LogEvent("comm", "high", "Waiting for FNL " & lineLetterChar & " response", "ProcessLinesSequentially", "", "")
-        Call WaitForScreenStable(2000, 300)  ' Wait up to 2 sec for screen to stabilize
+        If lineTechCode = "C93" Then
+            Call LogInfo("Line " & lineLetterChar & " tech=C93 — already finished and reviewed, skipping", "ProcessLinesSequentially")
+            g_LastSuccessfulLine = lineLetterChar
+            Call LogInfo("Completed sequential processing for line " & lineLetterChar, "ProcessLinesSequentially")
+        Else
+            Dim skipFnlForLine
+            skipFnlForLine = (lineTechCode = "C92")
 
-        ' Check if the line exists FIRST
-        If IsTextPresent("LINE CODE " & lineLetterChar & " IS NOT ON FILE") Then
-            Dim fnlScreenResponse
-            fnlScreenResponse = GetScreenSnapshot(24)
-            Call LogEvent("comm", "high", "FNL " & lineLetterChar & " command response", "ProcessLinesSequentially", fnlScreenResponse, "")
-            If g_LastSuccessfulLine = "" Then
-                Call LogEvent("comm", "low", "No line items found to process", "ProcessLinesSequentially", "Line " & lineLetterChar & " does not exist", "")
+            If skipFnlForLine Then
+                Call LogInfo("Line " & lineLetterChar & " tech=C92 — already finished, running R only", "ProcessLinesSequentially")
             Else
-                Call LogEvent("comm", "low", "Finished processing lines. No more lines found after " & g_LastSuccessfulLine, "ProcessLinesSequentially", "Line " & lineLetterChar & " does not exist", "")
+                ' Step 1: Finish the line with FNL command FIRST (to ensure it's complete before reviewing)
+                Call LogEvent("comm", "high", "Running FNL " & lineLetterChar & " command", "ProcessLinesSequentially", "", "")
+                Call WaitForPrompt("COMMAND:", "FNL " & lineLetterChar, True, g_PromptWait, "")
+
+                ' Wait for the FNL response
+                Call LogEvent("comm", "high", "Waiting for FNL " & lineLetterChar & " response", "ProcessLinesSequentially", "", "")
+                Call WaitForScreenStable(2000, 300)  ' Wait up to 2 sec for screen to stabilize
+
+                ' Check if the line exists
+                If IsTextPresent("LINE CODE " & lineLetterChar & " IS NOT ON FILE") Then
+                    Dim fnlScreenResponse
+                    fnlScreenResponse = GetScreenSnapshot(24)
+                    Call LogEvent("comm", "high", "FNL " & lineLetterChar & " command response", "ProcessLinesSequentially", fnlScreenResponse, "")
+                    If g_LastSuccessfulLine = "" Then
+                        Call LogEvent("comm", "low", "No line items found to process", "ProcessLinesSequentially", "Line " & lineLetterChar & " does not exist", "")
+                    Else
+                        Call LogEvent("comm", "low", "Finished processing lines. No more lines found after " & g_LastSuccessfulLine, "ProcessLinesSequentially", "Line " & lineLetterChar & " does not exist", "")
+                    End If
+                    Exit For ' Exit the For loop
+                End If
+
+                ' Check if the line is already finished
+                If IsTextPresent("LINE " & lineLetterChar & " IS ALREADY FINISHED") Then
+                    Call LogEvent("comm", "high", "Line " & lineLetterChar & " already finished", "ProcessLinesSequentially", "Skipping FNL processing", "")
+                Else
+                    ' Process FNL prompts for this line
+                    Call LogDebug("Processing FNL " & lineLetterChar & " prompts", "ProcessLinesSequentially")
+                    Call ProcessPromptSequence(fnlPrompts)
+                End If
             End If
-            Exit For ' Exit the For loop
-        End If
 
-        ' Check if the line is already finished
-        If IsTextPresent("LINE " & lineLetterChar & " IS ALREADY FINISHED") Then
-            Call LogEvent("comm", "high", "Line " & lineLetterChar & " already finished", "ProcessLinesSequentially", "Skipping FNL processing", "")
-        Else
-            ' Process FNL prompts for this line
-            Call LogDebug("Processing FNL " & lineLetterChar & " prompts", "ProcessLinesSequentially")
-            Call ProcessPromptSequence(fnlPrompts)
-        End If
-        
-        ' Step 2: Review the line with R command (now that it's finished)
-        Call LogEvent("comm", "high", "Running R " & lineLetterChar & " command", "ProcessLinesSequentially", "", "")
-        Call WaitForPrompt("COMMAND:", "R " & lineLetterChar, True, g_PromptWait, "")
-        
-        ' Wait for the first prompt to appear (2 second timeout for response to be ready)
-        Call LogEvent("comm", "high", "Waiting for R " & lineLetterChar & " response prompts", "ProcessLinesSequentially", "", "")
-        Call WaitForScreenStable(2000, 300)  ' Wait up to 2 sec for screen to stabilize
-        
-        ' Process review prompts for this line (R command produces prompts immediately, not a screen)
-        Call LogDebug("Processing R " & lineLetterChar & " prompts", "ProcessLinesSequentially")
-        Call ProcessPromptSequence(lineItemPrompts)
+            ' Step 2: Review the line with R command (now that it's finished)
+            Call LogEvent("comm", "high", "Running R " & lineLetterChar & " command", "ProcessLinesSequentially", "", "")
+            Call WaitForPrompt("COMMAND:", "R " & lineLetterChar, True, g_PromptWait, "")
 
-        ' Handle warranty claims dialog. Always called so that warranty lines on paginated
-        ' screens (not visible to IsWarrantyLine on page 1) are not missed.
-        ' Known warranty lines get full 20-poll detection; all others get a 3-poll quick
-        ' check (~1.5s) so non-warranty lines don't incur a long unnecessary wait.
-        Dim warrantyPolls
-        If lineIsWarranty Then
-            warrantyPolls = 20
-        Else
-            warrantyPolls = 3
-        End If
-        If lineIsWarranty Then
-            Call LogInfo("Warranty line " & lineLetterChar & " - handling claims dialog", "ProcessLinesSequentially")
-        End If
-        Call HandleWarrantyClaimsDialog(warrantyPolls)
+            ' Wait for the first prompt to appear (2 second timeout for response to be ready)
+            Call LogEvent("comm", "high", "Waiting for R " & lineLetterChar & " response prompts", "ProcessLinesSequentially", "", "")
+            Call WaitForScreenStable(2000, 300)  ' Wait up to 2 sec for screen to stabilize
 
-        ' Track successful line processing
-        g_LastSuccessfulLine = lineLetterChar
-        Call LogInfo("Completed sequential processing for line " & lineLetterChar, "ProcessLinesSequentially")
+            ' Process review prompts for this line (R command produces prompts immediately, not a screen)
+            Call LogDebug("Processing R " & lineLetterChar & " prompts", "ProcessLinesSequentially")
+            Call ProcessPromptSequence(lineItemPrompts)
+
+            ' Handle warranty claims dialog. Always called so that warranty lines on paginated
+            ' screens (not visible to IsWarrantyLine on page 1) are not missed.
+            ' Known warranty lines get full 20-poll detection; all others get a 3-poll quick
+            ' check (~1.5s) so non-warranty lines don't incur a long unnecessary wait.
+            Dim warrantyPolls
+            If lineIsWarranty Then
+                warrantyPolls = 20
+                Call LogInfo("Warranty line " & lineLetterChar & " - handling claims dialog", "ProcessLinesSequentially")
+            Else
+                warrantyPolls = 3
+            End If
+            Call HandleWarrantyClaimsDialog(warrantyPolls)
+
+            ' Track successful line processing
+            g_LastSuccessfulLine = lineLetterChar
+            Call LogInfo("Completed sequential processing for line " & lineLetterChar, "ProcessLinesSequentially")
+        End If
     Next
-    
+
     Call LogEvent("comm", "low", "All lines processed sequentially (FNL->R per line)", "ProcessLinesSequentially", "", "")
 End Sub
 
