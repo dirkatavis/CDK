@@ -75,6 +75,7 @@ Dim g_SkipVehidNotOnFileCount
 Dim g_SkipNoCloseoutTextCount
 Dim g_SkipNoPartsChargedCount
 Dim g_SkipUnsupportedWarrantyCount
+Dim g_SkipVtdLaborCount
 Dim g_LeftOpenManualCount
 
 Dim g_ErrorInMainCount
@@ -1192,6 +1193,187 @@ Function EvaluateLaborOnlyGate(ByRef skipReason)
         Else
             Call LogEvent("comm", "low", "Labor-only gate PASS — no L-rows found on RO", "EvaluateLaborOnlyGate", "", "")
         End If
+    End If
+End Function
+
+'-----------------------------------------------------------------------------------
+' **FUNCTION NAME:** ContainsWholeWordVtd
+' **DATE CREATED:** 2026-04-20
+' **AUTHOR:** GitHub Copilot
+'
+' **FUNCTIONALITY:**
+' Returns True if the given text contains the word "VTD" as a whole word
+' (not embedded inside another word). Case-insensitive. Word boundaries are
+' any non-alphanumeric character or the start/end of the string.
+'-----------------------------------------------------------------------------------
+Function ContainsWholeWordVtd(text)
+    ContainsWholeWordVtd = False
+    Dim upper, pos, textLen, charBefore, charAfter, isBefore, isAfter
+    upper = UCase(text)
+    textLen = Len(upper)
+    pos = 1
+    Do
+        pos = InStr(pos, upper, "VTD")
+        If pos = 0 Then Exit Do
+        If pos = 1 Then
+            isBefore = True
+        Else
+            charBefore = Mid(upper, pos - 1, 1)
+            isBefore = Not ((charBefore >= "A" And charBefore <= "Z") Or _
+                            (charBefore >= "0" And charBefore <= "9"))
+        End If
+        If pos + 2 >= textLen Then
+            isAfter = True
+        Else
+            charAfter = Mid(upper, pos + 3, 1)
+            isAfter = Not ((charAfter >= "A" And charAfter <= "Z") Or _
+                           (charAfter >= "0" And charAfter <= "9"))
+        End If
+        If isBefore And isAfter Then
+            ContainsWholeWordVtd = True
+            Exit Function
+        End If
+        pos = pos + 1
+    Loop
+End Function
+
+'-----------------------------------------------------------------------------------
+' **FUNCTION NAME:** EvaluateVtdLaborGate
+' **DATE CREATED:** 2026-04-20
+' **AUTHOR:** GitHub Copilot
+'
+' **FUNCTIONALITY:**
+' Early disqualification gate. Skips the RO if any L-row has ltype I and its
+' description (or its parent line header description) contains the whole word VTD.
+' VTD lines with ltype I indicate vendor-to-dealer work that cannot be closed
+' through the standard flow.
+'
+' Uses the same pagination pattern as EvaluateLaborOnlyGate.
+'
+' **PARAMETERS:**
+' skipReason (ByRef) - Human-readable skip reason when the gate fails.
+'
+' **RETURNS:**
+' True when no VTD I-labor lines are found. False if a VTD I-labor line is found.
+'-----------------------------------------------------------------------------------
+Function EvaluateVtdLaborGate(ByRef skipReason)
+    EvaluateVtdLaborGate = True
+    skipReason = ""
+
+    Dim row, buf
+    Dim doneScanning, pagesAdvanced, p
+    Dim preSig, postSig, preSig2, postSig2, preMarker, postMarker
+    Dim maxPageAdvances
+    Dim currentLineHeaderDesc, lRowDesc, lTypeCode
+
+    doneScanning = False
+    pagesAdvanced = 0
+    maxPageAdvances = 50
+    currentLineHeaderDesc = ""
+
+    Do While Not doneScanning
+        For row = 9 To 23
+            buf = ""
+            On Error Resume Next
+            g_bzhao.ReadScreen buf, 80, row, 1
+            If Err.Number <> 0 Then Err.Clear
+            On Error GoTo 0
+
+            If Len(buf) >= 5 Then
+                ' Detect line header row (A-Z, col 2 = space, col 4 not "L")
+                If Mid(buf, 1, 1) >= "A" And Mid(buf, 1, 1) <= "Z" And Mid(buf, 2, 1) = " " And Mid(buf, 4, 1) <> "L" Then
+                    currentLineHeaderDesc = Trim(Mid(buf, 4, 38))
+                End If
+
+                ' Detect L-row: col 4 = "L", col 5 = digit
+                If Mid(buf, 4, 1) = "L" And IsNumeric(Mid(buf, 5, 1)) Then
+                    lTypeCode = UCase(Trim(Mid(buf, 50, 6)))
+                    lRowDesc = Trim(Mid(buf, 7, 35))
+
+                    If lTypeCode = "I" Then
+                        If ContainsWholeWordVtd(lRowDesc) Or ContainsWholeWordVtd(currentLineHeaderDesc) Then
+                            skipReason = "Skipped - VTD labor line: ltype=[" & lTypeCode & "] lRowDesc=[" & lRowDesc & "] header=[" & currentLineHeaderDesc & "]"
+                            Call LogEvent("comm", "low", "VTD labor gate SKIP — ltype I with VTD in description", "EvaluateVtdLaborGate", _
+                                "ltype=[" & lTypeCode & "] lRowDesc=[" & lRowDesc & "] header=[" & currentLineHeaderDesc & "]", "")
+                            EvaluateVtdLaborGate = False
+                            doneScanning = True
+                            Exit For
+                        End If
+                    End If
+                End If
+            End If
+        Next
+
+        If Not doneScanning Then
+            Dim pageIndicatorVtd
+            pageIndicatorVtd = ""
+            On Error Resume Next
+            g_bzhao.ReadScreen pageIndicatorVtd, 80, 22, 1
+            If Err.Number <> 0 Then Err.Clear
+            On Error GoTo 0
+
+            If InStr(1, pageIndicatorVtd, "(END OF DISPLAY)", vbTextCompare) > 0 Then
+                doneScanning = True
+            ElseIf InStr(1, pageIndicatorVtd, "(MORE ON NEXT SCREEN)", vbTextCompare) > 0 Then
+                preMarker = pageIndicatorVtd
+                preSig = ""
+                preSig2 = ""
+
+                On Error Resume Next
+                g_bzhao.ReadScreen preSig, 80, 9, 1
+                If Err.Number <> 0 Then Err.Clear
+                g_bzhao.ReadScreen preSig2, 80, 10, 1
+                If Err.Number <> 0 Then Err.Clear
+                On Error GoTo 0
+
+                On Error Resume Next
+                g_bzhao.SendKey "N"
+                g_bzhao.SendKey "<NumpadEnter>"
+                If Err.Number <> 0 Then Err.Clear
+                On Error GoTo 0
+                g_bzhao.Pause 500
+
+                postMarker = ""
+                postSig = ""
+                postSig2 = ""
+
+                On Error Resume Next
+                g_bzhao.ReadScreen postMarker, 80, 22, 1
+                If Err.Number <> 0 Then Err.Clear
+                g_bzhao.ReadScreen postSig, 80, 9, 1
+                If Err.Number <> 0 Then Err.Clear
+                g_bzhao.ReadScreen postSig2, 80, 10, 1
+                If Err.Number <> 0 Then Err.Clear
+                On Error GoTo 0
+
+                If postMarker = preMarker And postSig = preSig And postSig2 = preSig2 Then
+                    doneScanning = True
+                Else
+                    pagesAdvanced = pagesAdvanced + 1
+                    If pagesAdvanced >= maxPageAdvances Then
+                        doneScanning = True
+                    End If
+                End If
+            Else
+                doneScanning = True
+            End If
+        End If
+    Loop
+
+    ' Return to page 1 so downstream flow remains on a known screen state.
+    If pagesAdvanced > 0 Then
+        For p = 1 To pagesAdvanced
+            On Error Resume Next
+            g_bzhao.SendKey "B"
+            g_bzhao.SendKey "<NumpadEnter>"
+            If Err.Number <> 0 Then Err.Clear
+            On Error GoTo 0
+            g_bzhao.Pause 500
+        Next
+    End If
+
+    If EvaluateVtdLaborGate Then
+        Call LogEvent("comm", "low", "VTD labor gate PASS", "EvaluateVtdLaborGate", "", "")
     End If
 End Function
 
@@ -3014,6 +3196,7 @@ Sub ProcessRONumbers()
     g_SkipNoCloseoutTextCount = 0
     g_SkipNoPartsChargedCount = 0
     g_SkipUnsupportedWarrantyCount = 0
+    g_SkipVtdLaborCount = 0
     g_LeftOpenManualCount = 0
     g_ErrorInMainCount = 0
     g_NoResultRecordedCount = 0
@@ -3138,6 +3321,7 @@ Function BuildSessionSummary()
     ' Individual lines shown below Misc only when their value is non-zero.
     miscTotal = g_SkipConfiguredCount + _
         g_SkipBlacklistCount + _
+        g_SkipVtdLaborCount + _
         g_ClosedRoCount + _
         g_NotOnFileRoCount + _
         g_SkipVehidNotOnFileCount + _
@@ -3173,6 +3357,7 @@ Function BuildSessionSummary()
     miscDetail = ""
     If g_SkipConfiguredCount > 0 Then miscDetail = miscDetail & "  Skips - Specific ROs: " & g_SkipConfiguredCount & vbCrLf
     If g_SkipBlacklistCount > 0 Then miscDetail = miscDetail & "  Skips - Other Terms: " & g_SkipBlacklistCount & vbCrLf
+    If g_SkipVtdLaborCount > 0 Then miscDetail = miscDetail & "  Skipped - VTD labor line: " & g_SkipVtdLaborCount & vbCrLf
     If g_ClosedRoCount > 0 Then miscDetail = miscDetail & "  Closed (already): " & g_ClosedRoCount & vbCrLf
     If g_NotOnFileRoCount > 0 Then miscDetail = miscDetail & "  Not On File: " & g_NotOnFileRoCount & vbCrLf
     If g_SkipVehidNotOnFileCount > 0 Then miscDetail = miscDetail & "  Skipped - VEHID not on file: " & g_SkipVehidNotOnFileCount & vbCrLf
@@ -3485,6 +3670,10 @@ Function IsResultRepresentedInSummary(resultText)
         IsResultRepresentedInSummary = True
         Exit Function
     End If
+    If InStr(1, normalized, "SKIPPED - VTD LABOR LINE", vbTextCompare) = 1 Then
+        IsResultRepresentedInSummary = True
+        Exit Function
+    End If
     If InStr(1, normalized, "LEFT OPEN FOR MANUAL CLOSING", vbTextCompare) = 1 Then
         IsResultRepresentedInSummary = True
         Exit Function
@@ -3770,6 +3959,20 @@ Sub Main(roNumber)
         Call FastKey("<NumpadEnter>")
         Call WaitForPrompt("COMMAND:", "", False, 5000, "")
         lastRoResult = "Skipped - Non-compliant tech code: " & nonCompliantLine
+        Exit Sub
+    End If
+
+    ' --- VTD LABOR GATE ---
+    ' Skip ROs where any L-row has ltype I and its description (or its parent
+    ' line header description) contains the whole word VTD.
+    Dim vtdSkipReason
+    If Not EvaluateVtdLaborGate(vtdSkipReason) Then
+        g_SkipVtdLaborCount = g_SkipVtdLaborCount + 1
+        Call LogEvent("comm", "med", "VTD labor gate failed - skipping RO", "Main", vtdSkipReason & " | RO: " & currentRODisplay, "")
+        Call FastText("E")
+        Call FastKey("<NumpadEnter>")
+        Call WaitForPrompt("COMMAND:", "", False, 5000, "")
+        lastRoResult = vtdSkipReason
         Exit Sub
     End If
 
