@@ -62,6 +62,7 @@ Dim g_SkipRoLookup
 Dim g_SkipConfiguredCount
 Dim g_arrWarrantyLTypes
 Dim g_WarrantyCauseText
+Dim g_FordWarrantyCauseText
 Dim g_WarrantyDialogStepDelayMs
 Dim g_WarrantyDialogSignatureTexts()
 Dim g_WarrantyDialogSignatureTypes()
@@ -1534,6 +1535,8 @@ Sub HandleWarrantyClaimsDialog(maxPolls)
         Call HandleFcaClaimsDialog()
     ElseIf dialogType = "WV" Then
         Call HandleVwWarrantyDialog()
+    ElseIf dialogType = "FORD" Then
+        Call HandleFordWarrantyDialog()
     Else
         Call LogWarn("Warranty claims dialog: unhandled dialog type [" & dialogType & "] - no handler implemented", "HandleWarrantyClaimsDialog")
         Call LogInfo("Warranty claims dialog: screen snapshot: " & GetScreenSnapshot(24), "HandleWarrantyClaimsDialog")
@@ -1706,6 +1709,98 @@ Sub HandleVwWarrantyDialog()
     End If
 
     Call LogInfo("VW warranty dialog: complete", "HandleVwWarrantyDialog")
+End Sub
+
+'-----------------------------------------------------------------------------------
+' **PROCEDURE NAME:** HandleFordWarrantyDialog
+' **DATE CREATED:** 2026-04-20
+' **AUTHOR:** GitHub Copilot
+'
+' **FUNCTIONALITY:**
+' Navigates the Ford "MODIFY FORD REPAIR TYPE INFORMATION" dialog (WF lines).
+'
+' Field sequence:
+'   1. P & A CODE:             — Enter (accept auto-populated value)
+'   2. FORD / L-M MAKE (Y/N)?: — Enter (accept auto-populated Y)
+'   3. FRANCHISE MODEL (Y/N)?: — Enter (accept auto-populated Y)
+'   4. VEHICLE LICENSE STATE:  — "GA" + Enter
+'      TODO: license state is per-vehicle; hardcoded GA until dynamic
+'            lookup is implemented.
+'   5. REPAIR TYPE:            — "1" + Enter (Warranty/ESP)
+'   6. COMMAND: (in dialog)    — "." + Enter (skip remaining fields)
+'
+' After the dialog closes, CDK issues one or more CAUSE L<n>: prompts at the
+' terminal; each receives FordWarrantyCauseText (config default: "Defective Part").
+'-----------------------------------------------------------------------------------
+Sub HandleFordWarrantyDialog()
+    Call LogInfo("Ford warranty dialog: navigating field sequence", "HandleFordWarrantyDialog")
+
+    ' Step 1: P & A CODE — accept auto-populated value
+    Call LogInfo("Ford warranty dialog: P & A CODE — sending Enter", "HandleFordWarrantyDialog")
+    Call WaitForPrompt("P & A CODE:", "", True, 5000, "")
+    Call WaitMs(g_WarrantyDialogStepDelayMs)
+
+    ' Step 2: FORD / L-M MAKE (Y/N)? — accept auto-populated Y
+    Call LogInfo("Ford warranty dialog: FORD / L-M MAKE — sending Enter", "HandleFordWarrantyDialog")
+    Call WaitForPrompt("FORD / L-M MAKE", "", True, 5000, "")
+    Call WaitMs(g_WarrantyDialogStepDelayMs)
+
+    ' Step 3: FRANCHISE MODEL (Y/N)? — accept auto-populated Y
+    Call LogInfo("Ford warranty dialog: FRANCHISE MODEL — sending Enter", "HandleFordWarrantyDialog")
+    Call WaitForPrompt("FRANCHISE MODEL", "", True, 5000, "")
+    Call WaitMs(g_WarrantyDialogStepDelayMs)
+
+    ' Step 4: VEHICLE LICENSE STATE — send GA + Enter
+    ' TODO: license state is per-vehicle; hardcoded GA until dynamic lookup is implemented
+    Call LogInfo("Ford warranty dialog: VEHICLE LICENSE STATE — sending GA", "HandleFordWarrantyDialog")
+    Call WaitForPrompt("VEHICLE LICENSE STATE:", "GA", True, 5000, "")
+    Call WaitMs(g_WarrantyDialogStepDelayMs)
+
+    ' Step 5: REPAIR TYPE — send 1 (Warranty/ESP) + Enter
+    Call LogInfo("Ford warranty dialog: REPAIR TYPE — sending 1 (Warranty/ESP)", "HandleFordWarrantyDialog")
+    Call WaitForPrompt("REPAIR TYPE:", "1", True, 5000, "")
+    Call WaitMs(g_WarrantyDialogStepDelayMs)
+
+    ' Step 6: COMMAND: (inside dialog) — send . + Enter to skip remaining fields
+    Call LogInfo("Ford warranty dialog: COMMAND — sending . to exit dialog", "HandleFordWarrantyDialog")
+    Call WaitForPrompt("COMMAND:", ".", True, 5000, "")
+    Call WaitMs(g_WarrantyDialogStepDelayMs)
+
+    ' After dialog closes, CDK issues CAUSE L<n>: prompts at the terminal.
+    ' Cap at 10 prompts; each polled up to ~3s (6 x 500ms) before giving up.
+    Dim causeRow, causeBuf, causeFound, ci, causePoll
+    For ci = 1 To 10
+        causeFound = False
+        For causePoll = 1 To 6
+            For causeRow = 20 To 24
+                causeBuf = ""
+                On Error Resume Next
+                g_bzhao.ReadScreen causeBuf, 80, causeRow, 1
+                If Err.Number <> 0 Then Err.Clear
+                On Error GoTo 0
+                If InStr(1, causeBuf, "CAUSE L", vbTextCompare) > 0 Then
+                    causeFound = True
+                    Exit For
+                End If
+            Next
+            If causeFound Then Exit For
+            Call WaitMs(500)
+        Next
+        If Not causeFound Then
+            Call LogWarn("Ford warranty dialog: CAUSE L not detected after " & (6 * 500) & "ms — screen snapshot: " & GetScreenSnapshot(24), "HandleFordWarrantyDialog")
+            Exit For
+        End If
+        Call LogInfo("Ford warranty dialog: CAUSE L prompt detected on row " & causeRow & " [" & Trim(causeBuf) & "]", "HandleFordWarrantyDialog")
+        Call WaitMs(g_WarrantyDialogStepDelayMs)
+        Call LogInfo("Ford warranty dialog: sending cause text [" & g_FordWarrantyCauseText & "]", "HandleFordWarrantyDialog")
+        Call FastText(g_FordWarrantyCauseText)
+        Call WaitMs(g_WarrantyDialogStepDelayMs \ 2)
+        Call LogInfo("Ford warranty dialog: sending Enter to confirm cause text", "HandleFordWarrantyDialog")
+        Call FastKey("<NumpadEnter>")
+        Call WaitMs(g_WarrantyDialogStepDelayMs \ 2)
+    Next
+
+    Call LogInfo("Ford warranty dialog: complete", "HandleFordWarrantyDialog")
 End Sub
 
 '-----------------------------------------------------------------------------------
@@ -2594,6 +2689,7 @@ Sub InitializeConfig()
     Call LogEvent("comm", "high", "Warranty review configured", "InitializeConfig", "LTypes: " & warrantyLTypesRaw, "")
 
     g_WarrantyCauseText = GetIniSetting("PostFinalCharges", "WarrantyCauseText", "Device failure")
+    g_FordWarrantyCauseText = GetIniSetting("PostFinalCharges", "FordWarrantyCauseText", "Defective Part")
 
     Dim warrantyDialogStepDelayValue
     warrantyDialogStepDelayValue = GetIniSetting("PostFinalCharges", "WarrantyDialogStepDelayMs", "2000")
