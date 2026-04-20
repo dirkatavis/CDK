@@ -1965,10 +1965,41 @@ Sub HandleFordWarrantyDialog()
     Call WaitForPrompt("FRANCHISE MODEL", "", True, 5000, "")
     Call WaitMs(g_WarrantyDialogStepDelayMs)
 
-    ' Step 4: VEHICLE LICENSE STATE — send GA + Enter
-    ' TODO: license state is per-vehicle; hardcoded GA until dynamic lookup is implemented
-    Call LogInfo("Ford warranty dialog: VEHICLE LICENSE STATE — sending GA", "HandleFordWarrantyDialog")
-    Call WaitForPrompt("VEHICLE LICENSE STATE:", "GA", True, 5000, "")
+    ' Step 4: VEHICLE LICENSE STATE — type GA if field is blank; advance with Enter only if already filled.
+    ' TODO: license state is per-vehicle; hardcoded GA until dynamic lookup is implemented.
+    ' On a static form the label stays on screen after the cursor has advanced past the field.
+    ' If a prior warranty transaction on the same session left GA in the field, the form may
+    ' auto-advance the cursor to REPAIR TYPE:. Sending "GA" in that state puts the characters
+    ' in the wrong field. We detect the field content after WaitForPrompt returns and decide.
+    Call WaitForPrompt("VEHICLE LICENSE STATE:", "", False, 5000, "")
+    Dim vlsRow, vlsBuf, vlsLabelPos, vlsFieldText
+    vlsLabelPos = 0
+    vlsFieldText = ""
+    For vlsRow = 1 To 24
+        vlsBuf = ""
+        On Error Resume Next
+        g_bzhao.ReadScreen vlsBuf, 80, vlsRow, 1
+        If Err.Number <> 0 Then Err.Clear
+        On Error GoTo 0
+        vlsLabelPos = InStr(1, vlsBuf, "VEHICLE LICENSE STATE:", vbTextCompare)
+        If vlsLabelPos > 0 Then
+            ' Read up to 5 chars immediately after the label colon to get field value
+            vlsFieldText = Trim(Mid(vlsBuf, vlsLabelPos + 22, 5))
+            Exit For
+        End If
+    Next
+    Call LogInfo("Ford warranty dialog: VEHICLE LICENSE STATE field=[" & vlsFieldText & "]", "HandleFordWarrantyDialog")
+    If Len(vlsFieldText) = 0 Then
+        ' Field is blank — cursor is at VLS, type GA one character at a time
+        Call LogInfo("Ford warranty dialog: VEHICLE LICENSE STATE — blank, typing GA + Enter", "HandleFordWarrantyDialog")
+        Call FastText("G")
+        Call WaitMs(100)
+        Call FastText("A")
+    Else
+        ' Field already has a value — cursor may have advanced; just send Enter to move on
+        Call LogInfo("Ford warranty dialog: VEHICLE LICENSE STATE — has [" & vlsFieldText & "], sending Enter only", "HandleFordWarrantyDialog")
+    End If
+    Call FastKey("<NumpadEnter>")
     Call WaitMs(g_WarrantyDialogStepDelayMs)
 
     ' Step 5: REPAIR TYPE — send 1 (Warranty/ESP) + Enter
