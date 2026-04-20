@@ -73,6 +73,7 @@ Dim g_NotOnFileRoCount
 Dim g_SkipVehidNotOnFileCount
 Dim g_SkipNoCloseoutTextCount
 Dim g_SkipNoPartsChargedCount
+Dim g_SkipUnsupportedWarrantyCount
 Dim g_LeftOpenManualCount
 
 Dim g_ErrorInMainCount
@@ -1101,7 +1102,7 @@ Function EvaluateLaborOnlyGate(ByRef skipReason)
                             Next
                         End If
                         If unsupportedWarranty Then
-                            skipReason = "Skipped - Unsupported warranty ltype: [" & lTypeCode & "] lrow=[" & lRowDesc & "]"
+                            skipReason = "Skipped - Unsupported warranty ltype: [" & lTypeCode & "]"
                             Call LogEvent("comm", "low", "Labor-only gate SKIP — unsupported warranty ltype", "EvaluateLaborOnlyGate", _
                                 "ltype=[" & lTypeCode & "] not in WarrantyLTypes", "")
                             EvaluateLaborOnlyGate = False
@@ -2135,62 +2136,11 @@ Sub RunMainProcess()
     End If
     If ConnectBlueZone() Then
         ProcessRONumbers()
+        Dim sessionSummary
+        sessionSummary = BuildSessionSummary()
+        Call LogEvent("comm", "high", "Session summary", "RunMainProcess", sessionSummary, "")
         If Not g_IsTestMode Then
-            Dim summaryMsg
-            Dim accountedTotal
-            Dim otherOutcomeDetails
-
-            accountedTotal = g_FiledROCount + _
-                g_SkipConfiguredCount + _
-                g_SkipTechCodeCount + _
-                g_SkipBlacklistCount + _
-                g_SkipStatusOpenCount + _
-                g_SkipStatusPreassignedCount + _
-                g_SkipStatusOtherCount + _
-                g_ClosedRoCount + _
-                g_NotOnFileRoCount + _
-                g_SkipVehidNotOnFileCount + _
-                g_SkipNoCloseoutTextCount + _
-                g_SkipNoPartsChargedCount + _
-                g_LeftOpenManualCount + _
-                g_ErrorInMainCount + _
-                g_NoResultRecordedCount + _
-                g_SummaryOtherOutcomeCount
-
-            summaryMsg = "DONE" & vbCrLf & _
-                "ROs Reviewed: " & g_ReviewedROCount & vbCrLf & _
-                "ROs Posted: " & g_FiledROCount & vbCrLf & _
-                "Skips - Specific ROs: " & g_SkipConfiguredCount & vbCrLf & _
-                "Skips - Non-compliant tech code: " & g_SkipTechCodeCount & vbCrLf & _
-                "Skips - Other Terms: " & g_SkipBlacklistCount & vbCrLf & _
-                "Skips - Open: " & g_SkipStatusOpenCount & vbCrLf & _
-                "Skips - Pre-Assigned: " & g_SkipStatusPreassignedCount & vbCrLf & _
-                "Skips - Other Statuses: " & g_SkipStatusOtherCount & vbCrLf & _
-                "Closed (already): " & g_ClosedRoCount & vbCrLf & _
-                "Not On File: " & g_NotOnFileRoCount & vbCrLf & _
-                "Skipped - VEHID not on file: " & g_SkipVehidNotOnFileCount & vbCrLf & _
-                "Skipped - No closeout text: " & g_SkipNoCloseoutTextCount & vbCrLf & _
-                "Skipped - No parts charged: " & g_SkipNoPartsChargedCount & vbCrLf & _
-                "Left Open for manual closing: " & g_LeftOpenManualCount & vbCrLf & _
-                "Errors in Main: " & g_ErrorInMainCount & vbCrLf & _
-                "No result recorded: " & g_NoResultRecordedCount & vbCrLf & _
-                "Other Outcomes: " & g_SummaryOtherOutcomeCount & vbCrLf & _
-                "Accounted Total: " & accountedTotal & vbCrLf & _
-                "Older ROs Attempted (subset): " & g_OlderRoAttemptCount
-
-            If g_SummaryOtherOutcomeCount > 0 Then
-                otherOutcomeDetails = BuildOtherOutcomeBreakdown(8)
-                If Len(Trim(CStr(otherOutcomeDetails))) > 0 Then
-                    summaryMsg = summaryMsg & vbCrLf & "Other Outcome Breakdown:" & vbCrLf & otherOutcomeDetails
-                End If
-
-                otherOutcomeDetails = BuildOtherOutcomeRawBreakdown(12)
-                If Len(Trim(CStr(otherOutcomeDetails))) > 0 Then
-                    summaryMsg = summaryMsg & vbCrLf & "Other Outcome Raw Results:" & vbCrLf & otherOutcomeDetails
-                End If
-            End If
-
-            Call SafeMsg(summaryMsg, False, "PostFinalCharges")
+            Call SafeMsg(sessionSummary, False, "PostFinalCharges")
         End If
     Else
         SafeMsg "Unable to connect to BlueZone. Check that itG��s open and logged in.", True, "Connection Error"
@@ -2930,6 +2880,7 @@ Sub ProcessRONumbers()
     g_SkipVehidNotOnFileCount = 0
     g_SkipNoCloseoutTextCount = 0
     g_SkipNoPartsChargedCount = 0
+    g_SkipUnsupportedWarrantyCount = 0
     g_LeftOpenManualCount = 0
     g_ErrorInMainCount = 0
     g_NoResultRecordedCount = 0
@@ -3036,6 +2987,74 @@ Sub ProcessRONumbers()
     Next
 End Sub
 
+'-----------------------------------------------------------------------------------
+' **FUNCTION NAME:** BuildSessionSummary
+' **DATE CREATED:** 2026-04-20
+' **AUTHOR:** GitHub Copilot
+'
+' **FUNCTIONALITY:**
+' Assembles and returns the end-of-session summary string from the global counters.
+' Decoupled from any display mechanism so it can be passed to MsgBox, written to
+' the log, or inspected in tests.
+'-----------------------------------------------------------------------------------
+Function BuildSessionSummary()
+    Dim accountedTotal, summaryText, otherOutcomeDetails
+
+    accountedTotal = g_FiledROCount + _
+        g_SkipConfiguredCount + _
+        g_SkipTechCodeCount + _
+        g_SkipBlacklistCount + _
+        g_SkipStatusOpenCount + _
+        g_SkipStatusPreassignedCount + _
+        g_SkipStatusOtherCount + _
+        g_ClosedRoCount + _
+        g_NotOnFileRoCount + _
+        g_SkipVehidNotOnFileCount + _
+        g_SkipNoCloseoutTextCount + _
+        g_SkipNoPartsChargedCount + _
+        g_SkipUnsupportedWarrantyCount + _
+        g_LeftOpenManualCount + _
+        g_ErrorInMainCount + _
+        g_NoResultRecordedCount + _
+        g_SummaryOtherOutcomeCount
+
+    summaryText = "DONE" & vbCrLf & _
+        "ROs Reviewed: " & g_ReviewedROCount & vbCrLf & _
+        "ROs Posted: " & g_FiledROCount & vbCrLf & _
+        "Skips - Specific ROs: " & g_SkipConfiguredCount & vbCrLf & _
+        "Skips - Non-compliant tech code: " & g_SkipTechCodeCount & vbCrLf & _
+        "Skips - Other Terms: " & g_SkipBlacklistCount & vbCrLf & _
+        "Skips - Open: " & g_SkipStatusOpenCount & vbCrLf & _
+        "Skips - Pre-Assigned: " & g_SkipStatusPreassignedCount & vbCrLf & _
+        "Skips - Other Statuses: " & g_SkipStatusOtherCount & vbCrLf & _
+        "Closed (already): " & g_ClosedRoCount & vbCrLf & _
+        "Not On File: " & g_NotOnFileRoCount & vbCrLf & _
+        "Skipped - VEHID not on file: " & g_SkipVehidNotOnFileCount & vbCrLf & _
+        "Skipped - No closeout text: " & g_SkipNoCloseoutTextCount & vbCrLf & _
+        "Skipped - No parts charged: " & g_SkipNoPartsChargedCount & vbCrLf & _
+        "Skipped - Unsupported warranty ltype: " & g_SkipUnsupportedWarrantyCount & vbCrLf & _
+        "Left Open for manual closing: " & g_LeftOpenManualCount & vbCrLf & _
+        "Errors in Main: " & g_ErrorInMainCount & vbCrLf & _
+        "No result recorded: " & g_NoResultRecordedCount & vbCrLf & _
+        "Other Outcomes: " & g_SummaryOtherOutcomeCount & vbCrLf & _
+        "Accounted Total: " & accountedTotal & vbCrLf & _
+        "Older ROs Attempted (subset): " & g_OlderRoAttemptCount
+
+    If g_SummaryOtherOutcomeCount > 0 Then
+        otherOutcomeDetails = BuildOtherOutcomeBreakdown(8)
+        If Len(Trim(CStr(otherOutcomeDetails))) > 0 Then
+            summaryText = summaryText & vbCrLf & "Other Outcome Breakdown:" & vbCrLf & otherOutcomeDetails
+        End If
+
+        otherOutcomeDetails = BuildOtherOutcomeRawBreakdown(12)
+        If Len(Trim(CStr(otherOutcomeDetails))) > 0 Then
+            summaryText = summaryText & vbCrLf & "Other Outcome Raw Results:" & vbCrLf & otherOutcomeDetails
+        End If
+    End If
+
+    BuildSessionSummary = summaryText
+End Function
+
 Sub TrackPrimaryOutcomeCounters(resultText)
     Dim normalized
     normalized = UCase(Trim(CStr(resultText)))
@@ -3060,6 +3079,10 @@ Sub TrackPrimaryOutcomeCounters(resultText)
     End If
     If InStr(1, normalized, "SKIPPED - NO PARTS CHARGED", vbTextCompare) = 1 Then
         g_SkipNoPartsChargedCount = g_SkipNoPartsChargedCount + 1
+        Exit Sub
+    End If
+    If InStr(1, normalized, "SKIPPED - UNSUPPORTED WARRANTY LTYPE", vbTextCompare) = 1 Then
+        g_SkipUnsupportedWarrantyCount = g_SkipUnsupportedWarrantyCount + 1
         Exit Sub
     End If
     If InStr(1, normalized, "LEFT OPEN FOR MANUAL CLOSING", vbTextCompare) = 1 Then
@@ -3159,6 +3182,10 @@ Function GetOtherOutcomeBucket(resultText)
     End If
     If InStr(1, normalized, "SKIPPED - NO PARTS CHARGED", vbTextCompare) = 1 Then
         GetOtherOutcomeBucket = "Skipped - No parts charged"
+        Exit Function
+    End If
+    If InStr(1, normalized, "SKIPPED - UNSUPPORTED WARRANTY LTYPE", vbTextCompare) = 1 Then
+        GetOtherOutcomeBucket = "Skipped - Unsupported warranty ltype"
         Exit Function
     End If
     If InStr(1, normalized, "LEFT OPEN FOR MANUAL CLOSING", vbTextCompare) = 1 Then
@@ -3304,6 +3331,10 @@ Function IsResultRepresentedInSummary(resultText)
         Exit Function
     End If
     If InStr(1, normalized, "SKIPPED - NO PARTS CHARGED", vbTextCompare) = 1 Then
+        IsResultRepresentedInSummary = True
+        Exit Function
+    End If
+    If InStr(1, normalized, "SKIPPED - UNSUPPORTED WARRANTY LTYPE", vbTextCompare) = 1 Then
         IsResultRepresentedInSummary = True
         Exit Function
     End If

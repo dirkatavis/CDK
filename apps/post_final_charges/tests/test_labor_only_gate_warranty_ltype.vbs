@@ -213,7 +213,7 @@ Function EvaluateLaborOnlyGate(ByRef skipReason)
                             Next
                         End If
                         If unsupportedWarranty Then
-                            skipReason = "Skipped - Unsupported warranty ltype: [" & lTypeCode & "] lrow=[" & lRowDesc & "]"
+                            skipReason = "Skipped - Unsupported warranty ltype: [" & lTypeCode & "]"
                             Call LogEvent("comm", "low", "Labor-only gate SKIP — unsupported warranty ltype", "EvaluateLaborOnlyGate", _
                                 "ltype=[" & lTypeCode & "] not in WarrantyLTypes", "")
                             EvaluateLaborOnlyGate = False
@@ -331,7 +331,8 @@ Dim result1, reason1
 result1 = EvaluateLaborOnlyGate(reason1)
 AssertFalse "WF ltype (unsupported) causes gate to return False", result1
 AssertContains "WF skip reason contains unsupported warranty ltype prefix", reason1, "Skipped - Unsupported warranty ltype: [WF]"
-AssertContains "WF skip reason includes lrow description", reason1, "lrow=[SOME REPAIR]"
+AssertFalse "WF skip reason does not include lrow detail (kept in log only)", _
+    (InStr(1, reason1, "lrow=", vbTextCompare) > 0)
 
 ' --- Test 2: WCH ltype (supported), no parts, no exception -> no-parts skip ---
 Dim mock2
@@ -366,6 +367,8 @@ Dim result4, reason4
 result4 = EvaluateLaborOnlyGate(reason4)
 AssertFalse "Empty WarrantyLTypes causes any W* ltype to be skipped", result4
 AssertContains "Empty-list skip reason contains unsupported warranty prefix", reason4, "Skipped - Unsupported warranty ltype: [WV]"
+AssertFalse "Empty-list skip reason does not include lrow detail", _
+    (InStr(1, reason4, "lrow=", vbTextCompare) > 0)
 g_arrWarrantyLTypes = Array("WCH", "WV")
 
 ' --- Test 5: L-row WITH P-row following -> passes unconditionally ---
