@@ -137,6 +137,11 @@ AssertContains "DetectWarrantyDialog function is declared", "Function DetectWarr
 AssertContains "HandleWarrantyClaimsDialog accepts maxPolls", "Sub HandleWarrantyClaimsDialog(maxPolls)"
 AssertContains "HandleFcaClaimsDialog sub is declared", "Sub HandleFcaClaimsDialog()"
 AssertContains "HandleVwWarrantyDialog sub is declared", "Sub HandleVwWarrantyDialog()"
+AssertContains "HandleFordWarrantyDialog sub is declared", "Sub HandleFordWarrantyDialog()"
+AssertContains "Ford dispatcher wired in HandleWarrantyClaimsDialog", "ElseIf dialogType = ""FORD"" Then"
+AssertContains "g_FordWarrantyCauseText global is declared", "Dim g_FordWarrantyCauseText"
+AssertContains "FordWarrantyCauseText config key is read", "GetIniSetting(""PostFinalCharges"", ""FordWarrantyCauseText"", ""Defective Part"")"
+AssertContains "Ford dialog license state TODO is present", "TODO: license state is per-vehicle"
 AssertContains "IsWarrantyLine is called before FNL in ProcessLinesSequentially", "lineIsWarranty = IsWarrantyLine(lineLetterChar)"
 AssertContains "warrantyPolls computed from lineIsWarranty", "warrantyPolls = 20"
 AssertContains "HandleWarrantyClaimsDialog always called with poll count", "Call HandleWarrantyClaimsDialog(warrantyPolls)"
@@ -147,6 +152,38 @@ AssertOrder "HandleWarrantyClaimsDialog fires after R review prompts", _
     "Call ProcessPromptSequence(lineItemPrompts)", "Call HandleWarrantyClaimsDialog(warrantyPolls)"
 AssertOrder "HandleWarrantyClaimsDialog fires after R review prompts (not FNL)", _
     "lineIsWarranty = IsWarrantyLine(lineLetterChar)", "Call HandleWarrantyClaimsDialog(warrantyPolls)"
+
+' Per-line tech code routing in ProcessLinesSequentially
+AssertContains "GetLineTechCode helper is declared", "Function GetLineTechCode(lineLetterChar)"
+AssertContains "ProcessLinesSequentially reads per-line tech code", "lineTechCode = GetLineTechCode(lineLetterChar)"
+AssertContains "C93 branch skips FNL and R", "lineTechCode = ""C93"""
+AssertContains "C92 branch skips FNL only", "lineTechCode = ""C92"""
+AssertContains "skipFnlForLine flag is set for C92", "skipFnlForLine = (lineTechCode = ""C92"")"
+AssertOrder "C93 check precedes C92 check", _
+    "lineTechCode = ""C93""", "lineTechCode = ""C92"""
+
+' VTD labor gate wiring
+AssertContains "ContainsWholeWordVtd helper is declared", "Function ContainsWholeWordVtd(text)"
+AssertContains "EvaluateVtdLaborGate function is declared", "Function EvaluateVtdLaborGate(ByRef skipReason)"
+AssertContains "VTD gate checks ltype I", "lTypeCode = ""I"""
+AssertContains "VTD gate calls whole-word check", "ContainsWholeWordVtd(lRowDesc)"
+AssertContains "VTD gate sets skip reason prefix", "Skipped - VTD labor line:"
+AssertContains "g_SkipVtdLaborCount global is declared", "Dim g_SkipVtdLaborCount"
+AssertContains "g_SkipVtdLaborCount reset in ProcessRONumbers", "g_SkipVtdLaborCount = 0"
+AssertContains "Main calls EvaluateVtdLaborGate", "If Not EvaluateVtdLaborGate(vtdSkipReason) Then"
+AssertContains "Main increments g_SkipVtdLaborCount on VTD gate failure", "g_SkipVtdLaborCount = g_SkipVtdLaborCount + 1"
+AssertOrder "VTD gate precedes labor-only gate in Main", _
+    "If Not EvaluateVtdLaborGate(vtdSkipReason) Then", "If Not EvaluateLaborOnlyGate(laborOnlySkipReason) Then"
+AssertContains "BuildSessionSummary includes VTD count in miscTotal", "g_SkipVtdLaborCount + _"
+AssertContains "BuildSessionSummary shows VTD detail line", "Skipped - VTD labor line: "" & g_SkipVtdLaborCount"
+AssertContains "IsResultRepresentedInSummary handles VTD skip prefix", """SKIPPED - VTD LABOR LINE"""
+
+' Ford dialog — config-driven license state
+AssertContains "g_FordWarrantyLicenseState global is declared", "Dim g_FordWarrantyLicenseState"
+AssertContains "FordWarrantyLicenseState config key is read", "GetIniSetting(""PostFinalCharges"", ""FordWarrantyLicenseState"", ""GA"")"
+AssertContains "VLS step reads field content before sending state code", "vlsFieldText = Trim(Mid(vlsBuf, vlsLabelPos + 22, 5))"
+AssertContains "VLS step uses config value when field is blank", "g_FordWarrantyLicenseState"
+AssertContains "GetLineTechCode pagination limitation is documented", "Scans only the currently visible page"
 
 WScript.Echo ""
 If failures = 0 Then
