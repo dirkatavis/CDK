@@ -5338,9 +5338,9 @@ Sub Closeout_ReadyToPost()
     ' For READY TO POST status ROs, process each line individually: R A -> FNL A -> R B -> FNL B, etc.
     Call ProcessLinesSequentially()
     
-    ' Send the File (FC) command
+    ' Send the File (F) command
     Call LogInfo("Sending file command after READY TO POST processing", "Closeout_ReadyToPost")
-    WaitForPrompt "COMMAND:", "FC", True, g_PromptWait, ""
+    WaitForPrompt "COMMAND:", "F", True, g_PromptWait, ""
     If HandleCloseoutErrors() Then Exit Sub
 
     Call PerformFinalCloseout("Closeout_ReadyToPost")
@@ -5361,9 +5361,9 @@ Sub Closeout_Preassigned()
     ' For PREASSIGNED status ROs, process each line individually: R A -> FNL A -> R B -> FNL B, etc.
     Call ProcessLinesSequentially()
     
-    ' Send the File (FC) command
+    ' Send the File (F) command
     Call LogInfo("Sending file command after PREASSIGNED processing", "Closeout_Preassigned")
-    WaitForPrompt "COMMAND:", "FC", True, g_PromptWait, ""
+    WaitForPrompt "COMMAND:", "F", True, g_PromptWait, ""
     If HandleCloseoutErrors() Then Exit Sub
 
     Call PerformFinalCloseout("Closeout_Preassigned")
@@ -5385,9 +5385,9 @@ Sub Closeout_Open()
     ' For OPEN status ROs, process each line individually: R A -> FNL A -> R B -> FNL B, etc.
     Call ProcessLinesSequentially()
     
-    ' Finally, send the File (FC) command
+    ' Finally, send the File (F) command
     Call LogInfo("Sending file command after OPEN status processing", "Closeout_Open")
-    WaitForPrompt "COMMAND:", "FC", True, g_PromptWait, ""
+    WaitForPrompt "COMMAND:", "F", True, g_PromptWait, ""
     If HandleCloseoutErrors() Then Exit Sub
 
     Call PerformFinalCloseout("Closeout_Open")
@@ -5653,9 +5653,9 @@ Sub Closeout_Default()
     ' Process each line individually: R A -> FNL A -> R B -> FNL B, etc.
     Call ProcessLinesSequentially()
 
-    ' Send the File (FC) command
+    ' Send the File (F) command
     Call LogInfo("Sending file command after default processing", "Closeout_Default")
-    WaitForPrompt "COMMAND:", "FC", True, g_PromptWait, ""
+    WaitForPrompt "COMMAND:", "F", True, g_PromptWait, ""
     If HandleCloseoutErrors() Then Exit Sub
 
     Call PerformFinalCloseout("Closeout_Default")
