@@ -2703,6 +2703,10 @@ Function GetIniSetting(section, key, defaultValue)
 
     Do While Not file.AtEndOfStream
         line = Trim(file.ReadLine)
+        ' Line continuation: a line ending with \ is joined to the next line
+        Do While Right(line, 1) = "\" And Not file.AtEndOfStream
+            line = Left(line, Len(line) - 1) & Trim(file.ReadLine)
+        Loop
         If Left(line, 1) = "[" And Right(line, 1) = "]" Then
             ' It's a section header
             Dim currentSection
