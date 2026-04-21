@@ -63,6 +63,7 @@ Dim g_SkipConfiguredCount
 Dim g_arrWarrantyLTypes
 Dim g_WarrantyCauseText
 Dim g_FordWarrantyCauseText
+Dim g_FordWarrantyLicenseState
 Dim g_WarrantyDialogStepDelayMs
 Dim g_WarrantyDialogSignatureTexts()
 Dim g_WarrantyDialogSignatureTypes()
@@ -1648,6 +1649,11 @@ End Function
 '   ""  = no tech code or line not visible — run normal FNL then R
 '-----------------------------------------------------------------------------------
 Function GetLineTechCode(lineLetterChar)
+    ' NOTE: Scans only the currently visible page (rows 9-22). On ROs with enough lines
+    ' to paginate, line headers on later pages will not be found and this function
+    ' returns "", routing those lines through the standard FNL+R path. C92/C93 routing
+    ' is therefore limited to lines visible on page 1. A future improvement should
+    ' implement pagination (N/B pattern) similar to EvaluateLaborOnlyGate.
     GetLineTechCode = ""
     Dim row, buf
     For row = 9 To 22
@@ -1990,11 +1996,13 @@ Sub HandleFordWarrantyDialog()
     Next
     Call LogInfo("Ford warranty dialog: VEHICLE LICENSE STATE field=[" & vlsFieldText & "]", "HandleFordWarrantyDialog")
     If Len(vlsFieldText) = 0 Then
-        ' Field is blank — cursor is at VLS, type GA one character at a time
-        Call LogInfo("Ford warranty dialog: VEHICLE LICENSE STATE — blank, typing GA + Enter", "HandleFordWarrantyDialog")
-        Call FastText("G")
-        Call WaitMs(100)
-        Call FastText("A")
+        ' Field is blank — cursor is at VLS, type state code one character at a time
+        Call LogInfo("Ford warranty dialog: VEHICLE LICENSE STATE — blank, typing [" & g_FordWarrantyLicenseState & "] + Enter", "HandleFordWarrantyDialog")
+        Dim vlsCharIdx
+        For vlsCharIdx = 1 To Len(g_FordWarrantyLicenseState)
+            Call FastText(Mid(g_FordWarrantyLicenseState, vlsCharIdx, 1))
+            Call WaitMs(100)
+        Next
     Else
         ' Field already has a value — cursor may have advanced; just send Enter to move on
         Call LogInfo("Ford warranty dialog: VEHICLE LICENSE STATE — has [" & vlsFieldText & "], sending Enter only", "HandleFordWarrantyDialog")
@@ -2936,6 +2944,7 @@ Sub InitializeConfig()
 
     g_WarrantyCauseText = GetIniSetting("PostFinalCharges", "WarrantyCauseText", "Device failure")
     g_FordWarrantyCauseText = GetIniSetting("PostFinalCharges", "FordWarrantyCauseText", "Defective Part")
+    g_FordWarrantyLicenseState = GetIniSetting("PostFinalCharges", "FordWarrantyLicenseState", "GA")
 
     Dim warrantyDialogStepDelayValue
     warrantyDialogStepDelayValue = GetIniSetting("PostFinalCharges", "WarrantyDialogStepDelayMs", "2000")
