@@ -320,7 +320,7 @@ WScript.Echo "Labor-Only Gate — Behavioral Tests"
 WScript.Echo "==================================="
 
 g_arrCDKDescriptionExceptions = Array("check and adjust", "oil and filter")
-g_arrWarrantyLTypes = Array("WCH", "WV")
+g_arrWarrantyLTypes = Array("WCH", "W")
 
 ' --- Test 1: WF ltype (unsupported W*) -> skipped ---
 Dim mock1
@@ -360,16 +360,16 @@ AssertFalse "Non-W ltype skip reason does not mention unsupported warranty", _
 ' --- Test 4: Empty g_arrWarrantyLTypes -> any W* ltype skipped ---
 Dim mock4
 Set mock4 = New FakeBzhao
-mock4.SetPage BuildPageNoP("WV", "RECALL REPAIR")
+mock4.SetPage BuildPageNoP("W", "RECALL REPAIR")
 Set g_bzhao = mock4
 g_arrWarrantyLTypes = Array()
 Dim result4, reason4
 result4 = EvaluateLaborOnlyGate(reason4)
 AssertFalse "Empty WarrantyLTypes causes any W* ltype to be skipped", result4
-AssertContains "Empty-list skip reason contains unsupported warranty prefix", reason4, "Skipped - Unsupported warranty ltype: [WV]"
+AssertContains "Empty-list skip reason contains unsupported warranty prefix", reason4, "Skipped - Unsupported warranty ltype: [W]"
 AssertFalse "Empty-list skip reason does not include lrow detail", _
     (InStr(1, reason4, "lrow=", vbTextCompare) > 0)
-g_arrWarrantyLTypes = Array("WCH", "WV")
+g_arrWarrantyLTypes = Array("WCH", "W")
 
 ' --- Test 5: L-row WITH P-row following -> passes unconditionally ---
 Dim mock5

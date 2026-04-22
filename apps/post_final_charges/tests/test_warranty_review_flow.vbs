@@ -6,14 +6,14 @@
 ' **FUNCTIONALITY:**
 ' Behavioral tests for IsWarrantyLine(), DetectWarrantyDialog(),
 ' HandleWarrantyClaimsDialog() (dispatcher), HandleFcaClaimsDialog(),
-' and HandleVwWarrantyDialog() (stub).
+' and HandleWWarrantyDialog() (stub).
 '
 ' Tests:
-'   1-6)  IsWarrantyLine: True for WCH/WV/WF, False for I/blank/unknown
+'   1-6)  IsWarrantyLine: True for WCH/WF/W, False for I/blank/unknown
 '   7)    FCA COMMAND: dialog — dispatcher routes to FCA handler; correct keys sent
 '   8)    FCA LABOR OP: dialog — dispatcher routes to FCA handler; blank Enter only
 '   9)    FCA LABOR OP: + CAUSE L1: sub-prompt — correct 3-key sequence
-'   10)   WV dialog — dispatcher routes to WV stub; no keys sent
+'   10)   W dialog — dispatcher routes to W stub; no keys sent
 '   11)   Unknown dialog type — dispatcher logs warning; no keys sent
 '   12)   No dialog detected within timeout — dispatcher logs warning; no keys sent
 '   13)   Ford dialog — dispatcher routes to Ford handler; handler called flag set
@@ -38,7 +38,7 @@ Dim g_WarrantyDialogSignatureTypes
 ' Tracking variables for stub/dispatcher verification
 Dim g_FordWarrantyCauseText
 Dim g_FordWarrantyLicenseState
-Dim g_VwDialogHandlerCalled
+Dim g_WDialogHandlerCalled
 Dim g_FordDialogHandlerCalled
 Dim g_LastWarnMessage
 
@@ -185,8 +185,8 @@ Function BuildFcaLaborOpDialogPage()
     BuildFcaLaborOpDialogPage = String(21 * 80, " ") & PadTo80("LABOR OP:") & String(2 * 80, " ")
 End Function
 
-' WV dialog: FAILURE CODE: at row 22 (outer detection → WV type)
-Function BuildVwDialogPage()
+' W dialog: FAILURE CODE: at row 22 (outer detection → W type)
+Function BuildWDialogPage()
     BuildVwDialogPage = String(21 * 80, " ") & PadTo80("FAILURE CODE:") & String(2 * 80, " ")
 End Function
 
@@ -309,8 +309,8 @@ Sub HandleWarrantyClaimsDialog()
         Call LogWarn("Warranty claims dialog: no dialog detected within timeout", "HandleWarrantyClaimsDialog")
     ElseIf dialogType = "FCA" Then
         Call HandleFcaClaimsDialog()
-    ElseIf dialogType = "WV" Then
-        Call HandleVwWarrantyDialog()
+    ElseIf dialogType = "W" Then
+        Call HandleWWarrantyDialog()
     ElseIf dialogType = "FORD" Then
         Call HandleFordWarrantyDialog()
     Else
@@ -467,10 +467,10 @@ Sub HandleFordWarrantyDialog()
 End Sub
 
 '--------------------------------------------------------------------
-' Local copy of HandleVwWarrantyDialog (mirrors PostFinalCharges.vbs)
+' Local copy of HandleWWarrantyDialog (mirrors PostFinalCharges.vbs)
 '--------------------------------------------------------------------
-Sub HandleVwWarrantyDialog()
-    g_VwDialogHandlerCalled = True
+Sub HandleWWarrantyDialog()
+    g_WDialogHandlerCalled = True
 
     Dim buf, row, fi, commandFound
     commandFound = False
@@ -499,7 +499,7 @@ Sub HandleVwWarrantyDialog()
         Call FastKey("<NumpadEnter>")
         Call WaitMs(g_WarrantyDialogStepDelayMs \ 2)
     Else
-        Call LogWarn("VW warranty dialog: WARRANTY COMMAND: prompt not found within field limit", "HandleVwWarrantyDialog")
+        Call LogWarn("W warranty dialog: WARRANTY COMMAND: prompt not found within field limit", "HandleWWarrantyDialog")
     End If
 End Sub
 
@@ -540,10 +540,10 @@ End Sub
 WScript.Echo "Warranty Review Flow Tests"
 WScript.Echo "=========================="
 
-g_arrWarrantyLTypes = Array("WCH", "WV", "WF")
+g_arrWarrantyLTypes = Array("WCH", "WF", "W")
 g_WarrantyCauseText = "Device failure"
 g_WarrantyDialogStepDelayMs = 0
-g_VwDialogHandlerCalled = False
+g_WDialogHandlerCalled = False
 g_FordDialogHandlerCalled = False
 g_FordWarrantyCauseText = "Defective Part"
 g_FordWarrantyLicenseState = "GA"
@@ -551,7 +551,7 @@ g_LastWarnMessage = ""
 
 ' Default signature arrays (mirrors config.ini defaults)
 g_WarrantyDialogSignatureTexts = Array("LABOR OP:", "CLAIM TYPE:", "FAILURE CODE:", "MODIFY WARRANTY INFORMATION", "MODIFY FORD REPAIR TYPE INFORMATION")
-g_WarrantyDialogSignatureTypes = Array("FCA", "FCA", "WV", "WV", "FORD")
+g_WarrantyDialogSignatureTypes = Array("FCA", "FCA", "W", "W", "FORD")
 
 Dim fake, result
 
@@ -561,11 +561,11 @@ fake.SetPage BuildSinglePage(BuildHeaderRow("A"), BuildLRow("WCH", "VEND TO DEAL
 Set g_bzhao = fake
 AssertTrue "IsWarrantyLine True for WCH", IsWarrantyLine("A")
 
-' --- Test 2: IsWarrantyLine returns True for WV ---
+' --- Test 2: IsWarrantyLine returns True for W ---
 Set fake = New FakeBzhaoSinglePage
-fake.SetPage BuildSinglePage(BuildHeaderRow("A"), BuildLRow("WV", "WARRANTY VOLVO"))
+fake.SetPage BuildSinglePage(BuildHeaderRow("A"), BuildLRow("W", "WARRANTY REPAIR"))
 Set g_bzhao = fake
-AssertTrue "IsWarrantyLine True for WV", IsWarrantyLine("A")
+AssertTrue "IsWarrantyLine True for W", IsWarrantyLine("A")
 
 ' --- Test 3: IsWarrantyLine returns True for WF ---
 Set fake = New FakeBzhaoSinglePage
@@ -634,16 +634,16 @@ AssertEqual "CAUSE L1: - second key is cause text", "Device failure", keys9(1)
 AssertEqual "CAUSE L1: - third key is NumpadEnter (CAUSE L1: response)", "<NumpadEnter>", keys9(2)
 AssertEqual "CAUSE L1: - exactly three keys sent", 3, fakeSeq.KeyCount
 
-' --- Test 10: WV dialog — 7 blank Enters through fields, then E at WARRANTY COMMAND: ---
+' --- Test 10: W dialog — 7 blank Enters through fields, then E at WARRANTY COMMAND: ---
 ' Page sequence using FakeBzhaoDialogSequenced:
 '   Pages 0-6: blank fields (no WARRANTY COMMAND: yet) — each Enter advances page
 '   Page 7:    WARRANTY COMMAND: visible — handler sends E + Enter
 '   Page 8:    blank (stable after exit)
-g_VwDialogHandlerCalled = False
+g_WDialogHandlerCalled = False
 Dim fakeVw : Set fakeVw = New FakeBzhaoDialogSequenced
 Dim vwField
 For vwField = 1 To 7
-    fakeVw.AddPage BuildVwDialogPage()   ' FAILURE CODE: visible but no WARRANTY COMMAND:
+    fakeVw.AddPage BuildWDialogPage()   ' FAILURE CODE: visible but no WARRANTY COMMAND:
 Next
 ' Page 7: WARRANTY COMMAND: prompt appears after 7th field
 Dim vwCommandPage : vwCommandPage = String(21 * 80, " ") & PadTo80("WARRANTY COMMAND:") & String(2 * 80, " ")
@@ -651,12 +651,12 @@ fakeVw.AddPage vwCommandPage
 fakeVw.AddPage String(24 * 80, " ")
 Set g_bzhao = fakeVw
 HandleWarrantyClaimsDialog()
-AssertTrue  "WV dialog - VW handler was called", g_VwDialogHandlerCalled
+AssertTrue  "W dialog - W handler was called", g_WDialogHandlerCalled
 ' 7 Enters (one per field) + E + Enter = 9 keys total
-AssertEqual "WV dialog - total keys sent", 9, fakeVw.KeyCount
+AssertEqual "W dialog - total keys sent", 9, fakeVw.KeyCount
 Dim keysVw : keysVw = fakeVw.GetKeys()
-AssertEqual "WV dialog - last-but-one key is E", "E", keysVw(7)
-AssertEqual "WV dialog - last key is NumpadEnter (confirm exit)", "<NumpadEnter>", keysVw(8)
+AssertEqual "W dialog - last-but-one key is E", "E", keysVw(7)
+AssertEqual "W dialog - last key is NumpadEnter (confirm exit)", "<NumpadEnter>", keysVw(8)
 
 ' --- Test 11: Unknown dialog type — dispatcher logs warning, no keys sent ---
 ' Temporarily add an unknown-type signature, use a page that matches it
@@ -664,7 +664,7 @@ Dim savedSigTexts, savedSigTypes
 savedSigTexts = g_WarrantyDialogSignatureTexts
 savedSigTypes  = g_WarrantyDialogSignatureTypes
 g_WarrantyDialogSignatureTexts = Array("LABOR OP:", "CLAIM TYPE:", "FAILURE CODE:", "MODIFY WARRANTY INFORMATION", "FUTURE MAKER DIALOG:")
-g_WarrantyDialogSignatureTypes = Array("FCA", "FCA", "WV", "WV", "FUTUREMAKER")
+g_WarrantyDialogSignatureTypes = Array("FCA", "FCA", "W", "W", "FUTUREMAKER")
 g_LastWarnMessage = ""
 Set fake = New FakeBzhaoDialog
 fake.SetPage BuildCustomDialogPage("FUTURE MAKER DIALOG:")

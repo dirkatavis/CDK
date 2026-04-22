@@ -1525,14 +1525,14 @@ End Function
 ' **FUNCTIONALITY:**
 ' Scans rows 9-22 for L-operations belonging to the given line letter and checks
 ' whether any carry a warranty LABOR TYPE from g_arrWarrantyLTypes (col 50-55,
-' 1-indexed). The array is loaded from config key WarrantyLTypes (default WCH,WV).
+' 1-indexed). The array is loaded from config key WarrantyLTypes (default WCH,WF,W).
 '
 ' Screen layout (from RO DETAIL header row):
 '   LC DESCRIPTION                           TECH... LTYPE    ACT   SOLD    SALE AMT
 ' Line letter headers have the letter at col 1. L-operation rows have:
 '   - col 1 = " " (space-indented)
 '   - col 4 = "L", col 5 = digit (e.g., L1, L2)
-'   - col 50-55 = LTYPE value (e.g., "WCH", "WV", "WF", "I", "B")
+'   - col 50-55 = LTYPE value (e.g., "WCH", "WF", "W", "I", "B")
 '
 ' **PARAMETERS:**
 ' lineLetterChar - Single uppercase letter identifying the line (e.g., "A")
@@ -1678,12 +1678,12 @@ End Function
 ' review prompts complete. The flow is:
 '
 '   1. DetectWarrantyDialog() — scans the full screen for any configured signature
-'      string and returns a dialog type key (e.g. "FCA", "WV") or "" if none found.
+'      string and returns a dialog type key (e.g. "FCA", "W") or "" if none found.
 '
 '   2. HandleWarrantyClaimsDialog() — dispatcher: calls DetectWarrantyDialog, then
 '      routes to the appropriate handler sub based on the returned type key.
 '
-'   3. Handler subs (HandleFcaClaimsDialog, HandleVwWarrantyDialog, etc.) — each
+'   3. Handler subs (HandleFcaClaimsDialog, HandleWWarrantyDialog, etc.) — each
 '      owns the complete step sequence for its manufacturer's dialog. Unknown
 '      manufacturers show a MsgBox so the operator can handle it manually.
 '
@@ -1754,8 +1754,8 @@ Sub HandleWarrantyClaimsDialog(maxPolls)
         Call LogWarn("Warranty claims dialog: no dialog detected within timeout", "HandleWarrantyClaimsDialog")
     ElseIf dialogType = "FCA" Then
         Call HandleFcaClaimsDialog()
-    ElseIf dialogType = "WV" Then
-        Call HandleVwWarrantyDialog()
+    ElseIf dialogType = "W" Then
+        Call HandleWWarrantyDialog()
     ElseIf dialogType = "FORD" Then
         Call HandleFordWarrantyDialog()
     Else
@@ -1878,23 +1878,23 @@ Sub HandleFcaClaimsDialog()
 End Sub
 
 '-----------------------------------------------------------------------------------
-' **PROCEDURE NAME:** HandleVwWarrantyDialog
-' **DATE CREATED:** 2026-04-17
+' **PROCEDURE NAME:** HandleWWarrantyDialog
+' **DATE CREATED:** 2026-04-22
 ' **AUTHOR:** GitHub Copilot
 '
 ' **FUNCTIONALITY:**
-' Navigates the VW/Volvo "MODIFY WARRANTY INFORMATION FOR LINE X" dialog.
+' Navigates the W-type "MODIFY WARRANTY INFORMATION FOR LINE X" dialog.
 '
 ' The dialog presents 7 fields (FAILURE CODE, FAILED PART NO, FAILED PARTS COUNT,
 ' CLAIM TYPE, AUTHORIZATION CODE, CONCERN CODE, CAUSE). Each is accepted with a
 ' blank Enter. After the last field, CDK presents a "WARRANTY COMMAND:" prompt at
 ' the bottom of the screen; sending E exits the dialog.
 '
-' Rather than counting fields, the handler polls for "WARRANTY COMMAND:" after each
-' Enter so it handles any future variation in field count without code changes.
+' The handler polls for "WARRANTY COMMAND:" after each Enter rather than stepping
+' through a fixed field sequence. Up to 15 attempts are made before giving up.
 '-----------------------------------------------------------------------------------
-Sub HandleVwWarrantyDialog()
-    Call LogInfo("VW warranty dialog: navigating fields with blank Enter until WARRANTY COMMAND: prompt", "HandleVwWarrantyDialog")
+Sub HandleWWarrantyDialog()
+    Call LogInfo("W warranty dialog: navigating fields with blank Enter until WARRANTY COMMAND: prompt", "HandleWWarrantyDialog")
 
     Dim buf, row, fi, commandFound
     commandFound = False
@@ -1912,24 +1912,24 @@ Sub HandleVwWarrantyDialog()
             End If
         Next
         If commandFound Then Exit For
-        Call LogInfo("VW warranty dialog: sending blank Enter for field " & fi, "HandleVwWarrantyDialog")
+        Call LogInfo("W warranty dialog: sending blank Enter for field " & fi, "HandleWWarrantyDialog")
         Call WaitMs(g_WarrantyDialogStepDelayMs)
         Call FastKey("<NumpadEnter>")
         Call WaitMs(g_WarrantyDialogStepDelayMs \ 2)
     Next
 
     If commandFound Then
-        Call LogInfo("VW warranty dialog: WARRANTY COMMAND: prompt detected - sending E to exit", "HandleVwWarrantyDialog")
+        Call LogInfo("W warranty dialog: WARRANTY COMMAND: prompt detected - sending E to exit", "HandleWWarrantyDialog")
         Call WaitMs(g_WarrantyDialogStepDelayMs)
         Call FastText("E")
         Call WaitMs(g_WarrantyDialogStepDelayMs \ 2)
         Call FastKey("<NumpadEnter>")
         Call WaitMs(g_WarrantyDialogStepDelayMs \ 2)
     Else
-        Call LogWarn("VW warranty dialog: WARRANTY COMMAND: prompt not found within field limit", "HandleVwWarrantyDialog")
+        Call LogWarn("W warranty dialog: WARRANTY COMMAND: prompt not found within field limit", "HandleWWarrantyDialog")
     End If
 
-    Call LogInfo("VW warranty dialog: complete", "HandleVwWarrantyDialog")
+    Call LogInfo("W warranty dialog: complete", "HandleWWarrantyDialog")
 End Sub
 
 '-----------------------------------------------------------------------------------
@@ -2927,7 +2927,7 @@ Sub InitializeConfig()
     g_EmployeeNameConfirm = GetIniSetting("PostFinalCharges", "EmployeeNameConfirm", "")
 
     Dim warrantyLTypesRaw, wli
-    warrantyLTypesRaw = GetIniSetting("PostFinalCharges", "WarrantyLTypes", "WCH,WV")
+    warrantyLTypesRaw = GetIniSetting("PostFinalCharges", "WarrantyLTypes", "WCH,WF,W")
     Dim warrantyLTypesArr : warrantyLTypesArr = Split(warrantyLTypesRaw, ",")
     Dim warrantyLTypesFiltered() : ReDim warrantyLTypesFiltered(0)
     Dim warrantyLTypeCount : warrantyLTypeCount = 0
@@ -2962,7 +2962,7 @@ Sub InitializeConfig()
     Call LogEvent("comm", "high", "Warranty dialog step delay configured", "InitializeConfig", "WarrantyDialogStepDelayMs: " & g_WarrantyDialogStepDelayMs, "")
 
     Dim warrantyDialogSignaturesRaw, warrantyDialogSigArr, wdsi, wdsPair, wdsPairArr
-    warrantyDialogSignaturesRaw = GetIniSetting("PostFinalCharges", "WarrantyDialogSignatures", "LABOR OP:|FCA,CLAIM TYPE:|FCA,FAILURE CODE:|WV,MODIFY WARRANTY INFORMATION|WV")
+    warrantyDialogSignaturesRaw = GetIniSetting("PostFinalCharges", "WarrantyDialogSignatures", "LABOR OP:|FCA,CLAIM TYPE:|FCA,FAILURE CODE:|W,MODIFY WARRANTY INFORMATION|W")
     warrantyDialogSigArr = Split(warrantyDialogSignaturesRaw, ",")
     Dim warrantyDialogSigCount : warrantyDialogSigCount = 0
     ReDim g_WarrantyDialogSignatureTexts(UBound(warrantyDialogSigArr))
