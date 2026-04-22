@@ -69,6 +69,7 @@ Dim g_WarrantyDialogSignatureTexts()
 Dim g_WarrantyDialogSignatureTypes()
 Dim g_AllowedTechCodes
 Dim g_arrCDKDescriptionExceptions
+Dim g_SkipLaborOnlyGate
 Dim g_SkipTechCodeCount
 Dim g_ClosedRoCount
 Dim g_NotOnFileRoCount
@@ -3000,6 +3001,9 @@ Sub InitializeConfig()
         g_arrCDKDescriptionExceptions(di) = LCase(Trim(g_arrCDKDescriptionExceptions(di)))
     Next
     Call LogEvent("comm", "high", "CDK labor-only description exceptions configured", "InitializeConfig", "CDKLaborOnlyDescriptionExceptions: " & cdkLaborDescExceptionRaw, "")
+
+    g_SkipLaborOnlyGate = (LCase(Trim(GetIniSetting("PostFinalCharges", "SkipLaborOnlyGate", "false"))) = "true")
+    Call LogEvent("comm", "high", "Labor-only gate configured", "InitializeConfig", "SkipLaborOnlyGate: " & g_SkipLaborOnlyGate, "")
 End Sub
 
 Sub ArchivePreviousDayLog()
@@ -4024,8 +4028,11 @@ Sub Main(roNumber)
     ' Skip ROs where any L-row description (or its parent line header description)
     ' does not contain a keyword from CDKLaborOnlyDescriptionExceptions. All labor
     ' lines are assumed to require parts unless a keyword confirms labor-only work.
+    ' Gate can be disabled via SkipLaborOnlyGate=true in config.ini.
     Dim laborOnlySkipReason
-    If Not EvaluateLaborOnlyGate(laborOnlySkipReason) Then
+    If g_SkipLaborOnlyGate Then
+        Call LogEvent("comm", "med", "Labor-only gate disabled by config — bypassing", "Main", "RO: " & currentRODisplay, "")
+    ElseIf Not EvaluateLaborOnlyGate(laborOnlySkipReason) Then
         Call LogEvent("comm", "med", "Labor-only gate failed - skipping RO", "Main", laborOnlySkipReason & " | RO: " & currentRODisplay, "")
         Call FastText("E")
         Call FastKey("<NumpadEnter>")
