@@ -4028,17 +4028,21 @@ Sub Main(roNumber)
     ' Skip ROs where any L-row description (or its parent line header description)
     ' does not contain a keyword from CDKLaborOnlyDescriptionExceptions. All labor
     ' lines are assumed to require parts unless a keyword confirms labor-only work.
-    ' Gate can be disabled via SkipLaborOnlyGate=true in config.ini.
+    ' SkipLaborOnlyGate=true bypasses the "no parts" check but never the unsupported
+    ' warranty ltype check — unapproved W-ltypes are always skipped.
     Dim laborOnlySkipReason
-    If g_SkipLaborOnlyGate Then
-        Call LogEvent("comm", "med", "Labor-only gate disabled by config — bypassing", "Main", "RO: " & currentRODisplay, "")
-    ElseIf Not EvaluateLaborOnlyGate(laborOnlySkipReason) Then
-        Call LogEvent("comm", "med", "Labor-only gate failed - skipping RO", "Main", laborOnlySkipReason & " | RO: " & currentRODisplay, "")
-        Call FastText("E")
-        Call FastKey("<NumpadEnter>")
-        Call WaitForPrompt("COMMAND:", "", False, 5000, "")
-        lastRoResult = laborOnlySkipReason
-        Exit Sub
+    If Not EvaluateLaborOnlyGate(laborOnlySkipReason) Then
+        Dim isWarrantyFailure : isWarrantyFailure = (InStr(1, laborOnlySkipReason, "Unsupported warranty ltype", vbTextCompare) > 0)
+        If g_SkipLaborOnlyGate And Not isWarrantyFailure Then
+            Call LogEvent("comm", "med", "Labor-only gate bypassed by config", "Main", laborOnlySkipReason & " | RO: " & currentRODisplay, "")
+        Else
+            Call LogEvent("comm", "med", "Labor-only gate failed - skipping RO", "Main", laborOnlySkipReason & " | RO: " & currentRODisplay, "")
+            Call FastText("E")
+            Call FastKey("<NumpadEnter>")
+            Call WaitForPrompt("COMMAND:", "", False, 5000, "")
+            lastRoResult = laborOnlySkipReason
+            Exit Sub
+        End If
     End If
 
     trigger = FindTrigger()
