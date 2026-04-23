@@ -46,6 +46,7 @@ tools/ValidateRoList/ValidateRoList_IN.csv
 apps/**/*.log
 apps/**/*_out.csv
 apps/post_final_charges/Pfc_Summary_output.csv
+apps/post_final_charges/SkipReasons.csv
 apps/**/*_OUT.txt
 apps/**/FALLBACK_ERROR.txt
 
