@@ -2460,9 +2460,17 @@ End Function
     g_ShouldAbort = False
 
 ' LogResult adapter for the library
-Sub LogResult(logMsg)
-    ' This adapter is for messages coming from the legacy CommonLib.
-    ' Parse ERROR prefix and route to appropriate criticality level.
+' BZH_Log calls LogResult(level, message) - routes BZHelper step logs to LogEvent.
+Sub LogResult(level, message)
+    If UCase(Trim(level)) = "ERROR" Then
+        Call LogEvent("maj", "med", message, "BZHelper", "", "")
+    Else
+        Call LogEvent("comm", "high", message, "BZHelper", "", "")
+    End If
+End Sub
+
+' Legacy single-arg adapter for CommonLib messages.
+Sub LogResultLegacy(logMsg)
     If Left(UCase(Trim(logMsg)), 6) = "ERROR:" Then
         Call LogEvent("maj", "med", "ADAPTER: " & logMsg, "CommonLib", "", "")
     Else
@@ -3834,6 +3842,12 @@ Sub Main(roNumber)
             Exit Sub
         End If
 
+        ' Short-circuit the poll loop if the VEHID error screen is already visible.
+        ' Waiting out the full 15s timeout is unnecessary — no RO number will ever appear.
+        If IsTextPresent("for this RO is not on file") Then
+            Exit Do
+        End If
+
         roCandidate = GetROFromScreen()
         roCandidateNorm = NormalizeRoIdentifier(roCandidate)
         If Len(roCandidateNorm) > 0 And roCandidateNorm <> g_PreviousNormalizedRo Then
@@ -3874,25 +3888,21 @@ Sub Main(roNumber)
         Exit Sub
     End If
     
-    ' Check for "NOT ON FILE" response
-    If IsTextPresent("NOT ON FILE") Then
-        Call LogEvent("comm", "med", "Not On File", "Main", "", "")
-        lastRoResult = "Not On File"
+    ' Check for VEHID error screen BEFORE the generic "NOT ON FILE" check,
+    ' because the VEHID screen contains "not on file" as part of its body text
+    ' and would otherwise false-positive on the check below.
+    ' Recovery: Enter to dismiss -> PFC -> employee number -> name confirm -> option 2.
+    If IsTextPresent("for this RO is not on file") Then
+        Call LogEvent("comm", "med", "VEHID not on file (Press Return screen) - attempting recovery", "Main", "RO: " & currentRODisplay, "")
+        If Not BZH_RecoverFromVehidError(g_EmployeeNumber, g_EmployeeNameConfirm, "2") Then
+            Call LogEvent("crit", "low", "VEHID recovery failed - terminal state unknown", "Main", "", "Stopping script - fail fast requested")
+            g_ShouldAbort = True
+        End If
+        lastRoResult = "Skipped - VEHID not on file"
         Exit Sub
     End If
 
-    ' App rule: line 23 may show process lock when another user has this RO open.
-    ' Send Enter once to return to COMMAND: and skip this RO for now.
-    mainPromptText = GetScreenLine(MainPromptLine)
-    If InStr(1, mainPromptText, "Process is locked by", vbTextCompare) > 0 Then
-        Call LogEvent("comm", "med", "RO locked by another user - returning to command", "Main", "RO: " & currentRODisplay, "Line " & MainPromptLine & ": '" & mainPromptText & "'")
-        Call FastKey("<Enter>")
-        Call WaitForPrompt("COMMAND:", "", False, 5000, "Process Lock Recovery")
-        lastRoResult = "Skipped - Process locked by another user"
-        Exit Sub
-    End If
-
-    ' Check for "PRESS RETURN TO CONTINUE" (VEHID not on file)
+    ' Check for "PRESS RETURN TO CONTINUE" (VEHID not on file - all-caps variant)
     If IsTextPresent("PRESS RETURN TO CONTINUE") Then
         Call LogEvent("comm", "med", "VEHID not on file - attempting recovery", "Main", "RO: " & currentRODisplay, "")
         If Not BZH_RecoverFromVehidError(g_EmployeeNumber, g_EmployeeNameConfirm, "2") Then
@@ -3900,6 +3910,13 @@ Sub Main(roNumber)
             g_ShouldAbort = True
         End If
         lastRoResult = "Skipped - VEHID not on file"
+        Exit Sub
+    End If
+
+    ' Check for "NOT ON FILE" response
+    If IsTextPresent("NOT ON FILE") Then
+        Call LogEvent("comm", "med", "Not On File", "Main", "", "")
+        lastRoResult = "Not On File"
         Exit Sub
     End If
     
@@ -3921,9 +3938,19 @@ Sub Main(roNumber)
     If ShouldSkipRo(currentRODisplay) Then
         g_SkipConfiguredCount = g_SkipConfiguredCount + 1
         Call LogEvent("comm", "med", "Configured SkipRoList match - skipping RO", "Main", "RO: " & currentRODisplay, "")
-        Call FastText("E")
-        Call FastKey("<NumpadEnter>")
-        Call WaitForPrompt("COMMAND:", "", False, 5000, "")
+        ' Guard: if the VEHID error screen is showing, the normal E exit is wrong.
+        ' Recover via PFC flow first, then exit.
+        If IsTextPresent("for this RO is not on file") Then
+            Call LogEvent("comm", "med", "VEHID error detected during skip exit - recovering before exit", "Main", "RO: " & currentRODisplay, "")
+            If Not BZH_RecoverFromVehidError(g_EmployeeNumber, g_EmployeeNameConfirm, "2") Then
+                Call LogEvent("crit", "low", "VEHID recovery failed during skip exit - terminal state unknown", "Main", "", "Stopping script - fail fast requested")
+                g_ShouldAbort = True
+            End If
+        Else
+            Call FastText("E")
+            Call FastKey("<NumpadEnter>")
+            Call WaitForPrompt("COMMAND:", "", False, 5000, "")
+        End If
         lastRoResult = "Skipped - Configured RO skip list"
         Exit Sub
     End If
