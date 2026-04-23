@@ -658,7 +658,25 @@ Function CloseRoFinal()
     WaitForText "ALL LABOR POSTED"
     EnterTextWithStability "Y"
 
-    CloseRoFinal = True
+    ' Verify CDK returned to a known-good state — without this, false positives
+    ' occur when a follow-up prompt appears after the Y response.
+    Dim screenContent, elapsed
+    elapsed = 0
+    Do
+        g_bzhao.Pause LOOP_PAUSE
+        elapsed = elapsed + (LOOP_PAUSE / 1000)
+        g_bzhao.ReadScreen screenContent, 1920, 1, 1
+        If InStr(1, screenContent, "COMMAND:", vbTextCompare) > 0 Or _
+           InStr(1, screenContent, MAIN_PROMPT, vbTextCompare) > 0 Then
+            CloseRoFinal = True
+            Exit Function
+        End If
+        If elapsed >= 30 Then
+            LogResult "ERROR", "CloseRoFinal: Timeout waiting for post-close state"
+            CloseRoFinal = False
+            Exit Function
+        End If
+    Loop
 End Function
 
 Sub ReturnToMainPrompt()

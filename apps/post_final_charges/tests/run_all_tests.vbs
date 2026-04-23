@@ -125,6 +125,9 @@ Sub Main()
     ' Test 22: Warranty review flow (IsWarrantyLine + HandleWarrantyClaimsDialog)
     RunTest "Warranty Review Flow", "cscript.exe test_warranty_review_flow.vbs"
 
+    ' Test 23: SkipLaborOnlyGate call-site decision logic
+    RunTest "SkipLaborOnlyGate Decision Tests", "cscript.exe test_skip_labor_only_gate.vbs"
+
     ' Summary
     WScript.Echo ""
     WScript.Echo "=== Test Results Summary ==="
