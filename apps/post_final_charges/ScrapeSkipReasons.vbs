@@ -56,16 +56,25 @@ Set ts = fso.OpenTextFile(logPath, 1)
 Do While Not ts.AtEndOfStream
     line = Trim(ts.ReadLine)
 
-    ' Strip log prefix (timestamp + level tags) — content starts after last ']'
-    Dim lastBracket : lastBracket = 0
+    ' Strip log prefix: format is "HH:MM:SS[level][source]content"
+    ' Count exactly 2 closing brackets to find end of prefix.
+    ' Do NOT use the last ']' — skip reasons may contain ']' (e.g. lrow=[...]).
+    Dim bracketCount : bracketCount = 0
     Dim bi : bi = 1
-    Do
-        bi = InStr(bi, line, "]", 1)
-        If bi = 0 Then Exit Do
-        lastBracket = bi
+    Dim prefixEnd : prefixEnd = 0
+    Do While bi <= Len(line)
+        If Mid(line, bi, 1) = "]" Then
+            bracketCount = bracketCount + 1
+            If bracketCount = 2 Then prefixEnd = bi : Exit Do
+        End If
         bi = bi + 1
     Loop
-    Dim content : content = Trim(Mid(line, lastBracket + 1))
+    Dim content
+    If prefixEnd > 0 Then
+        content = Trim(Mid(line, prefixEnd + 1))
+    Else
+        content = Trim(line)
+    End If
 
     ' Match "Sequence N (RO XXXXXX) - Processing"
     If Left(content, Len(seqPrefix)) = seqPrefix And InStr(content, processingMarker) > 0 Then
