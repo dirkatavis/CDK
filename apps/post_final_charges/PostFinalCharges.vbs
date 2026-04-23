@@ -2461,11 +2461,13 @@ End Function
 
 ' LogResult adapter for the library
 ' BZH_Log calls LogResult(level, message) - routes BZHelper step logs to LogEvent.
+' ERROR uses low verbosity so it always appears regardless of log_verbosity setting.
+' INFO uses med verbosity so it appears when log_verbosity >= med.
 Sub LogResult(level, message)
     If UCase(Trim(level)) = "ERROR" Then
-        Call LogEvent("maj", "med", message, "BZHelper", "", "")
+        Call LogEvent("maj", "low", message, "BZHelper", "", "")
     Else
-        Call LogEvent("comm", "high", message, "BZHelper", "", "")
+        Call LogEvent("comm", "med", message, "BZHelper", "", "")
     End If
 End Sub
 

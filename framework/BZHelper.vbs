@@ -343,7 +343,13 @@ Function BZH_RecoverFromVehidError(employeeNumber, nameConfirmText, menuOption)
     End If
     g_bzhao.Pause 500
 
-    BZH_Log "INFO", "BZHelper.BZH_RecoverFromVehidError: Step 3 - entering employee number '" & employeeNumber & "' (len=" & Len(employeeNumber) & ")."
+    Dim maskedEmpNum
+    If Len(employeeNumber) > 2 Then
+        maskedEmpNum = String(Len(employeeNumber) - 2, "*") & Right(employeeNumber, 2)
+    Else
+        maskedEmpNum = String(Len(employeeNumber), "*")
+    End If
+    BZH_Log "INFO", "BZHelper.BZH_RecoverFromVehidError: Step 3 - entering employee number '" & maskedEmpNum & "' (len=" & Len(employeeNumber) & ")."
     g_bzhao.SendKey employeeNumber
     g_bzhao.Pause 500
     g_bzhao.SendKey "<NumpadEnter>"
