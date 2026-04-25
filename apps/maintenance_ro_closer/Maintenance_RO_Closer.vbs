@@ -650,83 +650,29 @@ Function TestPrompt(regEx, text, pattern)
 End Function
 
 Function CloseRoFinal()
-    Dim mileage, screenContent, startTime, elapsed, pos
-    Dim lastActionTime: lastActionTime = Timer
-    
     ' Phase II: The Closing
     WaitForText "COMMAND:"
-    EnterTextWithStability "FC"
-    
-    ' ALL LABOR POSTED
+    EnterTextWithStability "F"
+
+    ' ALL LABOR POSTED (Y/N)?
     WaitForText "ALL LABOR POSTED"
     EnterTextWithStability "Y"
-    
-    ' MILEAGE / MILES OUT
-    ' Search rows 1-6 for "MILEAGE:" to extract the value robustly
-    mileage = ""
-    g_bzhao.ReadScreen screenContent, 480, 1, 1 ' Read Rows 1-6
-    pos = InStr(1, screenContent, "MILEAGE:", vbTextCompare)
-    If pos > 0 Then
-        mileage = Trim(Mid(screenContent, pos + 8, 10))
-        ' Strip any non-numeric trailing text
-        If InStr(mileage, " ") > 0 Then mileage = Left(mileage, InStr(mileage, " ") - 1)
-        LogResult "INFO", "Extracted mileage from screen: " & mileage
-    End If
-    
-    If mileage = "" Then
-        LogResult "INFO", "WARNING: Could not extract mileage from screen. Using '0' as fallback."
-        mileage = "0"
-    End If
-    
-    ' Define sequence-based state tracking to avoid double-tapping
-    Dim stage: stage = 1 ' 1=MilesOut, 2=MilesIn, 3=OkToClose, 4=Printer
-    
-    startTime = Timer
+
+    ' Verify CDK returned to a known-good state — without this, false positives
+    ' occur when a follow-up prompt appears after the Y response.
+    Dim screenContent, elapsed
+    elapsed = 0
     Do
         g_bzhao.Pause LOOP_PAUSE
+        elapsed = elapsed + (LOOP_PAUSE / 1000)
         g_bzhao.ReadScreen screenContent, 1920, 1, 1
-        screenContent = UCase(screenContent)
-        
-        ' Success fallback: some flows can return directly to command/main without showing all closeout prompts
-        If InStr(screenContent, "COMMAND:") > 0 Or InStr(screenContent, UCase(MAIN_PROMPT)) > 0 Then
-            LogResult "INFO", "Close flow returned to command/main prompt at Stage " & stage & ". Treating as successful close."
-            CloseRoFinal = True
-            Exit Function
-
-        ' Optional prompt: Is this a comeback (Y/N)
-        ElseIf InStr(screenContent, "IS THIS A COMEBACK") > 0 Then
-            LogResult "INFO", "Detected comeback prompt during close flow. Sending Y."
-            EnterTextWithStability "Y"
-            startTime = Timer
-
-        ' Stage 1: MILEAGE OUT
-        ElseIf stage = 1 And (InStr(screenContent, "MILES OUT") > 0 Or InStr(screenContent, "MILEAGE OUT") > 0) Then
-            EnterTextWithStability mileage
-            stage = 2
-            startTime = Timer ' Reset timer for next expected prompt due to 5-10s delay
-        
-        ' Stage 2: MILEAGE IN
-        ElseIf stage = 2 And (InStr(screenContent, "MILES IN") > 0 Or InStr(screenContent, "MILEAGE IN") > 0) Then
-            EnterTextWithStability mileage
-            stage = 3
-            startTime = Timer
-            
-        ' Stage 3: OK TO CLOSE (sometimes mileage prompts are skipped and OK appears immediately)
-        ElseIf stage <= 3 And InStr(screenContent, "O.K. TO CLOSE RO") > 0 Then
-            EnterTextWithStability "Y"
-            stage = 4
-            startTime = Timer
-            
-        ' Stage 4: INVOICE PRINTER
-        ElseIf InStr(screenContent, "INVOICE PRINTER") > 0 Then
-            EnterTextWithStability "2"
+        If InStr(1, screenContent, "COMMAND:", vbTextCompare) > 0 Or _
+           InStr(1, screenContent, MAIN_PROMPT, vbTextCompare) > 0 Then
             CloseRoFinal = True
             Exit Function
         End If
-        
-        elapsed = Timer - startTime
-        If elapsed > 120 Then ' Give closing 2 minutes for slow UI/Printer logic
-            LogResult "ERROR", "Timeout during Phase II Closing sequence at Stage " & stage
+        If elapsed >= 30 Then
+            LogResult "ERROR", "CloseRoFinal: Timeout waiting for post-close state"
             CloseRoFinal = False
             Exit Function
         End If

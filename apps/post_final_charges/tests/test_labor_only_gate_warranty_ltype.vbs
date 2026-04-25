@@ -4,14 +4,14 @@
 ' **AUTHOR:** GitHub Copilot
 '
 ' **FUNCTIONALITY:**
-' Behavioral regression tests for the unsupported-warranty-ltype skip path in
-' EvaluateLaborOnlyGate. Verifies:
-'   1) An L-row with a W* ltype not in g_arrWarrantyLTypes returns False and
-'      sets the expected skip reason.
-'   2) An L-row with a supported W* ltype (e.g. WCH) does not trigger the gate.
-'   3) An L-row with a non-W ltype and no description exception triggers the
-'      normal no-parts-charged skip (not the warranty skip).
-'   4) An empty g_arrWarrantyLTypes causes any W* ltype to be skipped.
+' Behavioral regression tests for EvaluateLaborOnlyGate covering:
+'   1) Unsupported W* ltype skipped regardless of parts
+'   2) Supported W* ltype (WCH) passes warranty check; no-parts + no exception skips
+'   3) Non-W ltype, no parts, no exception -> no-parts skip
+'   4) Empty g_arrWarrantyLTypes -> any W* ltype skipped
+'   5) L-row with P-row following -> passes unconditionally (parts attached)
+'   6) L-row without P-row, description matches exception -> passes
+'   7) L-row without P-row, no exception -> skips
 '-----------------------------------------------------------------------------------
 
 Option Explicit
@@ -62,7 +62,7 @@ Class FakeBzhao
     End Sub
 
     Public Sub SendKey(ByVal keyText)
-        ' no-op — single page, no navigation expected
+        ' no-op
     End Sub
 
     Public Sub Pause(ByVal ms)
@@ -77,34 +77,62 @@ Function SetColText(ByVal rowText, ByVal colNum, ByVal textValue)
     SetColText = Left(Left(base, colNum - 1) & textValue & Mid(base, colNum + Len(textValue)) & String(80, " "), 80)
 End Function
 
-Function BuildPage(ByVal ltypeCode, ByVal lRowDesc)
-    ' Builds a 24-row x 80-col page buffer.
-    ' Row 9:  line header row (A)
-    ' Row 10: L-row with ltype at col 50, description at col 7
-    ' Row 22: end-of-display marker
-    Dim pageBuf, headerRow, lRow, endRow
-    pageBuf = String(24 * 80, " ")
-
-    headerRow = String(80, " ")
-    headerRow = SetColText(headerRow, 1, "A ")
-
-    lRow = String(80, " ")
-    lRow = SetColText(lRow, 4, "L1")
-    lRow = SetColText(lRow, 7, Left(lRowDesc & String(35, " "), 35))
-    lRow = SetColText(lRow, 50, ltypeCode)
-
-    endRow = String(80, " ")
-    endRow = SetColText(endRow, 1, "(END OF DISPLAY)")
-
+Function SetRow(ByVal pageBuf, ByVal rowNum, ByVal rowText)
     Dim pos
-    pos = (9 - 1) * 80 + 1
-    pageBuf = Left(pageBuf, pos - 1) & headerRow & Mid(pageBuf, pos + 80)
-    pos = (10 - 1) * 80 + 1
-    pageBuf = Left(pageBuf, pos - 1) & lRow & Mid(pageBuf, pos + 80)
-    pos = (22 - 1) * 80 + 1
-    pageBuf = Left(pageBuf, pos - 1) & endRow & Mid(pageBuf, pos + 80)
+    pos = (rowNum - 1) * 80 + 1
+    SetRow = Left(pageBuf, pos - 1) & Left(rowText & String(80, " "), 80) & Mid(pageBuf, pos + 80)
+End Function
 
-    BuildPage = pageBuf
+Function BuildLRow(ByVal ltypeCode, ByVal lRowDesc)
+    Dim rowText
+    rowText = String(80, " ")
+    rowText = SetColText(rowText, 4, "L1")
+    rowText = SetColText(rowText, 7, Left(lRowDesc & String(35, " "), 35))
+    rowText = SetColText(rowText, 50, ltypeCode)
+    BuildLRow = rowText
+End Function
+
+Function BuildPRow()
+    Dim rowText
+    rowText = String(80, " ")
+    rowText = SetColText(rowText, 6, "P1")
+    rowText = SetColText(rowText, 9, "PARTNUM")
+    BuildPRow = rowText
+End Function
+
+Function BuildHeaderRow()
+    Dim rowText
+    rowText = String(80, " ")
+    rowText = SetColText(rowText, 1, "A ")
+    BuildHeaderRow = rowText
+End Function
+
+Function BuildEndRow()
+    Dim rowText
+    rowText = String(80, " ")
+    rowText = SetColText(rowText, 1, "(END OF DISPLAY)")
+    BuildEndRow = rowText
+End Function
+
+' Build a single-page screen with an L-row and no P-row following it.
+Function BuildPageNoP(ByVal ltypeCode, ByVal lRowDesc)
+    Dim pageBuf
+    pageBuf = String(24 * 80, " ")
+    pageBuf = SetRow(pageBuf, 9, BuildHeaderRow())
+    pageBuf = SetRow(pageBuf, 10, BuildLRow(ltypeCode, lRowDesc))
+    pageBuf = SetRow(pageBuf, 22, BuildEndRow())
+    BuildPageNoP = pageBuf
+End Function
+
+' Build a single-page screen with an L-row followed immediately by a P-row.
+Function BuildPageWithP(ByVal ltypeCode, ByVal lRowDesc)
+    Dim pageBuf
+    pageBuf = String(24 * 80, " ")
+    pageBuf = SetRow(pageBuf, 9, BuildHeaderRow())
+    pageBuf = SetRow(pageBuf, 10, BuildLRow(ltypeCode, lRowDesc))
+    pageBuf = SetRow(pageBuf, 11, BuildPRow())
+    pageBuf = SetRow(pageBuf, 22, BuildEndRow())
+    BuildPageWithP = pageBuf
 End Function
 
 ' ---- EvaluateLaborOnlyGate (copy-pasted from PostFinalCharges.vbs) ----
@@ -117,6 +145,7 @@ Function EvaluateLaborOnlyGate(ByRef skipReason)
     Dim currentLineHeaderDesc, lRowDesc, hasLRows
     Dim lineHeaderPasses, lRowPasses
     Dim lTypeCode, unsupportedWarranty, warrantyIndex
+    Dim pendingLRowDesc, pendingLRowHeaderDesc
 
     EvaluateLaborOnlyGate = True
     skipReason = ""
@@ -126,14 +155,42 @@ Function EvaluateLaborOnlyGate(ByRef skipReason)
     maxPageAdvances = 50
     currentLineHeaderDesc = ""
     hasLRows = False
+    pendingLRowDesc = ""
+    pendingLRowHeaderDesc = ""
 
     Do While Not doneScanning
-        For row = 9 To 22
+        For row = 9 To 23
             buf = ""
             On Error Resume Next
             g_bzhao.ReadScreen buf, 80, row, 1
             If Err.Number <> 0 Then Err.Clear
             On Error GoTo 0
+
+            If Len(pendingLRowDesc) > 0 Then
+                If Len(buf) >= 7 And Mid(buf, 6, 1) = "P" And IsNumeric(Mid(buf, 7, 1)) Then
+                    Call LogEvent("comm", "med", "Labor-only gate L-row has parts — passes", "EvaluateLaborOnlyGate", _
+                        "lRowDesc=[" & pendingLRowDesc & "]", "")
+                    pendingLRowDesc = ""
+                    pendingLRowHeaderDesc = ""
+                Else
+                    lineHeaderPasses = IsCdkLaborOnlyExceptionDesc(pendingLRowHeaderDesc)
+                    lRowPasses = IsCdkLaborOnlyExceptionDesc(pendingLRowDesc)
+
+                    Call LogEvent("comm", "med", "Labor-only gate L-row (no parts) scanned", "EvaluateLaborOnlyGate", _
+                        "lineHeader=[" & pendingLRowHeaderDesc & "] lRowDesc=[" & pendingLRowDesc & "] headerPass=" & lineHeaderPasses & " lRowPass=" & lRowPasses, "")
+
+                    If Not lineHeaderPasses And Not lRowPasses Then
+                        skipReason = "Skipped - No parts charged: lrow=[" & pendingLRowDesc & "] header=[" & pendingLRowHeaderDesc & "]"
+                        Call LogEvent("comm", "low", "Labor-only gate SKIP — L-row has no parts and no exception keyword", "EvaluateLaborOnlyGate", _
+                            "lineHeader=[" & pendingLRowHeaderDesc & "] lRowDesc=[" & pendingLRowDesc & "]", "")
+                        EvaluateLaborOnlyGate = False
+                        doneScanning = True
+                        Exit For
+                    End If
+                    pendingLRowDesc = ""
+                    pendingLRowHeaderDesc = ""
+                End If
+            End If
 
             If Len(buf) >= 5 Then
                 If Mid(buf, 1, 1) >= "A" And Mid(buf, 1, 1) <= "Z" And Mid(buf, 2, 1) = " " And Mid(buf, 4, 1) <> "L" Then
@@ -156,7 +213,7 @@ Function EvaluateLaborOnlyGate(ByRef skipReason)
                             Next
                         End If
                         If unsupportedWarranty Then
-                            skipReason = "Skipped - Unsupported warranty ltype: [" & lTypeCode & "] lrow=[" & lRowDesc & "]"
+                            skipReason = "Skipped - Unsupported warranty ltype: [" & lTypeCode & "]"
                             Call LogEvent("comm", "low", "Labor-only gate SKIP — unsupported warranty ltype", "EvaluateLaborOnlyGate", _
                                 "ltype=[" & lTypeCode & "] not in WarrantyLTypes", "")
                             EvaluateLaborOnlyGate = False
@@ -165,20 +222,8 @@ Function EvaluateLaborOnlyGate(ByRef skipReason)
                         End If
                     End If
 
-                    lineHeaderPasses = IsCdkLaborOnlyExceptionDesc(currentLineHeaderDesc)
-                    lRowPasses = IsCdkLaborOnlyExceptionDesc(lRowDesc)
-
-                    Call LogEvent("comm", "med", "Labor-only gate L-row scanned", "EvaluateLaborOnlyGate", _
-                        "lineHeader=[" & currentLineHeaderDesc & "] lRowDesc=[" & lRowDesc & "] headerPass=" & lineHeaderPasses & " lRowPass=" & lRowPasses, "")
-
-                    If Not lineHeaderPasses And Not lRowPasses Then
-                        skipReason = "Skipped - No parts charged: lrow=[" & lRowDesc & "] header=[" & currentLineHeaderDesc & "]"
-                        Call LogEvent("comm", "low", "Labor-only gate SKIP — L-row does not contain a listed keyword", "EvaluateLaborOnlyGate", _
-                            "lineHeader=[" & currentLineHeaderDesc & "] lRowDesc=[" & lRowDesc & "]", "")
-                        EvaluateLaborOnlyGate = False
-                        doneScanning = True
-                        Exit For
-                    End If
+                    pendingLRowDesc = lRowDesc
+                    pendingLRowHeaderDesc = currentLineHeaderDesc
                 End If
             End If
         Next
@@ -271,46 +316,43 @@ End Sub
 ' ============================
 ' Tests
 ' ============================
-WScript.Echo "Labor-Only Gate — Unsupported Warranty Ltype Tests"
-WScript.Echo "==================================================="
+WScript.Echo "Labor-Only Gate — Behavioral Tests"
+WScript.Echo "==================================="
 
-g_arrCDKDescriptionExceptions = Array("check and adjust")
+g_arrCDKDescriptionExceptions = Array("check and adjust", "oil and filter")
+g_arrWarrantyLTypes = Array("WCH", "W")
 
-' --- Test 1: WF ltype (W* but not in list) -> skipped ---
+' --- Test 1: WF ltype (unsupported W*) -> skipped ---
 Dim mock1
 Set mock1 = New FakeBzhao
-mock1.SetPage BuildPage("WF", "SOME REPAIR")
+mock1.SetPage BuildPageNoP("WF", "SOME REPAIR")
 Set g_bzhao = mock1
-g_arrWarrantyLTypes = Array("WCH", "WV")
 Dim result1, reason1
 result1 = EvaluateLaborOnlyGate(reason1)
 AssertFalse "WF ltype (unsupported) causes gate to return False", result1
 AssertContains "WF skip reason contains unsupported warranty ltype prefix", reason1, "Skipped - Unsupported warranty ltype: [WF]"
-AssertContains "WF skip reason includes lrow description", reason1, "lrow=[SOME REPAIR]"
+AssertFalse "WF skip reason does not include lrow detail (kept in log only)", _
+    (InStr(1, reason1, "lrow=", vbTextCompare) > 0)
 
-' --- Test 2: WCH ltype (supported) -> gate does not skip on warranty grounds ---
-' WCH has no description exception either, so it falls through to the no-parts-charged check.
-' With no description exception it will skip as "no parts charged", not "unsupported warranty".
+' --- Test 2: WCH ltype (supported), no parts, no exception -> no-parts skip ---
 Dim mock2
 Set mock2 = New FakeBzhao
-mock2.SetPage BuildPage("WCH", "SOME REPAIR")
+mock2.SetPage BuildPageNoP("WCH", "SOME REPAIR")
 Set g_bzhao = mock2
-g_arrWarrantyLTypes = Array("WCH", "WV")
 Dim result2, reason2
 result2 = EvaluateLaborOnlyGate(reason2)
 AssertFalse "WCH ltype (supported) does not trigger unsupported-warranty skip", _
     (InStr(1, reason2, "Unsupported warranty ltype", vbTextCompare) > 0)
-AssertContains "WCH ltype skips as no-parts-charged (not warranty gate)", reason2, "Skipped - No parts charged"
+AssertContains "WCH ltype with no parts and no exception skips as no-parts-charged", reason2, "Skipped - No parts charged"
 
-' --- Test 3: Non-W ltype with no description exception -> normal no-parts skip ---
+' --- Test 3: Non-W ltype, no parts, no exception -> no-parts skip ---
 Dim mock3
 Set mock3 = New FakeBzhao
-mock3.SetPage BuildPage("CP", "OIL CHANGE")
+mock3.SetPage BuildPageNoP("CP", "OIL CHANGE")
 Set g_bzhao = mock3
-g_arrWarrantyLTypes = Array("WCH", "WV")
 Dim result3, reason3
 result3 = EvaluateLaborOnlyGate(reason3)
-AssertFalse "Non-W ltype with no exception triggers no-parts skip", result3
+AssertFalse "Non-W ltype with no parts and no exception skips", result3
 AssertContains "Non-W ltype skip reason is no-parts-charged", reason3, "Skipped - No parts charged"
 AssertFalse "Non-W ltype skip reason does not mention unsupported warranty", _
     (InStr(1, reason3, "Unsupported warranty ltype", vbTextCompare) > 0)
@@ -318,17 +360,48 @@ AssertFalse "Non-W ltype skip reason does not mention unsupported warranty", _
 ' --- Test 4: Empty g_arrWarrantyLTypes -> any W* ltype skipped ---
 Dim mock4
 Set mock4 = New FakeBzhao
-mock4.SetPage BuildPage("WV", "RECALL REPAIR")
+mock4.SetPage BuildPageNoP("W", "RECALL REPAIR")
 Set g_bzhao = mock4
 g_arrWarrantyLTypes = Array()
 Dim result4, reason4
 result4 = EvaluateLaborOnlyGate(reason4)
 AssertFalse "Empty WarrantyLTypes causes any W* ltype to be skipped", result4
-AssertContains "Empty-list skip reason contains unsupported warranty prefix", reason4, "Skipped - Unsupported warranty ltype: [WV]"
+AssertContains "Empty-list skip reason contains unsupported warranty prefix", reason4, "Skipped - Unsupported warranty ltype: [W]"
+AssertFalse "Empty-list skip reason does not include lrow detail", _
+    (InStr(1, reason4, "lrow=", vbTextCompare) > 0)
+g_arrWarrantyLTypes = Array("WCH", "W")
+
+' --- Test 5: L-row WITH P-row following -> passes unconditionally ---
+Dim mock5
+Set mock5 = New FakeBzhao
+mock5.SetPage BuildPageWithP("CP", "REPLACE OIL AND FILTER")
+Set g_bzhao = mock5
+Dim result5, reason5
+result5 = EvaluateLaborOnlyGate(reason5)
+AssertTrue "L-row with P-row following passes unconditionally", result5
+
+' --- Test 6: L-row without P-row, description matches exception -> passes ---
+Dim mock6
+Set mock6 = New FakeBzhao
+mock6.SetPage BuildPageNoP("CP", "REPLACE OIL AND FILTER")
+Set g_bzhao = mock6
+Dim result6, reason6
+result6 = EvaluateLaborOnlyGate(reason6)
+AssertTrue "L-row without P-row but exception keyword in description passes", result6
+
+' --- Test 7: L-row without P-row, no exception -> skips ---
+Dim mock7
+Set mock7 = New FakeBzhao
+mock7.SetPage BuildPageNoP("CP", "REPLACE BRAKE PADS")
+Set g_bzhao = mock7
+Dim result7, reason7
+result7 = EvaluateLaborOnlyGate(reason7)
+AssertFalse "L-row without P-row and no exception keyword skips", result7
+AssertContains "Skip reason is no-parts-charged with description", reason7, "Skipped - No parts charged"
 
 WScript.Echo ""
 If g_Fail = 0 Then
-    WScript.Echo "SUCCESS: All " & g_Pass & " labor-only gate warranty ltype tests passed."
+    WScript.Echo "SUCCESS: All " & g_Pass & " labor-only gate tests passed."
     WScript.Quit 0
 Else
     WScript.Echo "FAILED: " & g_Fail & " test(s) failed."

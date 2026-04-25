@@ -62,20 +62,22 @@ Dim g_SkipRoLookup
 Dim g_SkipConfiguredCount
 Dim g_arrWarrantyLTypes
 Dim g_WarrantyCauseText
+Dim g_FordWarrantyCauseText
+Dim g_FordWarrantyLicenseState
 Dim g_WarrantyDialogStepDelayMs
 Dim g_WarrantyDialogSignatureTexts()
 Dim g_WarrantyDialogSignatureTypes()
-Dim g_SkipPartsOrderNeededCount
-Dim g_PartsOrderKeywords
-Dim g_PartsOrderNegators
 Dim g_AllowedTechCodes
 Dim g_arrCDKDescriptionExceptions
+Dim g_SkipLaborOnlyGate
 Dim g_SkipTechCodeCount
 Dim g_ClosedRoCount
 Dim g_NotOnFileRoCount
 Dim g_SkipVehidNotOnFileCount
 Dim g_SkipNoCloseoutTextCount
 Dim g_SkipNoPartsChargedCount
+Dim g_SkipUnsupportedWarrantyCount
+Dim g_SkipVtdLaborCount
 Dim g_LeftOpenManualCount
 
 Dim g_ErrorInMainCount
@@ -992,15 +994,21 @@ End Function
 '
 ' **FUNCTIONALITY:**
 ' Early disqualification gate. Runs on the RO detail screen before any closeout
-' work begins. Every L-row on the RO is assumed to require parts unless either:
-'   - The parent line header description (A/B/C... row) contains a listed keyword, OR
-'   - The L-row operation description contains a listed keyword
-' Keywords are loaded from CDKLaborOnlyDescriptionExceptions in config.ini.
-' If any L-row fails both checks the RO is skipped immediately.
+' work begins. Every L-row is assumed to require parts. An L-row passes only if:
+'   - A P-row immediately follows it (parts already attached), OR
+'   - The L-row or its parent line header description contains a keyword from
+'     CDKLaborOnlyDescriptionExceptions in config.ini
+' Any L-row with no P-row and no exception keyword causes the RO to be skipped.
+'
+' Unsupported warranty ltypes (W* codes not in WarrantyLTypes) are also caught
+' here and skip the RO regardless of parts presence.
 '
 ' **SCREEN LAYOUT:**
 ' Line header rows: col 1 = letter (A-Z), col 2 = space, description at col 4-41
-' L-rows: col 4 = "L", col 5 = digit, description at col 7-41
+' L-rows: col 4 = "L", col 5 = digit, description at col 7-41, ltype at col 50-55
+' P-rows: col 6 = "P", col 7 = digit
+'
+' Row 23 is read to flush the last pending L-row on each page.
 '
 ' **PAGINATION:**
 ' Uses N + <NumpadEnter> to advance pages, B + <NumpadEnter> to return to page 1.
@@ -1009,7 +1017,8 @@ End Function
 ' skipReason (ByRef) - Human-readable skip reason when the gate fails.
 '
 ' **RETURNS:**
-' True when all L-rows contain a listed keyword; False if any L-row does not.
+' True when all L-rows either have parts attached or match an exception keyword.
+' False if any L-row has no parts and no exception keyword.
 '-----------------------------------------------------------------------------------
 Function EvaluateLaborOnlyGate(ByRef skipReason)
     Dim row, buf
@@ -1020,6 +1029,7 @@ Function EvaluateLaborOnlyGate(ByRef skipReason)
     Dim currentLineHeaderDesc, lRowDesc, hasLRows
     Dim lineHeaderPasses, lRowPasses
     Dim lTypeCode, unsupportedWarranty, warrantyIndex
+    Dim pendingLRowDesc, pendingLRowHeaderDesc
 
     EvaluateLaborOnlyGate = True
     skipReason = ""
@@ -1029,14 +1039,48 @@ Function EvaluateLaborOnlyGate(ByRef skipReason)
     maxPageAdvances = 50
     currentLineHeaderDesc = ""
     hasLRows = False
+    pendingLRowDesc = ""
+    pendingLRowHeaderDesc = ""
 
     Do While Not doneScanning
-        For row = 9 To 22
+        For row = 9 To 23
             buf = ""
             On Error Resume Next
             g_bzhao.ReadScreen buf, 80, row, 1
             If Err.Number <> 0 Then Err.Clear
             On Error GoTo 0
+
+            ' --- Flush pending L-row ---
+            ' If the previous row was an L-row, check whether this row is a P-row.
+            ' P-row means parts are attached — the L-row passes unconditionally.
+            ' Any other row means no parts — evaluate against the exception list.
+            If Len(pendingLRowDesc) > 0 Then
+                If Len(buf) >= 7 And Mid(buf, 6, 1) = "P" And IsNumeric(Mid(buf, 7, 1)) Then
+                    ' Parts attached — clear pending without checking exceptions
+                    Call LogEvent("comm", "med", "Labor-only gate L-row has parts — passes", "EvaluateLaborOnlyGate", _
+                        "lRowDesc=[" & pendingLRowDesc & "]", "")
+                    pendingLRowDesc = ""
+                    pendingLRowHeaderDesc = ""
+                Else
+                    ' No parts — check exception list
+                    lineHeaderPasses = IsCdkLaborOnlyExceptionDesc(pendingLRowHeaderDesc)
+                    lRowPasses = IsCdkLaborOnlyExceptionDesc(pendingLRowDesc)
+
+                    Call LogEvent("comm", "med", "Labor-only gate L-row (no parts) scanned", "EvaluateLaborOnlyGate", _
+                        "lineHeader=[" & pendingLRowHeaderDesc & "] lRowDesc=[" & pendingLRowDesc & "] headerPass=" & lineHeaderPasses & " lRowPass=" & lRowPasses, "")
+
+                    If Not lineHeaderPasses And Not lRowPasses Then
+                        skipReason = "Skipped - No parts charged: lrow=[" & pendingLRowDesc & "] header=[" & pendingLRowHeaderDesc & "]"
+                        Call LogEvent("comm", "low", "Labor-only gate SKIP — L-row has no parts and no exception keyword", "EvaluateLaborOnlyGate", _
+                            "lineHeader=[" & pendingLRowHeaderDesc & "] lRowDesc=[" & pendingLRowDesc & "]", "")
+                        EvaluateLaborOnlyGate = False
+                        doneScanning = True
+                        Exit For
+                    End If
+                    pendingLRowDesc = ""
+                    pendingLRowHeaderDesc = ""
+                End If
+            End If
 
             If Len(buf) >= 5 Then
                 ' Detect line header row (A, B, C...): col 1 is A-Z, col 2 is space, col 4 is not "L"
@@ -1050,7 +1094,7 @@ Function EvaluateLaborOnlyGate(ByRef skipReason)
                     lRowDesc = Trim(Mid(buf, 7, 35))
                     lTypeCode = UCase(Trim(Mid(buf, 50, 6)))
 
-                    ' Skip RO if ltype starts with W but is not in the supported warranty list
+                    ' Unsupported warranty ltype check — fires regardless of parts presence
                     If Left(lTypeCode, 1) = "W" Then
                         unsupportedWarranty = True
                         If IsArray(g_arrWarrantyLTypes) Then
@@ -1062,7 +1106,7 @@ Function EvaluateLaborOnlyGate(ByRef skipReason)
                             Next
                         End If
                         If unsupportedWarranty Then
-                            skipReason = "Skipped - Unsupported warranty ltype: [" & lTypeCode & "] lrow=[" & lRowDesc & "]"
+                            skipReason = "Skipped - Unsupported warranty ltype: [" & lTypeCode & "]"
                             Call LogEvent("comm", "low", "Labor-only gate SKIP — unsupported warranty ltype", "EvaluateLaborOnlyGate", _
                                 "ltype=[" & lTypeCode & "] not in WarrantyLTypes", "")
                             EvaluateLaborOnlyGate = False
@@ -1071,20 +1115,9 @@ Function EvaluateLaborOnlyGate(ByRef skipReason)
                         End If
                     End If
 
-                    lineHeaderPasses = IsCdkLaborOnlyExceptionDesc(currentLineHeaderDesc)
-                    lRowPasses = IsCdkLaborOnlyExceptionDesc(lRowDesc)
-
-                    Call LogEvent("comm", "med", "Labor-only gate L-row scanned", "EvaluateLaborOnlyGate", _
-                        "lineHeader=[" & currentLineHeaderDesc & "] lRowDesc=[" & lRowDesc & "] headerPass=" & lineHeaderPasses & " lRowPass=" & lRowPasses, "")
-
-                    If Not lineHeaderPasses And Not lRowPasses Then
-                        skipReason = "Skipped - No parts charged: lrow=[" & lRowDesc & "] header=[" & currentLineHeaderDesc & "]"
-                        Call LogEvent("comm", "low", "Labor-only gate SKIP — L-row does not contain a listed keyword", "EvaluateLaborOnlyGate", _
-                            "lineHeader=[" & currentLineHeaderDesc & "] lRowDesc=[" & lRowDesc & "]", "")
-                        EvaluateLaborOnlyGate = False
-                        doneScanning = True
-                        Exit For
-                    End If
+                    ' Set pending — evaluated on the next row to check for P-row
+                    pendingLRowDesc = lRowDesc
+                    pendingLRowHeaderDesc = currentLineHeaderDesc
                 End If
             End If
         Next
@@ -1162,6 +1195,187 @@ Function EvaluateLaborOnlyGate(ByRef skipReason)
         Else
             Call LogEvent("comm", "low", "Labor-only gate PASS — no L-rows found on RO", "EvaluateLaborOnlyGate", "", "")
         End If
+    End If
+End Function
+
+'-----------------------------------------------------------------------------------
+' **FUNCTION NAME:** ContainsWholeWordVtd
+' **DATE CREATED:** 2026-04-20
+' **AUTHOR:** GitHub Copilot
+'
+' **FUNCTIONALITY:**
+' Returns True if the given text contains the word "VTD" as a whole word
+' (not embedded inside another word). Case-insensitive. Word boundaries are
+' any non-alphanumeric character or the start/end of the string.
+'-----------------------------------------------------------------------------------
+Function ContainsWholeWordVtd(text)
+    ContainsWholeWordVtd = False
+    Dim upper, pos, textLen, charBefore, charAfter, isBefore, isAfter
+    upper = UCase(text)
+    textLen = Len(upper)
+    pos = 1
+    Do
+        pos = InStr(pos, upper, "VTD")
+        If pos = 0 Then Exit Do
+        If pos = 1 Then
+            isBefore = True
+        Else
+            charBefore = Mid(upper, pos - 1, 1)
+            isBefore = Not ((charBefore >= "A" And charBefore <= "Z") Or _
+                            (charBefore >= "0" And charBefore <= "9"))
+        End If
+        If pos + 2 >= textLen Then
+            isAfter = True
+        Else
+            charAfter = Mid(upper, pos + 3, 1)
+            isAfter = Not ((charAfter >= "A" And charAfter <= "Z") Or _
+                           (charAfter >= "0" And charAfter <= "9"))
+        End If
+        If isBefore And isAfter Then
+            ContainsWholeWordVtd = True
+            Exit Function
+        End If
+        pos = pos + 1
+    Loop
+End Function
+
+'-----------------------------------------------------------------------------------
+' **FUNCTION NAME:** EvaluateVtdLaborGate
+' **DATE CREATED:** 2026-04-20
+' **AUTHOR:** GitHub Copilot
+'
+' **FUNCTIONALITY:**
+' Early disqualification gate. Skips the RO if any L-row has ltype I and its
+' description (or its parent line header description) contains the whole word VTD.
+' VTD lines with ltype I indicate vendor-to-dealer work that cannot be closed
+' through the standard flow.
+'
+' Uses the same pagination pattern as EvaluateLaborOnlyGate.
+'
+' **PARAMETERS:**
+' skipReason (ByRef) - Human-readable skip reason when the gate fails.
+'
+' **RETURNS:**
+' True when no VTD I-labor lines are found. False if a VTD I-labor line is found.
+'-----------------------------------------------------------------------------------
+Function EvaluateVtdLaborGate(ByRef skipReason)
+    EvaluateVtdLaborGate = True
+    skipReason = ""
+
+    Dim row, buf
+    Dim doneScanning, pagesAdvanced, p
+    Dim preSig, postSig, preSig2, postSig2, preMarker, postMarker
+    Dim maxPageAdvances
+    Dim currentLineHeaderDesc, lRowDesc, lTypeCode
+
+    doneScanning = False
+    pagesAdvanced = 0
+    maxPageAdvances = 50
+    currentLineHeaderDesc = ""
+
+    Do While Not doneScanning
+        For row = 9 To 23
+            buf = ""
+            On Error Resume Next
+            g_bzhao.ReadScreen buf, 80, row, 1
+            If Err.Number <> 0 Then Err.Clear
+            On Error GoTo 0
+
+            If Len(buf) >= 5 Then
+                ' Detect line header row (A-Z, col 2 = space, col 4 not "L")
+                If Mid(buf, 1, 1) >= "A" And Mid(buf, 1, 1) <= "Z" And Mid(buf, 2, 1) = " " And Mid(buf, 4, 1) <> "L" Then
+                    currentLineHeaderDesc = Trim(Mid(buf, 4, 38))
+                End If
+
+                ' Detect L-row: col 4 = "L", col 5 = digit
+                If Mid(buf, 4, 1) = "L" And IsNumeric(Mid(buf, 5, 1)) Then
+                    lTypeCode = UCase(Trim(Mid(buf, 50, 6)))
+                    lRowDesc = Trim(Mid(buf, 7, 35))
+
+                    If lTypeCode = "I" Then
+                        If ContainsWholeWordVtd(lRowDesc) Or ContainsWholeWordVtd(currentLineHeaderDesc) Then
+                            skipReason = "Skipped - VTD labor line: ltype=[" & lTypeCode & "] lRowDesc=[" & lRowDesc & "] header=[" & currentLineHeaderDesc & "]"
+                            Call LogEvent("comm", "low", "VTD labor gate SKIP — ltype I with VTD in description", "EvaluateVtdLaborGate", _
+                                "ltype=[" & lTypeCode & "] lRowDesc=[" & lRowDesc & "] header=[" & currentLineHeaderDesc & "]", "")
+                            EvaluateVtdLaborGate = False
+                            doneScanning = True
+                            Exit For
+                        End If
+                    End If
+                End If
+            End If
+        Next
+
+        If Not doneScanning Then
+            Dim pageIndicatorVtd
+            pageIndicatorVtd = ""
+            On Error Resume Next
+            g_bzhao.ReadScreen pageIndicatorVtd, 80, 22, 1
+            If Err.Number <> 0 Then Err.Clear
+            On Error GoTo 0
+
+            If InStr(1, pageIndicatorVtd, "(END OF DISPLAY)", vbTextCompare) > 0 Then
+                doneScanning = True
+            ElseIf InStr(1, pageIndicatorVtd, "(MORE ON NEXT SCREEN)", vbTextCompare) > 0 Then
+                preMarker = pageIndicatorVtd
+                preSig = ""
+                preSig2 = ""
+
+                On Error Resume Next
+                g_bzhao.ReadScreen preSig, 80, 9, 1
+                If Err.Number <> 0 Then Err.Clear
+                g_bzhao.ReadScreen preSig2, 80, 10, 1
+                If Err.Number <> 0 Then Err.Clear
+                On Error GoTo 0
+
+                On Error Resume Next
+                g_bzhao.SendKey "N"
+                g_bzhao.SendKey "<NumpadEnter>"
+                If Err.Number <> 0 Then Err.Clear
+                On Error GoTo 0
+                g_bzhao.Pause 500
+
+                postMarker = ""
+                postSig = ""
+                postSig2 = ""
+
+                On Error Resume Next
+                g_bzhao.ReadScreen postMarker, 80, 22, 1
+                If Err.Number <> 0 Then Err.Clear
+                g_bzhao.ReadScreen postSig, 80, 9, 1
+                If Err.Number <> 0 Then Err.Clear
+                g_bzhao.ReadScreen postSig2, 80, 10, 1
+                If Err.Number <> 0 Then Err.Clear
+                On Error GoTo 0
+
+                If postMarker = preMarker And postSig = preSig And postSig2 = preSig2 Then
+                    doneScanning = True
+                Else
+                    pagesAdvanced = pagesAdvanced + 1
+                    If pagesAdvanced >= maxPageAdvances Then
+                        doneScanning = True
+                    End If
+                End If
+            Else
+                doneScanning = True
+            End If
+        End If
+    Loop
+
+    ' Return to page 1 so downstream flow remains on a known screen state.
+    If pagesAdvanced > 0 Then
+        For p = 1 To pagesAdvanced
+            On Error Resume Next
+            g_bzhao.SendKey "B"
+            g_bzhao.SendKey "<NumpadEnter>"
+            If Err.Number <> 0 Then Err.Clear
+            On Error GoTo 0
+            g_bzhao.Pause 500
+        Next
+    End If
+
+    If EvaluateVtdLaborGate Then
+        Call LogEvent("comm", "low", "VTD labor gate PASS", "EvaluateVtdLaborGate", "", "")
     End If
 End Function
 
@@ -1312,14 +1526,14 @@ End Function
 ' **FUNCTIONALITY:**
 ' Scans rows 9-22 for L-operations belonging to the given line letter and checks
 ' whether any carry a warranty LABOR TYPE from g_arrWarrantyLTypes (col 50-55,
-' 1-indexed). The array is loaded from config key WarrantyLTypes (default WCH,WV).
+' 1-indexed). The array is loaded from config key WarrantyLTypes (default WCH,WF,W).
 '
 ' Screen layout (from RO DETAIL header row):
 '   LC DESCRIPTION                           TECH... LTYPE    ACT   SOLD    SALE AMT
 ' Line letter headers have the letter at col 1. L-operation rows have:
 '   - col 1 = " " (space-indented)
 '   - col 4 = "L", col 5 = digit (e.g., L1, L2)
-'   - col 50-55 = LTYPE value (e.g., "WCH", "WV", "WF", "I", "B")
+'   - col 50-55 = LTYPE value (e.g., "WCH", "WF", "W", "I", "B")
 '
 ' **PARAMETERS:**
 ' lineLetterChar - Single uppercase letter identifying the line (e.g., "A")
@@ -1360,105 +1574,6 @@ Function IsWarrantyLine(lineLetterChar)
 End Function
 
 
-'-----------------------------------------------------------------------------------
-' **FUNCTION NAME:** DescMatchesPartsKeyword
-' **DATE CREATED:** 2026-04-14
-' **AUTHOR:** GitHub Copilot
-'
-' **FUNCTIONALITY:**
-' Returns True if descText contains any of g_PartsOrderKeywords (case-insensitive
-' substring match) AND does NOT contain any of g_PartsOrderNegators.
-' Both arrays are pre-lowercased by InitializeConfig.
-'
-' **PARAMETERS:**
-' descText - Raw labor-line description text (trimmed, any case)
-'
-' **RETURNS:** True if a keyword fires and no negator is present.
-'-----------------------------------------------------------------------------------
-Function DescMatchesPartsKeyword(descText)
-    DescMatchesPartsKeyword = False
-    If Not IsArray(g_PartsOrderKeywords) Or Not IsArray(g_PartsOrderNegators) Then Exit Function
-    Dim i, lowerDesc
-    lowerDesc = LCase(descText)
-    For i = 0 To UBound(g_PartsOrderNegators)
-        If Len(g_PartsOrderNegators(i)) > 0 Then
-            If InStr(1, lowerDesc, g_PartsOrderNegators(i), vbTextCompare) > 0 Then Exit Function
-        End If
-    Next
-    For i = 0 To UBound(g_PartsOrderKeywords)
-        If Len(g_PartsOrderKeywords(i)) > 0 Then
-            If InStr(1, lowerDesc, g_PartsOrderKeywords(i), vbTextCompare) > 0 Then
-                DescMatchesPartsKeyword = True
-                Exit Function
-            End If
-        End If
-    Next
-End Function
-
-'-----------------------------------------------------------------------------------
-' **FUNCTION NAME:** GetPartsNeededLaborDesc
-' **DATE CREATED:** 2026-04-14
-' **AUTHOR:** GitHub Copilot
-'
-' **FUNCTIONALITY:**
-' Scans rows 9-23 of the current RO detail screen and returns the description of
-' the first L-line that has NO P-line immediately following it and whose
-' description matches a parts-order keyword (via DescMatchesPartsKeyword).
-'
-' Column layout (1-indexed, matches HasPartsCharged / IsWchLine conventions):
-'   L-operation rows : col 4 = "L", col 5 = digit
-'   P-operation rows : col 6 = "P", col 7 = digit
-'   Description field: cols 7-41 -> Mid(buf, 7, 35), then Trimmed
-'
-' Row 23 (COMMAND:) is read solely to flush the last pending L-row; it cannot
-' be mistaken for a P-row (col 6 = "A" from "COMMAND").
-'
-' **RETURNS:** First matching description string, or "" if none found.
-'-----------------------------------------------------------------------------------
-Function GetPartsNeededLaborDesc()
-    GetPartsNeededLaborDesc = ""
-    If Not IsArray(g_PartsOrderKeywords) Then Exit Function
-    If UBound(g_PartsOrderKeywords) < 0 Then Exit Function
-
-    Dim row, buf, pendingDesc, pendingRow
-    pendingDesc = ""
-    pendingRow = -1
-
-    For row = 9 To 23
-        buf = ""
-        On Error Resume Next
-        g_bzhao.ReadScreen buf, 80, row, 1
-        If Err.Number <> 0 Then Err.Clear
-        On Error GoTo 0
-
-        If pendingRow > 0 Then
-            ' Check whether this row is a P-line (parts attached to the pending L-row)
-            If Len(buf) >= 7 And Mid(buf, 6, 1) = "P" And IsNumeric(Mid(buf, 7, 1)) Then
-                ' P-line found: pending L-row has parts, clear without evaluating
-                pendingDesc = ""
-                pendingRow = -1
-            Else
-                ' No P-line: evaluate the pending L-row now
-                If DescMatchesPartsKeyword(pendingDesc) Then
-                    GetPartsNeededLaborDesc = pendingDesc
-                    Exit Function
-                End If
-                pendingDesc = ""
-                pendingRow = -1
-                ' Current row may itself be a new L-row
-                If Len(buf) >= 5 And Mid(buf, 4, 1) = "L" And IsNumeric(Mid(buf, 5, 1)) Then
-                    pendingDesc = Trim(Mid(buf, 7, 35))
-                    pendingRow = row
-                End If
-            End If
-        Else
-            If Len(buf) >= 5 And Mid(buf, 4, 1) = "L" And IsNumeric(Mid(buf, 5, 1)) Then
-                pendingDesc = Trim(Mid(buf, 7, 35))
-                pendingRow = row
-            End If
-        End If
-    Next
-End Function
 
 '-----------------------------------------------------------------------------------
 ' **FUNCTION NAME:** GetFirstNonCompliantLineTech
@@ -1520,18 +1635,56 @@ Function GetFirstNonCompliantLineTech()
 End Function
 
 '-----------------------------------------------------------------------------------
+' **FUNCTION NAME:** GetLineTechCode
+' **DATE CREATED:** 2026-04-20
+' **AUTHOR:** GitHub Copilot
+'
+' **FUNCTIONALITY:**
+' Reads the RO detail screen (rows 9-22) and returns the tech code for the given
+' line letter. Returns "" if the line header row is not visible on screen or has
+' no tech code assigned. Tech code is at columns 42-49 of the line header row.
+'
+' Called from ProcessLinesSequentially to route per-line FNL/R behavior:
+'   C93 = already finished and reviewed — skip both FNL and R
+'   C92 = already finished, needs review — skip FNL, run R only
+'   ""  = no tech code or line not visible — run normal FNL then R
+'-----------------------------------------------------------------------------------
+Function GetLineTechCode(lineLetterChar)
+    ' NOTE: Scans only the currently visible page (rows 9-22). On ROs with enough lines
+    ' to paginate, line headers on later pages will not be found and this function
+    ' returns "", routing those lines through the standard FNL+R path. C92/C93 routing
+    ' is therefore limited to lines visible on page 1. A future improvement should
+    ' implement pagination (N/B pattern) similar to EvaluateLaborOnlyGate.
+    GetLineTechCode = ""
+    Dim row, buf
+    For row = 9 To 22
+        buf = ""
+        On Error Resume Next
+        g_bzhao.ReadScreen buf, 80, row, 1
+        If Err.Number <> 0 Then Err.Clear
+        On Error GoTo 0
+        If Len(buf) >= 49 Then
+            If Mid(buf, 1, 1) = lineLetterChar And Mid(buf, 2, 1) = " " Then
+                GetLineTechCode = UCase(Trim(Mid(buf, 42, 8)))
+                Exit Function
+            End If
+        End If
+    Next
+End Function
+
+'-----------------------------------------------------------------------------------
 ' WARRANTY DIALOG ARCHITECTURE
 '
 ' Warranty lines trigger manufacturer-specific dialog overlays after the R-command
 ' review prompts complete. The flow is:
 '
 '   1. DetectWarrantyDialog() — scans the full screen for any configured signature
-'      string and returns a dialog type key (e.g. "FCA", "WV") or "" if none found.
+'      string and returns a dialog type key (e.g. "FCA", "W") or "" if none found.
 '
 '   2. HandleWarrantyClaimsDialog() — dispatcher: calls DetectWarrantyDialog, then
 '      routes to the appropriate handler sub based on the returned type key.
 '
-'   3. Handler subs (HandleFcaClaimsDialog, HandleVwWarrantyDialog, etc.) — each
+'   3. Handler subs (HandleFcaClaimsDialog, HandleWWarrantyDialog, etc.) — each
 '      owns the complete step sequence for its manufacturer's dialog. Unknown
 '      manufacturers show a MsgBox so the operator can handle it manually.
 '
@@ -1602,8 +1755,10 @@ Sub HandleWarrantyClaimsDialog(maxPolls)
         Call LogWarn("Warranty claims dialog: no dialog detected within timeout", "HandleWarrantyClaimsDialog")
     ElseIf dialogType = "FCA" Then
         Call HandleFcaClaimsDialog()
-    ElseIf dialogType = "WV" Then
-        Call HandleVwWarrantyDialog()
+    ElseIf dialogType = "W" Then
+        Call HandleWWarrantyDialog()
+    ElseIf dialogType = "FORD" Then
+        Call HandleFordWarrantyDialog()
     Else
         Call LogWarn("Warranty claims dialog: unhandled dialog type [" & dialogType & "] - no handler implemented", "HandleWarrantyClaimsDialog")
         Call LogInfo("Warranty claims dialog: screen snapshot: " & GetScreenSnapshot(24), "HandleWarrantyClaimsDialog")
@@ -1724,23 +1879,23 @@ Sub HandleFcaClaimsDialog()
 End Sub
 
 '-----------------------------------------------------------------------------------
-' **PROCEDURE NAME:** HandleVwWarrantyDialog
-' **DATE CREATED:** 2026-04-17
+' **PROCEDURE NAME:** HandleWWarrantyDialog
+' **DATE CREATED:** 2026-04-22
 ' **AUTHOR:** GitHub Copilot
 '
 ' **FUNCTIONALITY:**
-' Navigates the VW/Volvo "MODIFY WARRANTY INFORMATION FOR LINE X" dialog.
+' Navigates the W-type "MODIFY WARRANTY INFORMATION FOR LINE X" dialog.
 '
 ' The dialog presents 7 fields (FAILURE CODE, FAILED PART NO, FAILED PARTS COUNT,
 ' CLAIM TYPE, AUTHORIZATION CODE, CONCERN CODE, CAUSE). Each is accepted with a
 ' blank Enter. After the last field, CDK presents a "WARRANTY COMMAND:" prompt at
 ' the bottom of the screen; sending E exits the dialog.
 '
-' Rather than counting fields, the handler polls for "WARRANTY COMMAND:" after each
-' Enter so it handles any future variation in field count without code changes.
+' The handler polls for "WARRANTY COMMAND:" after each Enter rather than stepping
+' through a fixed field sequence. Up to 15 attempts are made before giving up.
 '-----------------------------------------------------------------------------------
-Sub HandleVwWarrantyDialog()
-    Call LogInfo("VW warranty dialog: navigating fields with blank Enter until WARRANTY COMMAND: prompt", "HandleVwWarrantyDialog")
+Sub HandleWWarrantyDialog()
+    Call LogInfo("W warranty dialog: navigating fields with blank Enter until WARRANTY COMMAND: prompt", "HandleWWarrantyDialog")
 
     Dim buf, row, fi, commandFound
     commandFound = False
@@ -1758,24 +1913,149 @@ Sub HandleVwWarrantyDialog()
             End If
         Next
         If commandFound Then Exit For
-        Call LogInfo("VW warranty dialog: sending blank Enter for field " & fi, "HandleVwWarrantyDialog")
+        Call LogInfo("W warranty dialog: sending blank Enter for field " & fi, "HandleWWarrantyDialog")
         Call WaitMs(g_WarrantyDialogStepDelayMs)
         Call FastKey("<NumpadEnter>")
         Call WaitMs(g_WarrantyDialogStepDelayMs \ 2)
     Next
 
     If commandFound Then
-        Call LogInfo("VW warranty dialog: WARRANTY COMMAND: prompt detected - sending E to exit", "HandleVwWarrantyDialog")
+        Call LogInfo("W warranty dialog: WARRANTY COMMAND: prompt detected - sending E to exit", "HandleWWarrantyDialog")
         Call WaitMs(g_WarrantyDialogStepDelayMs)
         Call FastText("E")
         Call WaitMs(g_WarrantyDialogStepDelayMs \ 2)
         Call FastKey("<NumpadEnter>")
         Call WaitMs(g_WarrantyDialogStepDelayMs \ 2)
     Else
-        Call LogWarn("VW warranty dialog: WARRANTY COMMAND: prompt not found within field limit", "HandleVwWarrantyDialog")
+        Call LogWarn("W warranty dialog: WARRANTY COMMAND: prompt not found within field limit", "HandleWWarrantyDialog")
     End If
 
-    Call LogInfo("VW warranty dialog: complete", "HandleVwWarrantyDialog")
+    Call LogInfo("W warranty dialog: complete", "HandleWWarrantyDialog")
+End Sub
+
+'-----------------------------------------------------------------------------------
+' **PROCEDURE NAME:** HandleFordWarrantyDialog
+' **DATE CREATED:** 2026-04-20
+' **AUTHOR:** GitHub Copilot
+'
+' **FUNCTIONALITY:**
+' Navigates the Ford "MODIFY FORD REPAIR TYPE INFORMATION" dialog (WF lines).
+'
+' Field sequence:
+'   1. P & A CODE:             — Enter (accept auto-populated value)
+'   2. FORD / L-M MAKE (Y/N)?: — Enter (accept auto-populated Y)
+'   3. FRANCHISE MODEL (Y/N)?: — Enter (accept auto-populated Y)
+'   4. VEHICLE LICENSE STATE:  — "GA" + Enter
+'      TODO: license state is per-vehicle; hardcoded GA until dynamic
+'            lookup is implemented.
+'   5. REPAIR TYPE:            — "1" + Enter (Warranty/ESP)
+'   6. COMMAND: (in dialog)    — "." + Enter (skip remaining fields)
+'
+' After the dialog closes, CDK issues one or more CAUSE L<n>: prompts at the
+' terminal; each receives FordWarrantyCauseText (config default: "Defective Part").
+'-----------------------------------------------------------------------------------
+Sub HandleFordWarrantyDialog()
+    Call LogInfo("Ford warranty dialog: navigating field sequence", "HandleFordWarrantyDialog")
+
+    ' Step 1: P & A CODE — accept auto-populated value
+    Call LogInfo("Ford warranty dialog: P & A CODE — sending Enter", "HandleFordWarrantyDialog")
+    Call WaitForPrompt("P & A CODE:", "", True, 5000, "")
+    Call WaitMs(g_WarrantyDialogStepDelayMs)
+
+    ' Step 2: FORD / L-M MAKE (Y/N)? — accept auto-populated Y
+    Call LogInfo("Ford warranty dialog: FORD / L-M MAKE — sending Enter", "HandleFordWarrantyDialog")
+    Call WaitForPrompt("FORD / L-M MAKE", "", True, 5000, "")
+    Call WaitMs(g_WarrantyDialogStepDelayMs)
+
+    ' Step 3: FRANCHISE MODEL (Y/N)? — accept auto-populated Y
+    Call LogInfo("Ford warranty dialog: FRANCHISE MODEL — sending Enter", "HandleFordWarrantyDialog")
+    Call WaitForPrompt("FRANCHISE MODEL", "", True, 5000, "")
+    Call WaitMs(g_WarrantyDialogStepDelayMs)
+
+    ' Step 4: VEHICLE LICENSE STATE — type GA if field is blank; advance with Enter only if already filled.
+    ' TODO: license state is per-vehicle; hardcoded GA until dynamic lookup is implemented.
+    ' On a static form the label stays on screen after the cursor has advanced past the field.
+    ' If a prior warranty transaction on the same session left GA in the field, the form may
+    ' auto-advance the cursor to REPAIR TYPE:. Sending "GA" in that state puts the characters
+    ' in the wrong field. We detect the field content after WaitForPrompt returns and decide.
+    Call WaitForPrompt("VEHICLE LICENSE STATE:", "", False, 5000, "")
+    Dim vlsRow, vlsBuf, vlsLabelPos, vlsFieldText
+    vlsLabelPos = 0
+    vlsFieldText = ""
+    For vlsRow = 1 To 24
+        vlsBuf = ""
+        On Error Resume Next
+        g_bzhao.ReadScreen vlsBuf, 80, vlsRow, 1
+        If Err.Number <> 0 Then Err.Clear
+        On Error GoTo 0
+        vlsLabelPos = InStr(1, vlsBuf, "VEHICLE LICENSE STATE:", vbTextCompare)
+        If vlsLabelPos > 0 Then
+            ' Read up to 5 chars immediately after the label colon to get field value
+            vlsFieldText = Trim(Mid(vlsBuf, vlsLabelPos + 22, 5))
+            Exit For
+        End If
+    Next
+    Call LogInfo("Ford warranty dialog: VEHICLE LICENSE STATE field=[" & vlsFieldText & "]", "HandleFordWarrantyDialog")
+    If Len(vlsFieldText) = 0 Then
+        ' Field is blank — cursor is at VLS, type state code one character at a time
+        Call LogInfo("Ford warranty dialog: VEHICLE LICENSE STATE — blank, typing [" & g_FordWarrantyLicenseState & "] + Enter", "HandleFordWarrantyDialog")
+        Dim vlsCharIdx
+        For vlsCharIdx = 1 To Len(g_FordWarrantyLicenseState)
+            Call FastText(Mid(g_FordWarrantyLicenseState, vlsCharIdx, 1))
+            Call WaitMs(100)
+        Next
+    Else
+        ' Field already has a value — cursor may have advanced; just send Enter to move on
+        Call LogInfo("Ford warranty dialog: VEHICLE LICENSE STATE — has [" & vlsFieldText & "], sending Enter only", "HandleFordWarrantyDialog")
+    End If
+    Call FastKey("<NumpadEnter>")
+    Call WaitMs(g_WarrantyDialogStepDelayMs)
+
+    ' Step 5: REPAIR TYPE — send 1 (Warranty/ESP) + Enter
+    Call LogInfo("Ford warranty dialog: REPAIR TYPE — sending 1 (Warranty/ESP)", "HandleFordWarrantyDialog")
+    Call WaitForPrompt("REPAIR TYPE:", "1", True, 5000, "")
+    Call WaitMs(g_WarrantyDialogStepDelayMs)
+
+    ' Step 6: COMMAND: (inside dialog) — send . + Enter to skip remaining fields
+    Call LogInfo("Ford warranty dialog: COMMAND — sending . to exit dialog", "HandleFordWarrantyDialog")
+    Call WaitForPrompt("COMMAND:", ".", True, 5000, "")
+    Call WaitMs(g_WarrantyDialogStepDelayMs)
+
+    ' After dialog closes, CDK issues CAUSE L<n>: prompts at the terminal.
+    ' Cap at 10 prompts; each polled up to ~3s (6 x 500ms) before giving up.
+    Dim causeRow, causeBuf, causeFound, ci, causePoll
+    For ci = 1 To 10
+        causeFound = False
+        For causePoll = 1 To 6
+            For causeRow = 20 To 24
+                causeBuf = ""
+                On Error Resume Next
+                g_bzhao.ReadScreen causeBuf, 80, causeRow, 1
+                If Err.Number <> 0 Then Err.Clear
+                On Error GoTo 0
+                If InStr(1, causeBuf, "CAUSE L", vbTextCompare) > 0 Then
+                    causeFound = True
+                    Exit For
+                End If
+            Next
+            If causeFound Then Exit For
+            Call WaitMs(500)
+        Next
+        If Not causeFound Then
+            Call LogWarn("Ford warranty dialog: CAUSE L not detected after " & (6 * 500) & "ms — screen snapshot: " & GetScreenSnapshot(24), "HandleFordWarrantyDialog")
+            Exit For
+        End If
+        Call LogInfo("Ford warranty dialog: CAUSE L prompt detected on row " & causeRow & " [" & Trim(causeBuf) & "]", "HandleFordWarrantyDialog")
+        Call WaitMs(g_WarrantyDialogStepDelayMs)
+        Call LogInfo("Ford warranty dialog: sending cause text [" & g_FordWarrantyCauseText & "]", "HandleFordWarrantyDialog")
+        Call FastText(g_FordWarrantyCauseText)
+        Call WaitMs(g_WarrantyDialogStepDelayMs \ 2)
+        Call LogInfo("Ford warranty dialog: sending Enter to confirm cause text", "HandleFordWarrantyDialog")
+        Call FastKey("<NumpadEnter>")
+        Call WaitMs(g_WarrantyDialogStepDelayMs \ 2)
+    Next
+
+    Call LogInfo("Ford warranty dialog: complete", "HandleFordWarrantyDialog")
 End Sub
 
 '-----------------------------------------------------------------------------------
@@ -2180,9 +2460,19 @@ End Function
     g_ShouldAbort = False
 
 ' LogResult adapter for the library
-Sub LogResult(logMsg)
-    ' This adapter is for messages coming from the legacy CommonLib.
-    ' Parse ERROR prefix and route to appropriate criticality level.
+' BZH_Log calls LogResult(level, message) - routes BZHelper step logs to LogEvent.
+' ERROR uses low verbosity so it always appears regardless of log_verbosity setting.
+' INFO uses med verbosity so it appears when log_verbosity >= med.
+Sub LogResult(level, message)
+    If UCase(Trim(level)) = "ERROR" Then
+        Call LogEvent("maj", "low", message, "BZHelper", "", "")
+    Else
+        Call LogEvent("comm", "med", message, "BZHelper", "", "")
+    End If
+End Sub
+
+' Legacy single-arg adapter for CommonLib messages.
+Sub LogResultLegacy(logMsg)
     If Left(UCase(Trim(logMsg)), 6) = "ERROR:" Then
         Call LogEvent("maj", "med", "ADAPTER: " & logMsg, "CommonLib", "", "")
     Else
@@ -2206,62 +2496,15 @@ Sub RunMainProcess()
     End If
     If ConnectBlueZone() Then
         ProcessRONumbers()
+        Dim sessionSummary
+        sessionSummary = BuildSessionSummary()
+        Call LogEvent("comm", "low", "=========================", "RunMainProcess", "", "")
+        Call LogEvent("comm", "low", "Session Summary", "RunMainProcess", "", "")
+        Call LogEvent("comm", "low", "=========================", "RunMainProcess", "", "")
+        Call LogEvent("comm", "low", sessionSummary, "RunMainProcess", "", "")
+        Call LogEvent("comm", "low", "=========================", "RunMainProcess", "", "")
         If Not g_IsTestMode Then
-            Dim summaryMsg
-            Dim accountedTotal
-            Dim otherOutcomeDetails
-
-            accountedTotal = g_FiledROCount + _
-                g_SkipConfiguredCount + _
-                g_SkipTechCodeCount + _
-                g_SkipBlacklistCount + _
-                g_SkipStatusOpenCount + _
-                g_SkipStatusPreassignedCount + _
-                g_SkipStatusOtherCount + _
-                g_ClosedRoCount + _
-                g_NotOnFileRoCount + _
-                g_SkipVehidNotOnFileCount + _
-                g_SkipNoCloseoutTextCount + _
-                g_SkipNoPartsChargedCount + _
-                g_LeftOpenManualCount + _
-                g_ErrorInMainCount + _
-                g_NoResultRecordedCount + _
-                g_SummaryOtherOutcomeCount
-
-            summaryMsg = "DONE" & vbCrLf & _
-                "ROs Reviewed: " & g_ReviewedROCount & vbCrLf & _
-                "ROs Posted: " & g_FiledROCount & vbCrLf & _
-                "Skips - Specific ROs: " & g_SkipConfiguredCount & vbCrLf & _
-                "Skips - Non-compliant tech code: " & g_SkipTechCodeCount & vbCrLf & _
-                "Skips - Other Terms: " & g_SkipBlacklistCount & vbCrLf & _
-                "Skips - Open: " & g_SkipStatusOpenCount & vbCrLf & _
-                "Skips - Pre-Assigned: " & g_SkipStatusPreassignedCount & vbCrLf & _
-                "Skips - Other Statuses: " & g_SkipStatusOtherCount & vbCrLf & _
-                "Closed (already): " & g_ClosedRoCount & vbCrLf & _
-                "Not On File: " & g_NotOnFileRoCount & vbCrLf & _
-                "Skipped - VEHID not on file: " & g_SkipVehidNotOnFileCount & vbCrLf & _
-                "Skipped - No closeout text: " & g_SkipNoCloseoutTextCount & vbCrLf & _
-                "Skipped - No parts charged: " & g_SkipNoPartsChargedCount & vbCrLf & _
-                "Left Open for manual closing: " & g_LeftOpenManualCount & vbCrLf & _
-                "Errors in Main: " & g_ErrorInMainCount & vbCrLf & _
-                "No result recorded: " & g_NoResultRecordedCount & vbCrLf & _
-                "Other Outcomes: " & g_SummaryOtherOutcomeCount & vbCrLf & _
-                "Accounted Total: " & accountedTotal & vbCrLf & _
-                "Older ROs Attempted (subset): " & g_OlderRoAttemptCount
-
-            If g_SummaryOtherOutcomeCount > 0 Then
-                otherOutcomeDetails = BuildOtherOutcomeBreakdown(8)
-                If Len(Trim(CStr(otherOutcomeDetails))) > 0 Then
-                    summaryMsg = summaryMsg & vbCrLf & "Other Outcome Breakdown:" & vbCrLf & otherOutcomeDetails
-                End If
-
-                otherOutcomeDetails = BuildOtherOutcomeRawBreakdown(12)
-                If Len(Trim(CStr(otherOutcomeDetails))) > 0 Then
-                    summaryMsg = summaryMsg & vbCrLf & "Other Outcome Raw Results:" & vbCrLf & otherOutcomeDetails
-                End If
-            End If
-
-            Call SafeMsg(summaryMsg, False, "PostFinalCharges")
+            Call SafeMsg(sessionSummary, False, "PostFinalCharges")
         End If
     Else
         SafeMsg "Unable to connect to BlueZone. Check that itG��s open and logged in.", True, "Connection Error"
@@ -2471,6 +2714,10 @@ Function GetIniSetting(section, key, defaultValue)
 
     Do While Not file.AtEndOfStream
         line = Trim(file.ReadLine)
+        ' Line continuation: a line ending with \ is joined to the next line
+        Do While Right(line, 1) = "\" And Not file.AtEndOfStream
+            line = Left(line, Len(line) - 1) & Trim(file.ReadLine)
+        Loop
         If Left(line, 1) = "[" And Right(line, 1) = "]" Then
             ' It's a section header
             Dim currentSection
@@ -2691,7 +2938,7 @@ Sub InitializeConfig()
     g_EmployeeNameConfirm = GetIniSetting("PostFinalCharges", "EmployeeNameConfirm", "")
 
     Dim warrantyLTypesRaw, wli
-    warrantyLTypesRaw = GetIniSetting("PostFinalCharges", "WarrantyLTypes", "WCH,WV")
+    warrantyLTypesRaw = GetIniSetting("PostFinalCharges", "WarrantyLTypes", "WCH,WF,W")
     Dim warrantyLTypesArr : warrantyLTypesArr = Split(warrantyLTypesRaw, ",")
     Dim warrantyLTypesFiltered() : ReDim warrantyLTypesFiltered(0)
     Dim warrantyLTypeCount : warrantyLTypeCount = 0
@@ -2711,6 +2958,8 @@ Sub InitializeConfig()
     Call LogEvent("comm", "high", "Warranty review configured", "InitializeConfig", "LTypes: " & warrantyLTypesRaw, "")
 
     g_WarrantyCauseText = GetIniSetting("PostFinalCharges", "WarrantyCauseText", "Device failure")
+    g_FordWarrantyCauseText = GetIniSetting("PostFinalCharges", "FordWarrantyCauseText", "Defective Part")
+    g_FordWarrantyLicenseState = GetIniSetting("PostFinalCharges", "FordWarrantyLicenseState", "GA")
 
     Dim warrantyDialogStepDelayValue
     warrantyDialogStepDelayValue = GetIniSetting("PostFinalCharges", "WarrantyDialogStepDelayMs", "2000")
@@ -2724,7 +2973,7 @@ Sub InitializeConfig()
     Call LogEvent("comm", "high", "Warranty dialog step delay configured", "InitializeConfig", "WarrantyDialogStepDelayMs: " & g_WarrantyDialogStepDelayMs, "")
 
     Dim warrantyDialogSignaturesRaw, warrantyDialogSigArr, wdsi, wdsPair, wdsPairArr
-    warrantyDialogSignaturesRaw = GetIniSetting("PostFinalCharges", "WarrantyDialogSignatures", "LABOR OP:|FCA,CLAIM TYPE:|FCA,FAILURE CODE:|WV,MODIFY WARRANTY INFORMATION|WV")
+    warrantyDialogSignaturesRaw = GetIniSetting("PostFinalCharges", "WarrantyDialogSignatures", "LABOR OP:|FCA,CLAIM TYPE:|FCA,FAILURE CODE:|W,MODIFY WARRANTY INFORMATION|W")
     warrantyDialogSigArr = Split(warrantyDialogSignaturesRaw, ",")
     Dim warrantyDialogSigCount : warrantyDialogSigCount = 0
     ReDim g_WarrantyDialogSignatureTexts(UBound(warrantyDialogSigArr))
@@ -2747,19 +2996,6 @@ Sub InitializeConfig()
     End If
     Call LogEvent("comm", "high", "Warranty dialog signatures configured", "InitializeConfig", "Count: " & warrantyDialogSigCount & " | Raw: " & warrantyDialogSignaturesRaw, "")
 
-    Dim partsOrderKeywordsRaw, partsOrderNegatorsRaw, ki
-    partsOrderKeywordsRaw = GetIniSetting("PostFinalCharges", "PartsOrderKeywords", "")
-    partsOrderNegatorsRaw = GetIniSetting("PostFinalCharges", "PartsOrderNegators", "")
-    g_PartsOrderKeywords = Split(partsOrderKeywordsRaw, ",")
-    g_PartsOrderNegators = Split(partsOrderNegatorsRaw, ",")
-    For ki = 0 To UBound(g_PartsOrderKeywords)
-        g_PartsOrderKeywords(ki) = LCase(Trim(g_PartsOrderKeywords(ki)))
-    Next
-    For ki = 0 To UBound(g_PartsOrderNegators)
-        g_PartsOrderNegators(ki) = LCase(Trim(g_PartsOrderNegators(ki)))
-    Next
-    Call LogEvent("comm", "high", "Parts-order keyword scan configured", "InitializeConfig", "Keywords: " & partsOrderKeywordsRaw & " | Negators: " & partsOrderNegatorsRaw, "")
-
     Dim allowedTechCodesRaw, ti
     allowedTechCodesRaw = GetIniSetting("PostFinalCharges", "AllowedTechCodes", "C92,C93")
     g_AllowedTechCodes = Split(allowedTechCodesRaw, ",")
@@ -2775,6 +3011,9 @@ Sub InitializeConfig()
         g_arrCDKDescriptionExceptions(di) = LCase(Trim(g_arrCDKDescriptionExceptions(di)))
     Next
     Call LogEvent("comm", "high", "CDK labor-only description exceptions configured", "InitializeConfig", "CDKLaborOnlyDescriptionExceptions: " & cdkLaborDescExceptionRaw, "")
+
+    g_SkipLaborOnlyGate = (LCase(Trim(GetIniSetting("PostFinalCharges", "SkipLaborOnlyGate", "false"))) = "true")
+    Call LogEvent("comm", "high", "Labor-only gate configured", "InitializeConfig", "SkipLaborOnlyGate: " & g_SkipLaborOnlyGate, "")
 End Sub
 
 Sub ArchivePreviousDayLog()
@@ -3008,13 +3247,14 @@ Sub ProcessRONumbers()
     g_SkipStatusPreassignedCount = 0
     g_SkipStatusOtherCount = 0
     g_SkipConfiguredCount = 0
-    g_SkipPartsOrderNeededCount = 0
     g_SkipTechCodeCount = 0
     g_ClosedRoCount = 0
     g_NotOnFileRoCount = 0
     g_SkipVehidNotOnFileCount = 0
     g_SkipNoCloseoutTextCount = 0
     g_SkipNoPartsChargedCount = 0
+    g_SkipUnsupportedWarrantyCount = 0
+    g_SkipVtdLaborCount = 0
     g_LeftOpenManualCount = 0
     g_ErrorInMainCount = 0
     g_NoResultRecordedCount = 0
@@ -3121,6 +3361,90 @@ Sub ProcessRONumbers()
     Next
 End Sub
 
+'-----------------------------------------------------------------------------------
+' **FUNCTION NAME:** BuildSessionSummary
+' **DATE CREATED:** 2026-04-20
+' **AUTHOR:** GitHub Copilot
+'
+' **FUNCTIONALITY:**
+' Assembles and returns the end-of-session summary string from the global counters.
+' Decoupled from any display mechanism so it can be passed to MsgBox, written to
+' the log, or inspected in tests.
+'-----------------------------------------------------------------------------------
+Function BuildSessionSummary()
+    Dim accountedTotal, summaryText, otherOutcomeDetails
+    Dim miscTotal, miscDetail
+
+    ' Infrequent counters collapsed into a single Misc line.
+    ' Individual lines shown below Misc only when their value is non-zero.
+    miscTotal = g_SkipConfiguredCount + _
+        g_SkipBlacklistCount + _
+        g_SkipVtdLaborCount + _
+        g_ClosedRoCount + _
+        g_NotOnFileRoCount + _
+        g_SkipVehidNotOnFileCount + _
+        g_SkipNoCloseoutTextCount + _
+        g_LeftOpenManualCount + _
+        g_ErrorInMainCount + _
+        g_NoResultRecordedCount + _
+        g_SummaryOtherOutcomeCount + _
+        g_OlderRoAttemptCount
+
+    accountedTotal = g_FiledROCount + _
+        g_SkipTechCodeCount + _
+        g_SkipStatusOpenCount + _
+        g_SkipStatusPreassignedCount + _
+        g_SkipStatusOtherCount + _
+        g_SkipNoPartsChargedCount + _
+        g_SkipUnsupportedWarrantyCount + _
+        miscTotal
+
+    summaryText = "DONE" & vbCrLf & _
+        "ROs Reviewed: " & g_ReviewedROCount & vbCrLf & _
+        "ROs Posted: " & g_FiledROCount & vbCrLf & _
+        "Skips - Non-compliant tech code: " & g_SkipTechCodeCount & vbCrLf & _
+        "Skips - Open: " & g_SkipStatusOpenCount & vbCrLf & _
+        "Skips - Pre-Assigned: " & g_SkipStatusPreassignedCount & vbCrLf & _
+        "Skips - Other Statuses: " & g_SkipStatusOtherCount & vbCrLf & _
+        "Skipped - No parts charged: " & g_SkipNoPartsChargedCount & vbCrLf & _
+        "Skipped - Unsupported warranty ltype: " & g_SkipUnsupportedWarrantyCount & vbCrLf & _
+        "Misc: " & miscTotal & vbCrLf & _
+        "Accounted Total: " & accountedTotal
+
+    ' Expand Misc breakdown — only non-zero lines shown
+    miscDetail = ""
+    If g_SkipConfiguredCount > 0 Then miscDetail = miscDetail & "  Skips - Specific ROs: " & g_SkipConfiguredCount & vbCrLf
+    If g_SkipBlacklistCount > 0 Then miscDetail = miscDetail & "  Skips - Other Terms: " & g_SkipBlacklistCount & vbCrLf
+    If g_SkipVtdLaborCount > 0 Then miscDetail = miscDetail & "  Skipped - VTD labor line: " & g_SkipVtdLaborCount & vbCrLf
+    If g_ClosedRoCount > 0 Then miscDetail = miscDetail & "  Closed (already): " & g_ClosedRoCount & vbCrLf
+    If g_NotOnFileRoCount > 0 Then miscDetail = miscDetail & "  Not On File: " & g_NotOnFileRoCount & vbCrLf
+    If g_SkipVehidNotOnFileCount > 0 Then miscDetail = miscDetail & "  Skipped - VEHID not on file: " & g_SkipVehidNotOnFileCount & vbCrLf
+    If g_SkipNoCloseoutTextCount > 0 Then miscDetail = miscDetail & "  Skipped - No closeout text: " & g_SkipNoCloseoutTextCount & vbCrLf
+    If g_LeftOpenManualCount > 0 Then miscDetail = miscDetail & "  Left Open for manual closing: " & g_LeftOpenManualCount & vbCrLf
+    If g_ErrorInMainCount > 0 Then miscDetail = miscDetail & "  Errors in Main: " & g_ErrorInMainCount & vbCrLf
+    If g_NoResultRecordedCount > 0 Then miscDetail = miscDetail & "  No result recorded: " & g_NoResultRecordedCount & vbCrLf
+    If g_SummaryOtherOutcomeCount > 0 Then miscDetail = miscDetail & "  Other Outcomes: " & g_SummaryOtherOutcomeCount & vbCrLf
+    If g_OlderRoAttemptCount > 0 Then miscDetail = miscDetail & "  Older ROs Attempted (subset): " & g_OlderRoAttemptCount & vbCrLf
+
+    If Len(miscDetail) > 0 Then
+        summaryText = summaryText & vbCrLf & Left(miscDetail, Len(miscDetail) - Len(vbCrLf))
+    End If
+
+    If g_SummaryOtherOutcomeCount > 0 Then
+        otherOutcomeDetails = BuildOtherOutcomeBreakdown(8)
+        If Len(Trim(CStr(otherOutcomeDetails))) > 0 Then
+            summaryText = summaryText & vbCrLf & "Other Outcome Breakdown:" & vbCrLf & otherOutcomeDetails
+        End If
+
+        otherOutcomeDetails = BuildOtherOutcomeRawBreakdown(12)
+        If Len(Trim(CStr(otherOutcomeDetails))) > 0 Then
+            summaryText = summaryText & vbCrLf & "Other Outcome Raw Results:" & vbCrLf & otherOutcomeDetails
+        End If
+    End If
+
+    BuildSessionSummary = summaryText
+End Function
+
 Sub TrackPrimaryOutcomeCounters(resultText)
     Dim normalized
     normalized = UCase(Trim(CStr(resultText)))
@@ -3145,6 +3469,10 @@ Sub TrackPrimaryOutcomeCounters(resultText)
     End If
     If InStr(1, normalized, "SKIPPED - NO PARTS CHARGED", vbTextCompare) = 1 Then
         g_SkipNoPartsChargedCount = g_SkipNoPartsChargedCount + 1
+        Exit Sub
+    End If
+    If InStr(1, normalized, "SKIPPED - UNSUPPORTED WARRANTY LTYPE", vbTextCompare) = 1 Then
+        g_SkipUnsupportedWarrantyCount = g_SkipUnsupportedWarrantyCount + 1
         Exit Sub
     End If
     If InStr(1, normalized, "LEFT OPEN FOR MANUAL CLOSING", vbTextCompare) = 1 Then
@@ -3244,6 +3572,10 @@ Function GetOtherOutcomeBucket(resultText)
     End If
     If InStr(1, normalized, "SKIPPED - NO PARTS CHARGED", vbTextCompare) = 1 Then
         GetOtherOutcomeBucket = "Skipped - No parts charged"
+        Exit Function
+    End If
+    If InStr(1, normalized, "SKIPPED - UNSUPPORTED WARRANTY LTYPE", vbTextCompare) = 1 Then
+        GetOtherOutcomeBucket = "Skipped - Unsupported warranty ltype"
         Exit Function
     End If
     If InStr(1, normalized, "LEFT OPEN FOR MANUAL CLOSING", vbTextCompare) = 1 Then
@@ -3392,6 +3724,14 @@ Function IsResultRepresentedInSummary(resultText)
         IsResultRepresentedInSummary = True
         Exit Function
     End If
+    If InStr(1, normalized, "SKIPPED - UNSUPPORTED WARRANTY LTYPE", vbTextCompare) = 1 Then
+        IsResultRepresentedInSummary = True
+        Exit Function
+    End If
+    If InStr(1, normalized, "SKIPPED - VTD LABOR LINE", vbTextCompare) = 1 Then
+        IsResultRepresentedInSummary = True
+        Exit Function
+    End If
     If InStr(1, normalized, "LEFT OPEN FOR MANUAL CLOSING", vbTextCompare) = 1 Then
         IsResultRepresentedInSummary = True
         Exit Function
@@ -3504,6 +3844,12 @@ Sub Main(roNumber)
             Exit Sub
         End If
 
+        ' Short-circuit the poll loop if the VEHID error screen is already visible.
+        ' Waiting out the full 15s timeout is unnecessary — no RO number will ever appear.
+        If IsTextPresent("for this RO is not on file") Then
+            Exit Do
+        End If
+
         roCandidate = GetROFromScreen()
         roCandidateNorm = NormalizeRoIdentifier(roCandidate)
         If Len(roCandidateNorm) > 0 And roCandidateNorm <> g_PreviousNormalizedRo Then
@@ -3544,25 +3890,21 @@ Sub Main(roNumber)
         Exit Sub
     End If
     
-    ' Check for "NOT ON FILE" response
-    If IsTextPresent("NOT ON FILE") Then
-        Call LogEvent("comm", "med", "Not On File", "Main", "", "")
-        lastRoResult = "Not On File"
+    ' Check for VEHID error screen BEFORE the generic "NOT ON FILE" check,
+    ' because the VEHID screen contains "not on file" as part of its body text
+    ' and would otherwise false-positive on the check below.
+    ' Recovery: Enter to dismiss -> PFC -> employee number -> name confirm -> option 2.
+    If IsTextPresent("for this RO is not on file") Then
+        Call LogEvent("comm", "med", "VEHID not on file (Press Return screen) - attempting recovery", "Main", "RO: " & currentRODisplay, "")
+        If Not BZH_RecoverFromVehidError(g_EmployeeNumber, g_EmployeeNameConfirm, "2") Then
+            Call LogEvent("crit", "low", "VEHID recovery failed - terminal state unknown", "Main", "", "Stopping script - fail fast requested")
+            g_ShouldAbort = True
+        End If
+        lastRoResult = "Skipped - VEHID not on file"
         Exit Sub
     End If
 
-    ' App rule: line 23 may show process lock when another user has this RO open.
-    ' Send Enter once to return to COMMAND: and skip this RO for now.
-    mainPromptText = GetScreenLine(MainPromptLine)
-    If InStr(1, mainPromptText, "Process is locked by", vbTextCompare) > 0 Then
-        Call LogEvent("comm", "med", "RO locked by another user - returning to command", "Main", "RO: " & currentRODisplay, "Line " & MainPromptLine & ": '" & mainPromptText & "'")
-        Call FastKey("<Enter>")
-        Call WaitForPrompt("COMMAND:", "", False, 5000, "Process Lock Recovery")
-        lastRoResult = "Skipped - Process locked by another user"
-        Exit Sub
-    End If
-
-    ' Check for "PRESS RETURN TO CONTINUE" (VEHID not on file)
+    ' Check for "PRESS RETURN TO CONTINUE" (VEHID not on file - all-caps variant)
     If IsTextPresent("PRESS RETURN TO CONTINUE") Then
         Call LogEvent("comm", "med", "VEHID not on file - attempting recovery", "Main", "RO: " & currentRODisplay, "")
         If Not BZH_RecoverFromVehidError(g_EmployeeNumber, g_EmployeeNameConfirm, "2") Then
@@ -3570,6 +3912,13 @@ Sub Main(roNumber)
             g_ShouldAbort = True
         End If
         lastRoResult = "Skipped - VEHID not on file"
+        Exit Sub
+    End If
+
+    ' Check for "NOT ON FILE" response
+    If IsTextPresent("NOT ON FILE") Then
+        Call LogEvent("comm", "med", "Not On File", "Main", "", "")
+        lastRoResult = "Not On File"
         Exit Sub
     End If
     
@@ -3591,9 +3940,19 @@ Sub Main(roNumber)
     If ShouldSkipRo(currentRODisplay) Then
         g_SkipConfiguredCount = g_SkipConfiguredCount + 1
         Call LogEvent("comm", "med", "Configured SkipRoList match - skipping RO", "Main", "RO: " & currentRODisplay, "")
-        Call FastText("E")
-        Call FastKey("<NumpadEnter>")
-        Call WaitForPrompt("COMMAND:", "", False, 5000, "")
+        ' Guard: if the VEHID error screen is showing, the normal E exit is wrong.
+        ' Recover via PFC flow first, then exit.
+        If IsTextPresent("for this RO is not on file") Then
+            Call LogEvent("comm", "med", "VEHID error detected during skip exit - recovering before exit", "Main", "RO: " & currentRODisplay, "")
+            If Not BZH_RecoverFromVehidError(g_EmployeeNumber, g_EmployeeNameConfirm, "2") Then
+                Call LogEvent("crit", "low", "VEHID recovery failed during skip exit - terminal state unknown", "Main", "", "Stopping script - fail fast requested")
+                g_ShouldAbort = True
+            End If
+        Else
+            Call FastText("E")
+            Call FastKey("<NumpadEnter>")
+            Call WaitForPrompt("COMMAND:", "", False, 5000, "")
+        End If
         lastRoResult = "Skipped - Configured RO skip list"
         Exit Sub
     End If
@@ -3680,19 +4039,17 @@ Sub Main(roNumber)
         Exit Sub
     End If
 
-    ' --- PARTS ORDER NEEDED GATE ---
-    ' Skip ROs where an L-line has no following P-line but a keyword suggests
-    ' parts will need to be ordered. Keywords and negators come from
-    ' [PostFinalCharges] PartsOrderKeywords / PartsOrderNegators in config.ini.
-    Dim matchedPartsDesc
-    matchedPartsDesc = GetPartsNeededLaborDesc()
-    If Len(Trim(matchedPartsDesc)) > 0 Then
-        g_SkipNoPartsChargedCount = g_SkipNoPartsChargedCount + 1
-        Call LogEvent("comm", "med", "Parts likely needed on RO - skipping closeout", "Main", "Matched labor: " & matchedPartsDesc & " | RO: " & currentRODisplay, "")
+    ' --- VTD LABOR GATE ---
+    ' Skip ROs where any L-row has ltype I and its description (or its parent
+    ' line header description) contains the whole word VTD.
+    Dim vtdSkipReason
+    If Not EvaluateVtdLaborGate(vtdSkipReason) Then
+        g_SkipVtdLaborCount = g_SkipVtdLaborCount + 1
+        Call LogEvent("comm", "med", "VTD labor gate failed - skipping RO", "Main", vtdSkipReason & " | RO: " & currentRODisplay, "")
         Call FastText("E")
         Call FastKey("<NumpadEnter>")
         Call WaitForPrompt("COMMAND:", "", False, 5000, "")
-        lastRoResult = "Skipped - Parts order needed: " & matchedPartsDesc
+        lastRoResult = vtdSkipReason
         Exit Sub
     End If
 
@@ -3700,14 +4057,21 @@ Sub Main(roNumber)
     ' Skip ROs where any L-row description (or its parent line header description)
     ' does not contain a keyword from CDKLaborOnlyDescriptionExceptions. All labor
     ' lines are assumed to require parts unless a keyword confirms labor-only work.
+    ' SkipLaborOnlyGate=true bypasses the "no parts" check but never the unsupported
+    ' warranty ltype check — unapproved W-ltypes are always skipped.
     Dim laborOnlySkipReason
     If Not EvaluateLaborOnlyGate(laborOnlySkipReason) Then
-        Call LogEvent("comm", "med", "Labor-only gate failed - skipping RO", "Main", laborOnlySkipReason & " | RO: " & currentRODisplay, "")
-        Call FastText("E")
-        Call FastKey("<NumpadEnter>")
-        Call WaitForPrompt("COMMAND:", "", False, 5000, "")
-        lastRoResult = laborOnlySkipReason
-        Exit Sub
+        Dim isWarrantyFailure : isWarrantyFailure = (InStr(1, laborOnlySkipReason, "Unsupported warranty ltype", vbTextCompare) > 0)
+        If g_SkipLaborOnlyGate And Not isWarrantyFailure Then
+            Call LogEvent("comm", "med", "Labor-only gate bypassed by config", "Main", laborOnlySkipReason & " | RO: " & currentRODisplay, "")
+        Else
+            Call LogEvent("comm", "med", "Labor-only gate failed - skipping RO", "Main", laborOnlySkipReason & " | RO: " & currentRODisplay, "")
+            Call FastText("E")
+            Call FastKey("<NumpadEnter>")
+            Call WaitForPrompt("COMMAND:", "", False, 5000, "")
+            lastRoResult = laborOnlySkipReason
+            Exit Sub
+        End If
     End If
 
     trigger = FindTrigger()
@@ -5018,9 +5382,9 @@ Sub Closeout_ReadyToPost()
     ' For READY TO POST status ROs, process each line individually: R A -> FNL A -> R B -> FNL B, etc.
     Call ProcessLinesSequentially()
     
-    ' Send the File (FC) command
+    ' Send the File (F) command
     Call LogInfo("Sending file command after READY TO POST processing", "Closeout_ReadyToPost")
-    WaitForPrompt "COMMAND:", "FC", True, g_PromptWait, ""
+    WaitForPrompt "COMMAND:", "F", True, g_PromptWait, ""
     If HandleCloseoutErrors() Then Exit Sub
 
     Call PerformFinalCloseout("Closeout_ReadyToPost")
@@ -5041,9 +5405,9 @@ Sub Closeout_Preassigned()
     ' For PREASSIGNED status ROs, process each line individually: R A -> FNL A -> R B -> FNL B, etc.
     Call ProcessLinesSequentially()
     
-    ' Send the File (FC) command
+    ' Send the File (F) command
     Call LogInfo("Sending file command after PREASSIGNED processing", "Closeout_Preassigned")
-    WaitForPrompt "COMMAND:", "FC", True, g_PromptWait, ""
+    WaitForPrompt "COMMAND:", "F", True, g_PromptWait, ""
     If HandleCloseoutErrors() Then Exit Sub
 
     Call PerformFinalCloseout("Closeout_Preassigned")
@@ -5065,9 +5429,9 @@ Sub Closeout_Open()
     ' For OPEN status ROs, process each line individually: R A -> FNL A -> R B -> FNL B, etc.
     Call ProcessLinesSequentially()
     
-    ' Finally, send the File (FC) command
+    ' Finally, send the File (F) command
     Call LogInfo("Sending file command after OPEN status processing", "Closeout_Open")
-    WaitForPrompt "COMMAND:", "FC", True, g_PromptWait, ""
+    WaitForPrompt "COMMAND:", "F", True, g_PromptWait, ""
     If HandleCloseoutErrors() Then Exit Sub
 
     Call PerformFinalCloseout("Closeout_Open")
@@ -5079,12 +5443,12 @@ End Sub
 ' **AUTHOR:** GitHub Copilot
 ' 
 ' **FUNCTIONALITY:**
-' Processes OPEN status lines in proper sequence: R A -> FNL A -> R B -> FNL B, etc.
-' Each line is reviewed then immediately closed before moving to the next line.
+' Processes OPEN status lines in proper sequence: FNL A -> R A -> FNL B -> R B, etc.
+' Each line is finished (FNL) then reviewed (R) before moving to the next line.
 '-----------------------------------------------------------------------------------
 Sub ProcessLinesSequentially()
-    Call LogInfo("Starting sequential line processing (R then FNL per line)", "ProcessLinesSequentially")
-    Call LogEvent("comm", "high", "ProcessLinesSequentially called", "ProcessLinesSequentially", "Processing lines in R->FNL sequence", "Starting line A")
+    Call LogInfo("Starting sequential line processing (FNL then R per line)", "ProcessLinesSequentially")
+    Call LogEvent("comm", "high", "ProcessLinesSequentially called", "ProcessLinesSequentially", "Processing lines in FNL->R sequence", "Starting line A")
     
     Dim lineLetterChar, i, lineItemPrompts, fnlPrompts
     Set lineItemPrompts = CreateLineItemPromptDictionary()
@@ -5096,73 +5460,91 @@ Sub ProcessLinesSequentially()
     For i = 65 To 90 ' ASCII for A to Z
         lineLetterChar = Chr(i)
         Call LogEvent("comm", "high", "Processing line " & lineLetterChar & " - Finish then Review", "ProcessLinesSequentially", "", "")
-        
+
         ' Detect warranty labor type so we know to handle the claims dialog after R review.
         Dim lineIsWarranty
         lineIsWarranty = IsWarrantyLine(lineLetterChar)
 
-        ' Step 1: Finish the line with FNL command FIRST (to ensure it's complete before reviewing)
-        Call LogEvent("comm", "high", "Running FNL " & lineLetterChar & " command", "ProcessLinesSequentially", "", "")
-        Call WaitForPrompt("COMMAND:", "FNL " & lineLetterChar, True, g_PromptWait, "")
+        ' Per-line tech code routing (read from the RO detail screen at COMMAND: prompt):
+        '   C93 = already finished and reviewed — skip both FNL and R
+        '   C92 = already finished, needs review — skip FNL, run R only
+        '   ""  = no tech code assigned or line not visible — run FNL then R (standard path)
+        Dim lineTechCode
+        lineTechCode = GetLineTechCode(lineLetterChar)
 
-        ' Wait for the FNL response
-        Call LogEvent("comm", "high", "Waiting for FNL " & lineLetterChar & " response", "ProcessLinesSequentially", "", "")
-        Call WaitForScreenStable(2000, 300)  ' Wait up to 2 sec for screen to stabilize
+        If lineTechCode = "C93" Then
+            Call LogInfo("Line " & lineLetterChar & " tech=C93 — already finished and reviewed, skipping", "ProcessLinesSequentially")
+            g_LastSuccessfulLine = lineLetterChar
+            Call LogInfo("Completed sequential processing for line " & lineLetterChar, "ProcessLinesSequentially")
+        Else
+            Dim skipFnlForLine
+            skipFnlForLine = (lineTechCode = "C92")
 
-        ' Check if the line exists FIRST
-        If IsTextPresent("LINE CODE " & lineLetterChar & " IS NOT ON FILE") Then
-            Dim fnlScreenResponse
-            fnlScreenResponse = GetScreenSnapshot(24)
-            Call LogEvent("comm", "high", "FNL " & lineLetterChar & " command response", "ProcessLinesSequentially", fnlScreenResponse, "")
-            If g_LastSuccessfulLine = "" Then
-                Call LogEvent("comm", "low", "No line items found to process", "ProcessLinesSequentially", "Line " & lineLetterChar & " does not exist", "")
+            If skipFnlForLine Then
+                Call LogInfo("Line " & lineLetterChar & " tech=C92 — already finished, running R only", "ProcessLinesSequentially")
             Else
-                Call LogEvent("comm", "low", "Finished processing lines. No more lines found after " & g_LastSuccessfulLine, "ProcessLinesSequentially", "Line " & lineLetterChar & " does not exist", "")
+                ' Step 1: Finish the line with FNL command FIRST (to ensure it's complete before reviewing)
+                Call LogEvent("comm", "high", "Running FNL " & lineLetterChar & " command", "ProcessLinesSequentially", "", "")
+                Call WaitForPrompt("COMMAND:", "FNL " & lineLetterChar, True, g_PromptWait, "")
+
+                ' Wait for the FNL response
+                Call LogEvent("comm", "high", "Waiting for FNL " & lineLetterChar & " response", "ProcessLinesSequentially", "", "")
+                Call WaitForScreenStable(2000, 300)  ' Wait up to 2 sec for screen to stabilize
+
+                ' Check if the line exists
+                If IsTextPresent("LINE CODE " & lineLetterChar & " IS NOT ON FILE") Then
+                    Dim fnlScreenResponse
+                    fnlScreenResponse = GetScreenSnapshot(24)
+                    Call LogEvent("comm", "high", "FNL " & lineLetterChar & " command response", "ProcessLinesSequentially", fnlScreenResponse, "")
+                    If g_LastSuccessfulLine = "" Then
+                        Call LogEvent("comm", "low", "No line items found to process", "ProcessLinesSequentially", "Line " & lineLetterChar & " does not exist", "")
+                    Else
+                        Call LogEvent("comm", "low", "Finished processing lines. No more lines found after " & g_LastSuccessfulLine, "ProcessLinesSequentially", "Line " & lineLetterChar & " does not exist", "")
+                    End If
+                    Exit For ' Exit the For loop
+                End If
+
+                ' Check if the line is already finished
+                If IsTextPresent("LINE " & lineLetterChar & " IS ALREADY FINISHED") Then
+                    Call LogEvent("comm", "high", "Line " & lineLetterChar & " already finished", "ProcessLinesSequentially", "Skipping FNL processing", "")
+                Else
+                    ' Process FNL prompts for this line
+                    Call LogDebug("Processing FNL " & lineLetterChar & " prompts", "ProcessLinesSequentially")
+                    Call ProcessPromptSequence(fnlPrompts)
+                End If
             End If
-            Exit For ' Exit the For loop
-        End If
 
-        ' Check if the line is already finished
-        If IsTextPresent("LINE " & lineLetterChar & " IS ALREADY FINISHED") Then
-            Call LogEvent("comm", "high", "Line " & lineLetterChar & " already finished", "ProcessLinesSequentially", "Skipping FNL processing", "")
-        Else
-            ' Process FNL prompts for this line
-            Call LogDebug("Processing FNL " & lineLetterChar & " prompts", "ProcessLinesSequentially")
-            Call ProcessPromptSequence(fnlPrompts)
-        End If
-        
-        ' Step 2: Review the line with R command (now that it's finished)
-        Call LogEvent("comm", "high", "Running R " & lineLetterChar & " command", "ProcessLinesSequentially", "", "")
-        Call WaitForPrompt("COMMAND:", "R " & lineLetterChar, True, g_PromptWait, "")
-        
-        ' Wait for the first prompt to appear (2 second timeout for response to be ready)
-        Call LogEvent("comm", "high", "Waiting for R " & lineLetterChar & " response prompts", "ProcessLinesSequentially", "", "")
-        Call WaitForScreenStable(2000, 300)  ' Wait up to 2 sec for screen to stabilize
-        
-        ' Process review prompts for this line (R command produces prompts immediately, not a screen)
-        Call LogDebug("Processing R " & lineLetterChar & " prompts", "ProcessLinesSequentially")
-        Call ProcessPromptSequence(lineItemPrompts)
+            ' Step 2: Review the line with R command (now that it's finished)
+            Call LogEvent("comm", "high", "Running R " & lineLetterChar & " command", "ProcessLinesSequentially", "", "")
+            Call WaitForPrompt("COMMAND:", "R " & lineLetterChar, True, g_PromptWait, "")
 
-        ' Handle warranty claims dialog. Always called so that warranty lines on paginated
-        ' screens (not visible to IsWarrantyLine on page 1) are not missed.
-        ' Known warranty lines get full 20-poll detection; all others get a 3-poll quick
-        ' check (~1.5s) so non-warranty lines don't incur a long unnecessary wait.
-        Dim warrantyPolls
-        If lineIsWarranty Then
-            warrantyPolls = 20
-        Else
-            warrantyPolls = 3
-        End If
-        If lineIsWarranty Then
-            Call LogInfo("Warranty line " & lineLetterChar & " - handling claims dialog", "ProcessLinesSequentially")
-        End If
-        Call HandleWarrantyClaimsDialog(warrantyPolls)
+            ' Wait for the first prompt to appear (2 second timeout for response to be ready)
+            Call LogEvent("comm", "high", "Waiting for R " & lineLetterChar & " response prompts", "ProcessLinesSequentially", "", "")
+            Call WaitForScreenStable(2000, 300)  ' Wait up to 2 sec for screen to stabilize
 
-        ' Track successful line processing
-        g_LastSuccessfulLine = lineLetterChar
-        Call LogInfo("Completed sequential processing for line " & lineLetterChar, "ProcessLinesSequentially")
+            ' Process review prompts for this line (R command produces prompts immediately, not a screen)
+            Call LogDebug("Processing R " & lineLetterChar & " prompts", "ProcessLinesSequentially")
+            Call ProcessPromptSequence(lineItemPrompts)
+
+            ' Handle warranty claims dialog. Always called so that warranty lines on paginated
+            ' screens (not visible to IsWarrantyLine on page 1) are not missed.
+            ' Known warranty lines get full 20-poll detection; all others get a 3-poll quick
+            ' check (~1.5s) so non-warranty lines don't incur a long unnecessary wait.
+            Dim warrantyPolls
+            If lineIsWarranty Then
+                warrantyPolls = 20
+                Call LogInfo("Warranty line " & lineLetterChar & " - handling claims dialog", "ProcessLinesSequentially")
+            Else
+                warrantyPolls = 3
+            End If
+            Call HandleWarrantyClaimsDialog(warrantyPolls)
+
+            ' Track successful line processing
+            g_LastSuccessfulLine = lineLetterChar
+            Call LogInfo("Completed sequential processing for line " & lineLetterChar, "ProcessLinesSequentially")
+        End If
     Next
-    
+
     Call LogEvent("comm", "low", "All lines processed sequentially (FNL->R per line)", "ProcessLinesSequentially", "", "")
 End Sub
 
@@ -5315,9 +5697,9 @@ Sub Closeout_Default()
     ' Process each line individually: R A -> FNL A -> R B -> FNL B, etc.
     Call ProcessLinesSequentially()
 
-    ' Send the File (FC) command
+    ' Send the File (F) command
     Call LogInfo("Sending file command after default processing", "Closeout_Default")
-    WaitForPrompt "COMMAND:", "FC", True, g_PromptWait, ""
+    WaitForPrompt "COMMAND:", "F", True, g_PromptWait, ""
     If HandleCloseoutErrors() Then Exit Sub
 
     Call PerformFinalCloseout("Closeout_Default")

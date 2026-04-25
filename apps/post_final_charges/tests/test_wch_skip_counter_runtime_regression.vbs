@@ -70,10 +70,18 @@ AssertContains "EvaluateLaborOnlyGate function is declared", "Function EvaluateL
 AssertContains "EvaluatePartsChargedGate function is declared", "Function EvaluatePartsChargedGate(ByRef skipReason)"
 AssertContains "Description exception helper exists", "Function IsCdkLaborOnlyExceptionDesc(descText)"
 AssertContains "Labor-only gate tracks line header description", "currentLineHeaderDesc"
-AssertContains "Labor-only gate scans P-line indicator", "Mid(buf, 6, 1) = ""P"""
+AssertContains "Labor-only gate checks for P-row following L-row", "Mid(buf, 6, 1) = ""P"""
 AssertContains "Labor-only gate reads SALE AMT column", "Mid(buf, 70, 11)"
 AssertContains "Labor-only gate checks description exceptions", "IsCdkLaborOnlyExceptionDesc("
-AssertContains "Labor-only gate sets skip reason with descriptions", "Skipped - No parts charged: lrow=["
+AssertContains "Labor-only gate sets no-parts skip reason", "Skipped - No parts charged: lrow=["
+AssertContains "Labor-only gate sets unsupported warranty skip reason", "Skipped - Unsupported warranty ltype: ["
+AssertAbsent "Unsupported warranty skip reason does not include lrow detail", "Unsupported warranty ltype: [WF] lrow=["
+AssertContains "Labor-only gate uses pending pattern for P-row lookahead", "pendingLRowDesc"
+AssertAbsent "Parts-order keyword function is removed", "Function DescMatchesPartsKeyword("
+AssertAbsent "Parts-order scan function is removed", "Function GetPartsNeededLaborDesc("
+AssertAbsent "Parts-order keywords global is removed", "g_PartsOrderKeywords"
+AssertAbsent "Parts-order negators global is removed", "g_PartsOrderNegators"
+AssertAbsent "Parts-order needed counter is removed", "g_SkipPartsOrderNeededCount"
 AssertAbsent "Ltype exception helper is removed", "Function IsCdkLaborOnlyExceptionTech("
 AssertAbsent "Ltype exception global is removed", "g_arrCDKExceptions"
 
@@ -115,7 +123,7 @@ AssertContains "Dialog detects COMMAND: prompt", "InStr(1, buf, ""COMMAND:"", vb
 AssertContains "Dialog sends blank Enter for LABOR OP: state", "WaitForPrompt(""LABOR OP:"", """", True"
 AssertContains "Dialog sends period to skip fields in COMMAND: state", "FastText(""."")"
 AssertContains "Dialog sends E to exit in COMMAND: state", "FastText(""E"")"
-AssertContains "WarrantyLTypes config key is read", "GetIniSetting(""PostFinalCharges"", ""WarrantyLTypes"", ""WCH,WV"")"
+AssertContains "WarrantyLTypes config key is read", "GetIniSetting(""PostFinalCharges"", ""WarrantyLTypes"", ""WCH,WF,W"")"
 AssertContains "WarrantyCauseText config key is read", "GetIniSetting(""PostFinalCharges"", ""WarrantyCauseText"", ""Device failure"")"
 AssertContains "WarrantyDialogStepDelayMs config key is read", "GetIniSetting(""PostFinalCharges"", ""WarrantyDialogStepDelayMs"", ""2000"")"
 AssertContains "WarrantyDialogSignatures config key is read", "GetIniSetting(""PostFinalCharges"", ""WarrantyDialogSignatures"","
@@ -128,7 +136,12 @@ AssertContains "CAUSE L loop uses inner poll to avoid premature exit", "For caus
 AssertContains "DetectWarrantyDialog function is declared", "Function DetectWarrantyDialog(maxPolls)"
 AssertContains "HandleWarrantyClaimsDialog accepts maxPolls", "Sub HandleWarrantyClaimsDialog(maxPolls)"
 AssertContains "HandleFcaClaimsDialog sub is declared", "Sub HandleFcaClaimsDialog()"
-AssertContains "HandleVwWarrantyDialog sub is declared", "Sub HandleVwWarrantyDialog()"
+AssertContains "HandleWWarrantyDialog sub is declared", "Sub HandleWWarrantyDialog()"
+AssertContains "HandleFordWarrantyDialog sub is declared", "Sub HandleFordWarrantyDialog()"
+AssertContains "Ford dispatcher wired in HandleWarrantyClaimsDialog", "ElseIf dialogType = ""FORD"" Then"
+AssertContains "g_FordWarrantyCauseText global is declared", "Dim g_FordWarrantyCauseText"
+AssertContains "FordWarrantyCauseText config key is read", "GetIniSetting(""PostFinalCharges"", ""FordWarrantyCauseText"", ""Defective Part"")"
+AssertContains "Ford dialog license state TODO is present", "TODO: license state is per-vehicle"
 AssertContains "IsWarrantyLine is called before FNL in ProcessLinesSequentially", "lineIsWarranty = IsWarrantyLine(lineLetterChar)"
 AssertContains "warrantyPolls computed from lineIsWarranty", "warrantyPolls = 20"
 AssertContains "HandleWarrantyClaimsDialog always called with poll count", "Call HandleWarrantyClaimsDialog(warrantyPolls)"
@@ -139,6 +152,38 @@ AssertOrder "HandleWarrantyClaimsDialog fires after R review prompts", _
     "Call ProcessPromptSequence(lineItemPrompts)", "Call HandleWarrantyClaimsDialog(warrantyPolls)"
 AssertOrder "HandleWarrantyClaimsDialog fires after R review prompts (not FNL)", _
     "lineIsWarranty = IsWarrantyLine(lineLetterChar)", "Call HandleWarrantyClaimsDialog(warrantyPolls)"
+
+' Per-line tech code routing in ProcessLinesSequentially
+AssertContains "GetLineTechCode helper is declared", "Function GetLineTechCode(lineLetterChar)"
+AssertContains "ProcessLinesSequentially reads per-line tech code", "lineTechCode = GetLineTechCode(lineLetterChar)"
+AssertContains "C93 branch skips FNL and R", "lineTechCode = ""C93"""
+AssertContains "C92 branch skips FNL only", "lineTechCode = ""C92"""
+AssertContains "skipFnlForLine flag is set for C92", "skipFnlForLine = (lineTechCode = ""C92"")"
+AssertOrder "C93 check precedes C92 check", _
+    "lineTechCode = ""C93""", "lineTechCode = ""C92"""
+
+' VTD labor gate wiring
+AssertContains "ContainsWholeWordVtd helper is declared", "Function ContainsWholeWordVtd(text)"
+AssertContains "EvaluateVtdLaborGate function is declared", "Function EvaluateVtdLaborGate(ByRef skipReason)"
+AssertContains "VTD gate checks ltype I", "lTypeCode = ""I"""
+AssertContains "VTD gate calls whole-word check", "ContainsWholeWordVtd(lRowDesc)"
+AssertContains "VTD gate sets skip reason prefix", "Skipped - VTD labor line:"
+AssertContains "g_SkipVtdLaborCount global is declared", "Dim g_SkipVtdLaborCount"
+AssertContains "g_SkipVtdLaborCount reset in ProcessRONumbers", "g_SkipVtdLaborCount = 0"
+AssertContains "Main calls EvaluateVtdLaborGate", "If Not EvaluateVtdLaborGate(vtdSkipReason) Then"
+AssertContains "Main increments g_SkipVtdLaborCount on VTD gate failure", "g_SkipVtdLaborCount = g_SkipVtdLaborCount + 1"
+AssertOrder "VTD gate precedes labor-only gate in Main", _
+    "If Not EvaluateVtdLaborGate(vtdSkipReason) Then", "If Not EvaluateLaborOnlyGate(laborOnlySkipReason) Then"
+AssertContains "BuildSessionSummary includes VTD count in miscTotal", "g_SkipVtdLaborCount + _"
+AssertContains "BuildSessionSummary shows VTD detail line", "Skipped - VTD labor line: "" & g_SkipVtdLaborCount"
+AssertContains "IsResultRepresentedInSummary handles VTD skip prefix", """SKIPPED - VTD LABOR LINE"""
+
+' Ford dialog — config-driven license state
+AssertContains "g_FordWarrantyLicenseState global is declared", "Dim g_FordWarrantyLicenseState"
+AssertContains "FordWarrantyLicenseState config key is read", "GetIniSetting(""PostFinalCharges"", ""FordWarrantyLicenseState"", ""GA"")"
+AssertContains "VLS step reads field content before sending state code", "vlsFieldText = Trim(Mid(vlsBuf, vlsLabelPos + 22, 5))"
+AssertContains "VLS step uses config value when field is blank", "g_FordWarrantyLicenseState"
+AssertContains "GetLineTechCode pagination limitation is documented", "Scans only the currently visible page"
 
 WScript.Echo ""
 If failures = 0 Then
