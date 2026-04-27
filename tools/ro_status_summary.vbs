@@ -120,6 +120,7 @@ Sub GatherROStatuses(statusDict)
                 LogResult "ERROR", "Recovery failed at sequence " & roNumber & ". Stopping."
                 Exit Sub
             End If
+            skipToNext = True
         End If
 
         If Not skipToNext Then
@@ -276,7 +277,7 @@ Function RecoverFromLockedProcess()
     RecoverFromLockedProcess = False
     LogResult "INFO", "Recovery: dismissing locked process, waiting for COMMAND prompt."
     g_bzhao.SendKey "<Enter>"
-    If Not WaitForPrompt("COMMAND:(SEQ#", "", False, 10000, "") Then
+    If Not WaitForPrompt("COMMAND:(SEQ#", "", False, 30000, "") Then
         LogResult "ERROR", "Recovery failed: COMMAND prompt not found after locked process dismiss."
         Exit Function
     End If
