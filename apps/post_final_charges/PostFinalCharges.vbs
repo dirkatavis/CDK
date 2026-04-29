@@ -78,6 +78,7 @@ Dim g_SkipNoCloseoutTextCount
 Dim g_SkipNoPartsChargedCount
 Dim g_SkipUnsupportedWarrantyCount
 Dim g_SkipVtdLaborCount
+Dim g_arrVtdCompletionKeywords
 Dim g_LeftOpenManualCount
 
 Dim g_ErrorInMainCount
@@ -1199,6 +1200,74 @@ Function EvaluateLaborOnlyGate(ByRef skipReason)
 End Function
 
 '-----------------------------------------------------------------------------------
+' **FUNCTION NAME:** IsVtdLineComplete
+' **DATE CREATED:** 2026-04-28
+' **AUTHOR:** GitHub Copilot
+'
+' **FUNCTIONALITY:**
+' Navigates to the R [letter] story screen for the given line letter, reads all
+' visible rows, and checks whether any keyword from g_arrVtdCompletionKeywords
+' appears in the text. Escapes the screen with "." + NumpadEnter before returning.
+'
+' **PARAMETERS:**
+' lineLetter - Single letter (A-Z) identifying the RO line to inspect.
+'
+' **RETURNS:**
+' True if a completion keyword is found in the story text; False otherwise.
+'-----------------------------------------------------------------------------------
+Function IsVtdLineComplete(lineLetter)
+    IsVtdLineComplete = False
+
+    ' Navigate to the line story screen.
+    On Error Resume Next
+    g_bzhao.SendKey "R " & lineLetter
+    g_bzhao.SendKey "<NumpadEnter>"
+    If Err.Number <> 0 Then Err.Clear
+    On Error GoTo 0
+    g_bzhao.Pause 600
+
+    ' Read all visible rows and concatenate into a single string for keyword search.
+    Dim storyText, rowBuf, r
+    storyText = ""
+    For r = 1 To 22
+        rowBuf = ""
+        On Error Resume Next
+        g_bzhao.ReadScreen rowBuf, 80, r, 1
+        If Err.Number <> 0 Then Err.Clear
+        On Error GoTo 0
+        If Len(Trim(rowBuf)) > 0 Then
+            storyText = storyText & " " & Trim(rowBuf)
+        End If
+    Next
+
+    Call LogEvent("comm", "low", "VTD story screen read", "IsVtdLineComplete", _
+        "line=[" & lineLetter & "] text=[" & Left(Trim(storyText), 120) & "]", "")
+
+    ' Check for any configured completion keyword (case-insensitive).
+    If IsArray(g_arrVtdCompletionKeywords) Then
+        Dim upperStory : upperStory = UCase(storyText)
+        Dim ki, kw
+        For ki = 0 To UBound(g_arrVtdCompletionKeywords)
+            kw = g_arrVtdCompletionKeywords(ki)
+            If Len(kw) > 0 And InStr(1, upperStory, kw) > 0 Then
+                IsVtdLineComplete = True
+                Call LogEvent("comm", "low", "VTD story completion keyword matched", "IsVtdLineComplete", _
+                    "line=[" & lineLetter & "] keyword=[" & kw & "]", "")
+                Exit For
+            End If
+        Next
+    End If
+
+    ' Escape the story screen with "." + NumpadEnter to return to COMMAND:.
+    On Error Resume Next
+    g_bzhao.SendKey "."
+    g_bzhao.SendKey "<NumpadEnter>"
+    If Err.Number <> 0 Then Err.Clear
+    On Error GoTo 0
+    g_bzhao.Pause 500
+End Function
+
+'-----------------------------------------------------------------------------------
 ' **FUNCTION NAME:** ContainsWholeWordVtd
 ' **DATE CREATED:** 2026-04-20
 ' **AUTHOR:** GitHub Copilot
@@ -1266,12 +1335,15 @@ Function EvaluateVtdLaborGate(ByRef skipReason)
     Dim doneScanning, pagesAdvanced, p
     Dim preSig, postSig, preSig2, postSig2, preMarker, postMarker
     Dim maxPageAdvances
-    Dim currentLineHeaderDesc, lRowDesc, lTypeCode
+    Dim currentLineLetter, currentLineHeaderDesc, lRowDesc, lTypeCode
+    Dim vtdLineLetter, vtdLRowDesc, vtdHeaderDesc
 
     doneScanning = False
     pagesAdvanced = 0
     maxPageAdvances = 50
+    currentLineLetter = ""
     currentLineHeaderDesc = ""
+    vtdLineLetter = ""
 
     Do While Not doneScanning
         For row = 9 To 23
@@ -1284,6 +1356,7 @@ Function EvaluateVtdLaborGate(ByRef skipReason)
             If Len(buf) >= 5 Then
                 ' Detect line header row (A-Z, col 2 = space, col 4 not "L")
                 If Mid(buf, 1, 1) >= "A" And Mid(buf, 1, 1) <= "Z" And Mid(buf, 2, 1) = " " And Mid(buf, 4, 1) <> "L" Then
+                    currentLineLetter = Mid(buf, 1, 1)
                     currentLineHeaderDesc = Trim(Mid(buf, 4, 38))
                 End If
 
@@ -1294,10 +1367,10 @@ Function EvaluateVtdLaborGate(ByRef skipReason)
 
                     If lTypeCode = "I" Then
                         If ContainsWholeWordVtd(lRowDesc) Or ContainsWholeWordVtd(currentLineHeaderDesc) Then
-                            skipReason = "Skipped - VTD labor line: ltype=[" & lTypeCode & "] lRowDesc=[" & lRowDesc & "] header=[" & currentLineHeaderDesc & "]"
-                            Call LogEvent("comm", "low", "VTD labor gate SKIP — ltype I with VTD in description", "EvaluateVtdLaborGate", _
-                                "ltype=[" & lTypeCode & "] lRowDesc=[" & lRowDesc & "] header=[" & currentLineHeaderDesc & "]", "")
-                            EvaluateVtdLaborGate = False
+                            ' Record the VTD line; defer pass/fail until story is checked.
+                            vtdLineLetter = currentLineLetter
+                            vtdLRowDesc = lRowDesc
+                            vtdHeaderDesc = currentLineHeaderDesc
                             doneScanning = True
                             Exit For
                         End If
@@ -1374,7 +1447,18 @@ Function EvaluateVtdLaborGate(ByRef skipReason)
         Next
     End If
 
-    If EvaluateVtdLaborGate Then
+    ' If a VTD I-labor line was found, check its story screen before deciding.
+    If vtdLineLetter <> "" Then
+        If IsVtdLineComplete(vtdLineLetter) Then
+            Call LogEvent("comm", "low", "VTD labor gate PASS — story shows completion", "EvaluateVtdLaborGate", _
+                "line=[" & vtdLineLetter & "] lRowDesc=[" & vtdLRowDesc & "] header=[" & vtdHeaderDesc & "]", "")
+        Else
+            skipReason = "Skipped - VTD labor line: ltype=[I] lRowDesc=[" & vtdLRowDesc & "] header=[" & vtdHeaderDesc & "]"
+            Call LogEvent("comm", "low", "VTD labor gate SKIP — no completion keyword in story", "EvaluateVtdLaborGate", _
+                "line=[" & vtdLineLetter & "] lRowDesc=[" & vtdLRowDesc & "] header=[" & vtdHeaderDesc & "]", "")
+            EvaluateVtdLaborGate = False
+        End If
+    Else
         Call LogEvent("comm", "low", "VTD labor gate PASS", "EvaluateVtdLaborGate", "", "")
     End If
 End Function
@@ -3014,6 +3098,26 @@ Sub InitializeConfig()
 
     g_SkipLaborOnlyGate = (LCase(Trim(GetIniSetting("PostFinalCharges", "SkipLaborOnlyGate", "false"))) = "true")
     Call LogEvent("comm", "high", "Labor-only gate configured", "InitializeConfig", "SkipLaborOnlyGate: " & g_SkipLaborOnlyGate, "")
+
+    Dim vtdCompletionRaw, vtdCompletionArr, vki
+    vtdCompletionRaw = GetIniSetting("PostFinalCharges", "VtdCompletionKeywords", "COMPLETED")
+    vtdCompletionArr = Split(vtdCompletionRaw, ",")
+    Dim vtdCompletionFiltered() : ReDim vtdCompletionFiltered(UBound(vtdCompletionArr))
+    Dim vtdCompletionCount : vtdCompletionCount = 0
+    For vki = 0 To UBound(vtdCompletionArr)
+        Dim vkEntry : vkEntry = UCase(Trim(vtdCompletionArr(vki)))
+        If Len(vkEntry) > 0 Then
+            vtdCompletionFiltered(vtdCompletionCount) = vkEntry
+            vtdCompletionCount = vtdCompletionCount + 1
+        End If
+    Next
+    If vtdCompletionCount = 0 Then
+        g_arrVtdCompletionKeywords = Array()
+    Else
+        ReDim Preserve vtdCompletionFiltered(vtdCompletionCount - 1)
+        g_arrVtdCompletionKeywords = vtdCompletionFiltered
+    End If
+    Call LogEvent("comm", "high", "VTD completion keywords configured", "InitializeConfig", "VtdCompletionKeywords: " & vtdCompletionRaw, "")
 End Sub
 
 Sub ArchivePreviousDayLog()
@@ -3372,7 +3476,7 @@ End Sub
 ' the log, or inspected in tests.
 '-----------------------------------------------------------------------------------
 Function BuildSessionSummary()
-    Dim accountedTotal, summaryText, otherOutcomeDetails
+    Dim summaryText, otherOutcomeDetails
     Dim miscTotal, miscDetail
 
     ' Infrequent counters collapsed into a single Misc line.
@@ -3390,15 +3494,6 @@ Function BuildSessionSummary()
         g_SummaryOtherOutcomeCount + _
         g_OlderRoAttemptCount
 
-    accountedTotal = g_FiledROCount + _
-        g_SkipTechCodeCount + _
-        g_SkipStatusOpenCount + _
-        g_SkipStatusPreassignedCount + _
-        g_SkipStatusOtherCount + _
-        g_SkipNoPartsChargedCount + _
-        g_SkipUnsupportedWarrantyCount + _
-        miscTotal
-
     summaryText = "DONE" & vbCrLf & _
         "ROs Reviewed: " & g_ReviewedROCount & vbCrLf & _
         "ROs Posted: " & g_FiledROCount & vbCrLf & _
@@ -3408,8 +3503,7 @@ Function BuildSessionSummary()
         "Skips - Other Statuses: " & g_SkipStatusOtherCount & vbCrLf & _
         "Skipped - No parts charged: " & g_SkipNoPartsChargedCount & vbCrLf & _
         "Skipped - Unsupported warranty ltype: " & g_SkipUnsupportedWarrantyCount & vbCrLf & _
-        "Misc: " & miscTotal & vbCrLf & _
-        "Accounted Total: " & accountedTotal
+        "Misc: " & miscTotal
 
     ' Expand Misc breakdown — only non-zero lines shown
     miscDetail = ""
@@ -3596,6 +3690,10 @@ Function GetOtherOutcomeBucket(resultText)
     End If
     If InStr(1, normalized, "NO RESULT RECORDED", vbTextCompare) = 1 Then
         GetOtherOutcomeBucket = "No result recorded"
+        Exit Function
+    End If
+    If InStr(1, normalized, "SKIPPED - PROCESS LOCKED", vbTextCompare) = 1 Then
+        GetOtherOutcomeBucket = "Skipped - Process locked"
         Exit Function
     End If
 
