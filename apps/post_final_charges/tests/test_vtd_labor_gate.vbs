@@ -15,10 +15,11 @@
 '   6)  Synthetic — "VTDEV" in L-row desc (not whole word), ltype I -> gate passes
 '   7)  Story: VTD I-labor found + story contains "COMPLETED" -> gate passes
 '   8)  Story: VTD I-labor found + story has no completion keyword -> gate fails
-'   9)  ContainsWholeWordVtd: "VTD" alone -> True
-'  10)  ContainsWholeWordVtd: "INSPECT VTD" -> True (at end, space before)
-'  11)  ContainsWholeWordVtd: "VTDEV CHECK" -> False (E follows, no word boundary after)
-'  12)  ContainsWholeWordVtd: "AAAVTD" -> False (A precedes, no word boundary before)
+'   9)  Story: completion keyword outside header rows (1-3) is ignored
+'  10)  ContainsWholeWordVtd: "VTD" alone -> True
+'  11)  ContainsWholeWordVtd: "INSPECT VTD" -> True (at end, space before)
+'  12)  ContainsWholeWordVtd: "VTDEV CHECK" -> False (E follows, no word boundary after)
+'  13)  ContainsWholeWordVtd: "AAAVTD" -> False (A precedes, no word boundary before)
 '-----------------------------------------------------------------------------------
 
 Option Explicit
@@ -128,11 +129,17 @@ Function BuildPage(ByVal lineLetter, ByVal headerDesc, ByVal ltypeCode, ByVal lR
     BuildPage = pageBuf
 End Function
 
-' Story screen: places story text on row 5 for IsVtdLineComplete to read
+' Story screen: places story text on row 1 for IsVtdLineComplete to read
 Function BuildStoryPage(ByVal storyText)
     Dim pageBuf : pageBuf = String(24 * 80, " ")
-    pageBuf = SetRow(pageBuf, 5, Left(storyText & String(80, " "), 80))
+    pageBuf = SetRow(pageBuf, 1, Left(storyText & String(80, " "), 80))
     BuildStoryPage = pageBuf
+End Function
+
+Function BuildStoryPageWithRow(ByVal rowNum, ByVal storyText)
+    Dim pageBuf : pageBuf = String(24 * 80, " ")
+    pageBuf = SetRow(pageBuf, rowNum, Left(storyText & String(80, " "), 80))
+    BuildStoryPageWithRow = pageBuf
 End Function
 
 '--------------------------------------------------------------------
@@ -211,7 +218,7 @@ Function IsVtdLineComplete(ByVal lineLetter)
 
     Dim storyText, rowBuf, r
     storyText = ""
-    For r = 1 To 22
+    For r = 1 To 3
         rowBuf = ""
         On Error Resume Next
         g_bzhao.ReadScreen rowBuf, 80, r, 1
@@ -474,7 +481,16 @@ AssertFalse "Story: gate fails when VTD I-labor story has no completion keyword"
 AssertStartsWith "Story: skipReason has expected prefix", "Skipped - VTD labor line:", skipReason
 
 '--------------------------------------------------------------------
-' Tests 9-12: ContainsWholeWordVtd unit tests
+' Test 9: completion keyword outside top story rows is ignored -> gate FAILS
+'--------------------------------------------------------------------
+Set g_bzhao = New FakeBzhao
+g_bzhao.SetPage BuildPage("A", "VEND TO DEALER", "I", "VTD VEND TO DEALER")
+g_bzhao.SetStoryPage BuildStoryPageWithRow(10, "WORK COMPLETED BY TOYOTA")
+skipReason = ""
+AssertFalse "Story: keyword below header rows is ignored", EvaluateVtdLaborGate(skipReason)
+
+'--------------------------------------------------------------------
+' Tests 10-13: ContainsWholeWordVtd unit tests
 '--------------------------------------------------------------------
 AssertTrue  "ContainsWholeWordVtd: 'VTD' alone -> True",          ContainsWholeWordVtd("VTD")
 AssertTrue  "ContainsWholeWordVtd: 'INSPECT VTD' -> True",        ContainsWholeWordVtd("INSPECT VTD")

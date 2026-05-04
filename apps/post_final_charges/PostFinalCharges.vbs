@@ -1205,8 +1205,9 @@ End Function
 ' **AUTHOR:** GitHub Copilot
 '
 ' **FUNCTIONALITY:**
-' Navigates to the R [letter] story screen for the given line letter, reads all
-' visible rows, and checks whether any keyword from g_arrVtdCompletionKeywords
+' Navigates to the R [letter] story screen for the given line letter, reads the
+' top story-header rows (1-3), and checks whether any keyword from
+' g_arrVtdCompletionKeywords
 ' appears in the text. Escapes the screen with "." + NumpadEnter before returning.
 '
 ' **PARAMETERS:**
@@ -1218,18 +1219,24 @@ End Function
 Function IsVtdLineComplete(lineLetter)
     IsVtdLineComplete = False
 
-    ' Navigate to the line story screen.
-    On Error Resume Next
-    g_bzhao.SendKey "R " & lineLetter
-    g_bzhao.SendKey "<NumpadEnter>"
-    If Err.Number <> 0 Then Err.Clear
-    On Error GoTo 0
-    g_bzhao.Pause 600
+    ' Navigate from COMMAND prompt to the line story screen.
+    If Not WaitForPrompt("COMMAND:", "R " & lineLetter, True, g_PromptWait, "VTD story open") Then
+        Call LogEvent("maj", "low", "Unable to open VTD story screen - COMMAND prompt not ready", "IsVtdLineComplete", "line=[" & lineLetter & "]", "")
+        Exit Function
+    End If
 
-    ' Read all visible rows and concatenate into a single string for keyword search.
+    Dim expectedLineText, lineScreenLoaded
+    expectedLineText = "LINE " & lineLetter & " STORY :"
+    lineScreenLoaded = WaitForScreenTransition(expectedLineText, 3000, "line " & lineLetter & " story screen")
+    If Not lineScreenLoaded Then
+        Call LogEvent("maj", "low", "VTD story screen failed to load", "IsVtdLineComplete", "line=[" & lineLetter & "] expected=[" & expectedLineText & "]", "")
+        Exit Function
+    End If
+
+    ' Read only the top story rows (1-3) to keep matching tied to the active line header.
     Dim storyText, rowBuf, r
     storyText = ""
-    For r = 1 To 22
+    For r = 1 To 3
         rowBuf = ""
         On Error Resume Next
         g_bzhao.ReadScreen rowBuf, 80, r, 1
@@ -1258,13 +1265,16 @@ Function IsVtdLineComplete(lineLetter)
         Next
     End If
 
-    ' Escape the story screen with "." + NumpadEnter to return to COMMAND:.
+    ' Escape the story screen with "." + NumpadEnter and verify return to COMMAND:.
     On Error Resume Next
     g_bzhao.SendKey "."
     g_bzhao.SendKey "<NumpadEnter>"
     If Err.Number <> 0 Then Err.Clear
     On Error GoTo 0
-    g_bzhao.Pause 500
+
+    If Not WaitForPrompt("COMMAND:", "", False, 5000, "Return from VTD story") Then
+        Call LogEvent("crit", "low", "Failed to return to COMMAND prompt after VTD story", "IsVtdLineComplete", "line=[" & lineLetter & "]", "")
+    End If
 End Function
 
 '-----------------------------------------------------------------------------------
@@ -1354,8 +1364,8 @@ Function EvaluateVtdLaborGate(ByRef skipReason)
             On Error GoTo 0
 
             If Len(buf) >= 5 Then
-                ' Detect line header row (A-Z, col 2 = space, col 4 not "L")
-                If Mid(buf, 1, 1) >= "A" And Mid(buf, 1, 1) <= "Z" And Mid(buf, 2, 1) = " " And Mid(buf, 4, 1) <> "L" Then
+                ' Detect line header row by letter in col 1 and space in col 2.
+                If Mid(buf, 1, 1) >= "A" And Mid(buf, 1, 1) <= "Z" And Mid(buf, 2, 1) = " " Then
                     currentLineLetter = Mid(buf, 1, 1)
                     currentLineHeaderDesc = Trim(Mid(buf, 4, 38))
                 End If
@@ -3100,7 +3110,7 @@ Sub InitializeConfig()
     Call LogEvent("comm", "high", "Labor-only gate configured", "InitializeConfig", "SkipLaborOnlyGate: " & g_SkipLaborOnlyGate, "")
 
     Dim vtdCompletionRaw, vtdCompletionArr, vki
-    vtdCompletionRaw = GetIniSetting("PostFinalCharges", "VtdCompletionKeywords", "COMPLETED")
+    vtdCompletionRaw = GetIniSetting("PostFinalCharges", "VtdCompletionKeywords", "COMPLETED,DONE,FINISHED")
     vtdCompletionArr = Split(vtdCompletionRaw, ",")
     Dim vtdCompletionFiltered() : ReDim vtdCompletionFiltered(UBound(vtdCompletionArr))
     Dim vtdCompletionCount : vtdCompletionCount = 0
@@ -3476,7 +3486,7 @@ End Sub
 ' the log, or inspected in tests.
 '-----------------------------------------------------------------------------------
 Function BuildSessionSummary()
-    Dim summaryText, otherOutcomeDetails
+    Dim accountedTotal, summaryText, otherOutcomeDetails
     Dim miscTotal, miscDetail
 
     ' Infrequent counters collapsed into a single Misc line.
@@ -3494,6 +3504,15 @@ Function BuildSessionSummary()
         g_SummaryOtherOutcomeCount + _
         g_OlderRoAttemptCount
 
+    accountedTotal = g_FiledROCount + _
+        g_SkipTechCodeCount + _
+        g_SkipStatusOpenCount + _
+        g_SkipStatusPreassignedCount + _
+        g_SkipStatusOtherCount + _
+        g_SkipNoPartsChargedCount + _
+        g_SkipUnsupportedWarrantyCount + _
+        miscTotal
+
     summaryText = "DONE" & vbCrLf & _
         "ROs Reviewed: " & g_ReviewedROCount & vbCrLf & _
         "ROs Posted: " & g_FiledROCount & vbCrLf & _
@@ -3503,7 +3522,8 @@ Function BuildSessionSummary()
         "Skips - Other Statuses: " & g_SkipStatusOtherCount & vbCrLf & _
         "Skipped - No parts charged: " & g_SkipNoPartsChargedCount & vbCrLf & _
         "Skipped - Unsupported warranty ltype: " & g_SkipUnsupportedWarrantyCount & vbCrLf & _
-        "Misc: " & miscTotal
+        "Misc: " & miscTotal & vbCrLf & _
+        "Accounted Total: " & accountedTotal
 
     ' Expand Misc breakdown — only non-zero lines shown
     miscDetail = ""
