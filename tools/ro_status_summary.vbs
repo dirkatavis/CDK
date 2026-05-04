@@ -130,9 +130,10 @@ Sub GatherROStatuses(statusDict)
             End If
 
             ' --- 3. Status read and tally ---
+            Dim roActualNumber: roActualNumber = GetROFromScreen()
             Dim roStatus: roStatus = GetRepairOrderStatus()
             Call TallyStatus(statusDict, roStatus)
-            LogResult "INFO", "Seq " & roNumber & ": " & roStatus
+            LogResult "INFO", "Seq " & roNumber & " RO " & roActualNumber & ": " & roStatus
 
             ' --- 4. Return to COMMAND prompt ---
             g_bzhao.SendKey "E<NumpadEnter>"
@@ -202,6 +203,26 @@ End Sub
 
 ' --- Status Scraping ---
 ' Sourced from apps\post_final_charges\Pfc_Summary.vbs
+
+Function GetROFromScreen()
+    Dim buf, re, matches
+    g_bzhao.ReadScreen buf, 240, 1, 1
+    Set re = CreateObject("VBScript.RegExp")
+    re.Pattern = "RO:?\s*(\d{4,})"
+    re.IgnoreCase = True
+    If re.Test(buf) Then
+        Set matches = re.Execute(buf)
+        GetROFromScreen = Trim(matches(0).SubMatches(0))
+    Else
+        re.Pattern = "(^|\s)(\d{6})(\s|$)"
+        If re.Test(buf) Then
+            Set matches = re.Execute(buf)
+            GetROFromScreen = Trim(matches(0).SubMatches(1))
+        Else
+            GetROFromScreen = "UNKNOWN"
+        End If
+    End If
+End Function
 
 Function GetRepairOrderStatus()
     ' "RO STATUS: " is always at row 5, col 1 (11 chars), so the value is always at col 12.
