@@ -691,10 +691,16 @@ Function HandleReviewPrompts(lineLetter)
             ElseIf TestPrompt(regEx, screenContent, "TECHNICIAN.*\?") Then
                 LogResult "WARN", "TECHNICIAN prompt has no default for Line " & lineLetter & " — sending 99"
                 EnterReviewPrompt "99"
-            ElseIf TestPrompt(regEx, screenContent, "ACTUAL HOURS") Then
+            ' ACTUAL HOURS: accept default if present, otherwise send 0
+            ElseIf TestPrompt(regEx, screenContent, "ACTUAL HOURS.*\([A-Za-z0-9]+\)\?") Then
                 EnterReviewPrompt ""
-            ElseIf TestPrompt(regEx, screenContent, "SOLD HOURS") Then
+            ElseIf TestPrompt(regEx, screenContent, "ACTUAL HOURS.*\?") Then
+                EnterReviewPrompt "0"
+            ' SOLD HOURS: accept default if present, otherwise send 0
+            ElseIf TestPrompt(regEx, screenContent, "SOLD HOURS.*\([A-Za-z0-9]+\)\?") Then
                 EnterReviewPrompt ""
+            ElseIf TestPrompt(regEx, screenContent, "SOLD HOURS.*\?") Then
+                EnterReviewPrompt "0"
             ElseIf TestPrompt(regEx, screenContent, "ADD A LABOR OPERATION") Then
                 EnterReviewPrompt "" ' Defaults to "N"
             End If
