@@ -19,7 +19,7 @@ Sub Main()
 
     ' 3. FC command (Final Charge) — only after all reviews pass
     If Not WaitForTextAtBottom("COMMAND:") Then Exit Sub
-    EnterTextAndWait "FC"
+    EnterTextAndWait "F"
     bzhao.Pause 1000
 
     ' 4. ALL LABOR POSTED prompt
