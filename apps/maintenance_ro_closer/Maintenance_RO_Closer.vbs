@@ -644,11 +644,15 @@ End Function
 
 Function HandleReviewPrompts(lineLetter)
     Dim screenContent, startTime, elapsed, regEx, warrantyDialogType, handledWarrantyDialog
+    Dim promptResponse, promptLogLevel, promptLogMessage
+    Dim unhandledPromptText, unhandledPromptSignature, lastUnhandledPromptSignature, lastUnhandledPromptLogTime
     Set regEx = CreateObject("VBScript.RegExp")
     regEx.IgnoreCase = True
     regEx.Global = False
     
     startTime = Timer
+    lastUnhandledPromptSignature = ""
+    lastUnhandledPromptLogTime = -1
     
     Do
         g_bzhao.Pause REVIEW_PAUSE ' Use faster review pause
@@ -673,36 +677,30 @@ Function HandleReviewPrompts(lineLetter)
         End If
         
         If Not handledWarrantyDialog Then
-            ' Match Prompts using robust patterns
-            ' For field-level prompts in review, we use EnterReviewPrompt for speed
-            If TestPrompt(regEx, screenContent, "LABOR TYPE") Then
-                EnterReviewPrompt ""
-            ' Prefer pattern that explicitly contains a parenthesized default (accept default)
-            ElseIf TestPrompt(regEx, screenContent, "OP CODE.*\([A-Za-z0-9]+\)\?|OPERATION CODE.*\([A-Za-z0-9]+\)\?") Then
-                EnterReviewPrompt ""
-            ' Fallback: no-parenthesis variant (e.g. "OPERATION CODE FOR LINE A, L1?")
-            ElseIf TestPrompt(regEx, screenContent, "OP CODE.*\?|OPERATION CODE.*\?") Then
-                EnterReviewPrompt "I"
-            ElseIf TestPrompt(regEx, screenContent, "DESC:") Then
-                EnterReviewPrompt ""
-            ' TECHNICIAN: accept valid default when present; otherwise force fallback 99
-            ElseIf TestPrompt(regEx, screenContent, "TECHNICIAN.*\([A-Za-z0-9]+\)\?") Then
-                EnterReviewPrompt ""
-            ElseIf TestPrompt(regEx, screenContent, "TECHNICIAN.*\?") Then
-                LogResult "WARN", "TECHNICIAN prompt has no default for Line " & lineLetter & " — sending 99"
-                EnterReviewPrompt "99"
-            ' ACTUAL HOURS: accept default if present, otherwise send 0
-            ElseIf TestPrompt(regEx, screenContent, "ACTUAL HOURS.*\([A-Za-z0-9]+\)\?") Then
-                EnterReviewPrompt ""
-            ElseIf TestPrompt(regEx, screenContent, "ACTUAL HOURS.*\?") Then
-                EnterReviewPrompt "0"
-            ' SOLD HOURS: accept default if present, otherwise send 0
-            ElseIf TestPrompt(regEx, screenContent, "SOLD HOURS.*\([A-Za-z0-9]+\)\?") Then
-                EnterReviewPrompt ""
-            ElseIf TestPrompt(regEx, screenContent, "SOLD HOURS.*\?") Then
-                EnterReviewPrompt "0"
-            ElseIf TestPrompt(regEx, screenContent, "ADD A LABOR OPERATION") Then
-                EnterReviewPrompt "" ' Defaults to "N"
+            promptResponse = ""
+            promptLogLevel = ""
+            promptLogMessage = ""
+            If GetReviewPromptAction(regEx, screenContent, lineLetter, promptResponse, promptLogLevel, promptLogMessage) Then
+                If promptLogMessage <> "" Then
+                    LogResult promptLogLevel, promptLogMessage
+                End If
+                EnterReviewPrompt promptResponse
+                lastUnhandledPromptSignature = ""
+                lastUnhandledPromptLogTime = -1
+            Else
+                unhandledPromptText = GetPromptAreaText()
+                unhandledPromptSignature = UCase(Trim(Replace(unhandledPromptText, vbCrLf, "|")))
+
+                ' Throttle repeated logs while still surfacing new prompt text quickly.
+                If unhandledPromptSignature <> "" Then
+                    If (unhandledPromptSignature <> lastUnhandledPromptSignature) Or _
+                       (lastUnhandledPromptLogTime < 0) Or _
+                       ((Timer - lastUnhandledPromptLogTime) > 3) Then
+                        LogResult "WARN", "Unhandled review prompt for Line " & lineLetter & ": " & unhandledPromptText
+                        lastUnhandledPromptSignature = unhandledPromptSignature
+                        lastUnhandledPromptLogTime = Timer
+                    End If
+                End If
             End If
         End If
         
@@ -713,6 +711,73 @@ Function HandleReviewPrompts(lineLetter)
             Exit Function
         End If
     Loop
+End Function
+
+Function GetPromptAreaText()
+    Dim row, buf, lines, lineText
+    lines = ""
+
+    ' Prompt/input area is typically near the bottom of the 24x80 screen.
+    For row = 20 To 24
+        buf = ""
+        On Error Resume Next
+        g_bzhao.ReadScreen buf, 80, row, 1
+        If Err.Number <> 0 Then Err.Clear
+        On Error GoTo 0
+
+        lineText = Trim(CStr(buf))
+        If lineText <> "" Then
+            If lines <> "" Then lines = lines & " | "
+            lines = lines & "R" & CStr(row) & ":" & lineText
+        End If
+    Next
+
+    GetPromptAreaText = lines
+End Function
+
+Function GetReviewPromptAction(regEx, screenContent, lineLetter, ByRef responseText, ByRef logLevel, ByRef logMessage)
+    responseText = ""
+    logLevel = ""
+    logMessage = ""
+    GetReviewPromptAction = True
+
+    ' Match prompts in priority order to avoid broad patterns swallowing specific ones.
+    If TestPrompt(regEx, screenContent, "LABOR TYPE") Then
+        responseText = ""
+    ' Prefer pattern that explicitly contains a parenthesized default (accept default)
+    ElseIf TestPrompt(regEx, screenContent, "OP CODE.*\([A-Za-z0-9]+\)\?|OPERATION CODE.*\([A-Za-z0-9]+\)\?") Then
+        responseText = ""
+    ' Fallback: no-parenthesis variant (e.g. "OPERATION CODE FOR LINE A, L1?")
+    ElseIf TestPrompt(regEx, screenContent, "OP CODE.*\?|OPERATION CODE.*\?") Then
+        responseText = "I"
+    ElseIf TestPrompt(regEx, screenContent, "DESC:") Then
+        responseText = ""
+    ' TECHNICIAN: accept valid default when present; otherwise force fallback 99
+    ElseIf TestPrompt(regEx, screenContent, "TECHNICIAN.*\([A-Za-z0-9]+\)\?") Then
+        responseText = ""
+    ElseIf TestPrompt(regEx, screenContent, "TECHNICIAN.*\?") Then
+        responseText = "99"
+        logLevel = "WARN"
+        logMessage = "TECHNICIAN prompt has no default for Line " & lineLetter & " — sending 99"
+    ' ACTUAL HOURS: accept default if present, otherwise send 0
+    ElseIf TestPrompt(regEx, screenContent, "ACTUAL HOURS.*\([A-Za-z0-9]+\)") Then
+        responseText = ""
+    ElseIf TestPrompt(regEx, screenContent, "ACTUAL HOURS.*\?") Then
+        responseText = "0"
+    ' SOLD HOURS: accept default if present, otherwise send 0
+    ElseIf TestPrompt(regEx, screenContent, "SOLD HOURS.*\([A-Za-z0-9]+\)") Then
+        responseText = ""
+    ElseIf TestPrompt(regEx, screenContent, "SOLD HOURS.*\?") Then
+        responseText = "0"
+    ElseIf TestPrompt(regEx, screenContent, "IS THIS A COMEBACK.*\(Y/N\)") Then
+        responseText = "Y"
+        logLevel = "INFO"
+        logMessage = "Comeback prompt detected for Line " & lineLetter & " - sending Y"
+    ElseIf TestPrompt(regEx, screenContent, "ADD A LABOR OPERATION") Then
+        responseText = "" ' Defaults to "N"
+    Else
+        GetReviewPromptAction = False
+    End If
 End Function
 
 Sub EnterReviewPrompt(text)
