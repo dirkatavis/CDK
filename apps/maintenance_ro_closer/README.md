@@ -35,3 +35,10 @@ cscript.exe run_tests.vbs
 - Uses pattern matching from `PM_Match_Criteria.txt` to identify maintenance ROs
 - Maintains exception list for ROs that should not be auto-closed
 - Generates status reports for auditing and verification
+
+## Recent Hardening Goals
+- Prevent review-flow breaks from occasional/unexpected prompts by routing prompt handling through a single resolver path.
+- Ensure fallback behavior is explicit for missing defaults (for example, `ACTUAL HOURS`/`SOLD HOURS` -> `0`, comeback prompt -> `Y`).
+- Keep warranty handling conservative: process configured warranty labor types and skip unsupported `W*` types.
+- Add deterministic tests for prompt actions so new prompt scenarios can be validated without long production runs.
+- Capture unhandled prompt text in logs to accelerate adding new prompt rules and regression test cases.

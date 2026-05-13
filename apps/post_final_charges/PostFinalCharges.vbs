@@ -4101,29 +4101,8 @@ Sub Main(roNumber)
         Exit Sub
     End If
 
-    ' After opening an RO, ensure it has the expected READY TO POST status.
+    ' After opening an RO, ensure it has a valid closeout status.
     If Not IsStatusReady() Then
-        ' Secondary gate: check if this is an older RO with an eligible status for closeout
-        Dim normalizedSkipStatus
-        normalizedSkipStatus = UCase(Trim(CStr(g_LastScrapedStatus)))
-        If IsOlderRoEligibleStatus(normalizedSkipStatus) And IsOlderRo() Then
-            g_OlderRoAttemptCount = g_OlderRoAttemptCount + 1
-            ' Undo the skip counter that IsStatusReady() already incremented,
-            ' since this RO will be processed (not skipped).
-            Select Case normalizedSkipStatus
-                Case "OPEN", "OPENED"
-                    g_SkipStatusOpenCount = g_SkipStatusOpenCount - 1
-                Case "PREASSIGNED", "PRE-ASSIGNED"
-                    g_SkipStatusPreassignedCount = g_SkipStatusPreassignedCount - 1
-            End Select
-            Call LogEvent("comm", "med", "Older RO qualifies for closeout", "Main", "Status: " & g_LastScrapedStatus & " RO: " & currentRODisplay, "")
-            Call Closeout_Ro(g_LastScrapedStatus)
-            If InStr(1, lastRoResult, "Successfully filed", vbTextCompare) > 0 Then
-                g_OlderRoFiledCount = g_OlderRoFiledCount + 1
-            End If
-            Exit Sub
-        End If
-
         Call FastText("E")
         Call FastKey("<NumpadEnter>")
         ' Wait for the command prompt to return to ensure we are in a known state

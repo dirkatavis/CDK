@@ -46,11 +46,18 @@ Dim BLACKLIST_TERMS: BLACKLIST_TERMS = GetConfigSetting("Maintenance_RO_Closer",
 Dim OLD_RO_DAYS_THRESHOLD: OLD_RO_DAYS_THRESHOLD = GetConfigSetting("Maintenance_RO_Closer", "AssumeClosedAfterDays", 120)
 Dim EMPLOYEE_NUMBER: EMPLOYEE_NUMBER = GetConfigSetting("Maintenance_RO_Closer", "EmployeeNumber", "")
 Dim EMPLOYEE_NAME_CONFIRM: EMPLOYEE_NAME_CONFIRM = GetConfigSetting("Maintenance_RO_Closer", "EmployeeNameConfirm", "")
+Dim WARRANTY_LTYPES_RAW: WARRANTY_LTYPES_RAW = GetConfigSetting("Maintenance_RO_Closer", "WarrantyLTypes", "WCH,WF")
+Dim WARRANTY_DIALOG_STEP_DELAY_MS: WARRANTY_DIALOG_STEP_DELAY_MS = GetConfigSetting("Maintenance_RO_Closer", "WarrantyDialogStepDelayMs", 2000)
+Dim FORD_WARRANTY_CAUSE_TEXT: FORD_WARRANTY_CAUSE_TEXT = GetConfigSetting("Maintenance_RO_Closer", "FordWarrantyCauseText", "Defective Part")
+Dim FORD_WARRANTY_LICENSE_STATE: FORD_WARRANTY_LICENSE_STATE = GetConfigSetting("Maintenance_RO_Closer", "FordWarrantyLicenseState", "GA")
 
 Dim g_SkipRoLookup
+Dim g_SupportedWarrantyLTypes
 
 ' --- CDK Objects ---
 Set g_bzhao = CreateObject("BZWhll.WhllObj")
+
+InitializeSupportedWarrantyLTypes
 
 ' --- Main Loop ---
 Sub RunAutomation()
@@ -271,9 +278,11 @@ Function ShouldProcessRoByBusinessRules(roNumber)
 
     LogResult "INFO", "RO " & roNumber & " | Status: " & IIf(isReadyToPost, "READY TO POST", currentStatus) & " | Age: " & IIf(ageDays >= 0, ageDays & " days", "unknown")
 
-    ' Gate 0: Warranty labor type
-    If InStr(1, screenContent, "WCH", vbTextCompare) > 0 Then
-        LogResult "INFO", "RO " & roNumber & " | Warranty labor type (WCH) detected. Skipping."
+    ' Gate 0: Unsupported warranty labor types (only configured types are allowed)
+    Dim unsupportedWarrantyLType
+    unsupportedWarrantyLType = GetFirstUnsupportedWarrantyLaborType()
+    If unsupportedWarrantyLType <> "" Then
+        LogResult "INFO", "RO " & roNumber & " | Unsupported warranty labor type (" & unsupportedWarrantyLType & ") detected. Skipping."
         ShouldProcessRoByBusinessRules = False
         Exit Function
     End If
@@ -302,6 +311,57 @@ Function ShouldProcessRoByBusinessRules(roNumber)
     ' Gate 4: Skip anything else
     LogResult "INFO", "RO " & roNumber & " | Not READY TO POST and age threshold not met. Skipping."
     ShouldProcessRoByBusinessRules = False
+End Function
+
+Sub InitializeSupportedWarrantyLTypes()
+    Dim parts, i, token
+
+    Set g_SupportedWarrantyLTypes = CreateObject("Scripting.Dictionary")
+    parts = Split(UCase(CStr(WARRANTY_LTYPES_RAW)), ",")
+
+    For i = 0 To UBound(parts)
+        token = Trim(parts(i))
+        If token <> "" Then
+            If Not g_SupportedWarrantyLTypes.Exists(token) Then
+                g_SupportedWarrantyLTypes.Add token, True
+            End If
+        End If
+    Next
+
+    LogResult "INFO", "Configured supported warranty labor types: " & WARRANTY_LTYPES_RAW
+End Sub
+
+Function IsSupportedWarrantyLType(lTypeCode)
+    IsSupportedWarrantyLType = False
+    If Not IsObject(g_SupportedWarrantyLTypes) Then Exit Function
+    If g_SupportedWarrantyLTypes.Exists(UCase(Trim(CStr(lTypeCode)))) Then
+        IsSupportedWarrantyLType = True
+    End If
+End Function
+
+Function GetFirstUnsupportedWarrantyLaborType()
+    Dim row, buf, lTypeCode
+    GetFirstUnsupportedWarrantyLaborType = ""
+
+    For row = 9 To 23
+        buf = ""
+        On Error Resume Next
+        g_bzhao.ReadScreen buf, 80, row, 1
+        If Err.Number <> 0 Then Err.Clear
+        On Error GoTo 0
+
+        If Len(buf) >= 55 Then
+            If Mid(buf, 4, 1) = "L" And IsNumeric(Mid(buf, 5, 1)) Then
+                lTypeCode = UCase(Trim(Mid(buf, 50, 6)))
+                If Left(lTypeCode, 1) = "W" Then
+                    If Not IsSupportedWarrantyLType(lTypeCode) Then
+                        GetFirstUnsupportedWarrantyLaborType = lTypeCode
+                        Exit Function
+                    End If
+                End If
+            End If
+        End If
+    Next
 End Function
 
 Function IIf(condition, trueVal, falseVal)
@@ -583,12 +643,16 @@ Function ProcessRoReview()
 End Function
 
 Function HandleReviewPrompts(lineLetter)
-    Dim screenContent, startTime, elapsed, regEx
+    Dim screenContent, startTime, elapsed, regEx, warrantyDialogType, handledWarrantyDialog
+    Dim promptResponse, promptLogLevel, promptLogMessage
+    Dim unhandledPromptText, unhandledPromptSignature, lastUnhandledPromptSignature, lastUnhandledPromptLogTime
     Set regEx = CreateObject("VBScript.RegExp")
     regEx.IgnoreCase = True
     regEx.Global = False
     
     startTime = Timer
+    lastUnhandledPromptSignature = ""
+    lastUnhandledPromptLogTime = -1
     
     Do
         g_bzhao.Pause REVIEW_PAUSE ' Use faster review pause
@@ -600,31 +664,44 @@ Function HandleReviewPrompts(lineLetter)
             HandleReviewPrompts = True
             Exit Function
         End If
+
+        ' Warranty manufacturer dialogs can appear after review prompts (WF/WCH/W).
+        ' Handle them in-line, then continue polling until COMMAND: returns.
+        handledWarrantyDialog = False
+        warrantyDialogType = DetectMaintenanceWarrantyDialog()
+        If warrantyDialogType <> "" Then
+            LogResult "INFO", "HandleReviewPrompts: detected warranty dialog type " & warrantyDialogType & " for Line " & lineLetter
+            HandleMaintenanceWarrantyClaimsDialog warrantyDialogType
+            startTime = Timer
+            handledWarrantyDialog = True
+        End If
         
-        ' Match Prompts using robust patterns
-        ' For field-level prompts in review, we use EnterReviewPrompt for speed
-        If TestPrompt(regEx, screenContent, "LABOR TYPE") Then
-            EnterReviewPrompt ""
-        ' Prefer pattern that explicitly contains a parenthesized default (accept default)
-        ElseIf TestPrompt(regEx, screenContent, "OP CODE.*\([A-Za-z0-9]+\)\?|OPERATION CODE.*\([A-Za-z0-9]+\)\?") Then
-            EnterReviewPrompt ""
-        ' Fallback: no-parenthesis variant (e.g. "OPERATION CODE FOR LINE A, L1?")
-        ElseIf TestPrompt(regEx, screenContent, "OP CODE.*\?|OPERATION CODE.*\?") Then
-            EnterReviewPrompt "I"
-        ElseIf TestPrompt(regEx, screenContent, "DESC:") Then
-            EnterReviewPrompt ""
-        ' TECHNICIAN: accept valid default when present; otherwise force fallback 99
-        ElseIf TestPrompt(regEx, screenContent, "TECHNICIAN.*\([A-Za-z0-9]+\)\?") Then
-            EnterReviewPrompt ""
-        ElseIf TestPrompt(regEx, screenContent, "TECHNICIAN.*\?") Then
-            LogResult "WARN", "TECHNICIAN prompt has no default for Line " & lineLetter & " — sending 99"
-            EnterReviewPrompt "99"
-        ElseIf TestPrompt(regEx, screenContent, "ACTUAL HOURS") Then
-            EnterReviewPrompt ""
-        ElseIf TestPrompt(regEx, screenContent, "SOLD HOURS") Then
-            EnterReviewPrompt ""
-        ElseIf TestPrompt(regEx, screenContent, "ADD A LABOR OPERATION") Then
-            EnterReviewPrompt "" ' Defaults to "N"
+        If Not handledWarrantyDialog Then
+            promptResponse = ""
+            promptLogLevel = ""
+            promptLogMessage = ""
+            If GetReviewPromptAction(regEx, screenContent, lineLetter, promptResponse, promptLogLevel, promptLogMessage) Then
+                If promptLogMessage <> "" Then
+                    LogResult promptLogLevel, promptLogMessage
+                End If
+                EnterReviewPrompt promptResponse
+                lastUnhandledPromptSignature = ""
+                lastUnhandledPromptLogTime = -1
+            Else
+                unhandledPromptText = GetPromptAreaText()
+                unhandledPromptSignature = UCase(Trim(Replace(unhandledPromptText, vbCrLf, "|")))
+
+                ' Throttle repeated logs while still surfacing new prompt text quickly.
+                If unhandledPromptSignature <> "" Then
+                    If (unhandledPromptSignature <> lastUnhandledPromptSignature) Or _
+                       (lastUnhandledPromptLogTime < 0) Or _
+                       ((Timer - lastUnhandledPromptLogTime) > 3) Then
+                        LogResult "WARN", "Unhandled review prompt for Line " & lineLetter & ": " & unhandledPromptText
+                        lastUnhandledPromptSignature = unhandledPromptSignature
+                        lastUnhandledPromptLogTime = Timer
+                    End If
+                End If
+            End If
         End If
         
         elapsed = Timer - startTime
@@ -634,6 +711,73 @@ Function HandleReviewPrompts(lineLetter)
             Exit Function
         End If
     Loop
+End Function
+
+Function GetPromptAreaText()
+    Dim row, buf, lines, lineText
+    lines = ""
+
+    ' Prompt/input area is typically near the bottom of the 24x80 screen.
+    For row = 20 To 24
+        buf = ""
+        On Error Resume Next
+        g_bzhao.ReadScreen buf, 80, row, 1
+        If Err.Number <> 0 Then Err.Clear
+        On Error GoTo 0
+
+        lineText = Trim(CStr(buf))
+        If lineText <> "" Then
+            If lines <> "" Then lines = lines & " | "
+            lines = lines & "R" & CStr(row) & ":" & lineText
+        End If
+    Next
+
+    GetPromptAreaText = lines
+End Function
+
+Function GetReviewPromptAction(regEx, screenContent, lineLetter, ByRef responseText, ByRef logLevel, ByRef logMessage)
+    responseText = ""
+    logLevel = ""
+    logMessage = ""
+    GetReviewPromptAction = True
+
+    ' Match prompts in priority order to avoid broad patterns swallowing specific ones.
+    If TestPrompt(regEx, screenContent, "LABOR TYPE") Then
+        responseText = ""
+    ' Prefer pattern that explicitly contains a parenthesized default (accept default)
+    ElseIf TestPrompt(regEx, screenContent, "OP CODE.*\([A-Za-z0-9]+\)\?|OPERATION CODE.*\([A-Za-z0-9]+\)\?") Then
+        responseText = ""
+    ' Fallback: no-parenthesis variant (e.g. "OPERATION CODE FOR LINE A, L1?")
+    ElseIf TestPrompt(regEx, screenContent, "OP CODE.*\?|OPERATION CODE.*\?") Then
+        responseText = "I"
+    ElseIf TestPrompt(regEx, screenContent, "DESC:") Then
+        responseText = ""
+    ' TECHNICIAN: accept valid default when present; otherwise force fallback 99
+    ElseIf TestPrompt(regEx, screenContent, "TECHNICIAN.*\([A-Za-z0-9]+\)\?") Then
+        responseText = ""
+    ElseIf TestPrompt(regEx, screenContent, "TECHNICIAN.*\?") Then
+        responseText = "99"
+        logLevel = "WARN"
+        logMessage = "TECHNICIAN prompt has no default for Line " & lineLetter & " — sending 99"
+    ' ACTUAL HOURS: accept default if present, otherwise send 0
+    ElseIf TestPrompt(regEx, screenContent, "ACTUAL HOURS.*\([A-Za-z0-9\.]+\)") Then
+        responseText = ""
+    ElseIf TestPrompt(regEx, screenContent, "ACTUAL HOURS.*\?") Then
+        responseText = "0"
+    ' SOLD HOURS: accept default if present, otherwise send 0
+    ElseIf TestPrompt(regEx, screenContent, "SOLD HOURS.*\([A-Za-z0-9\.]+\)") Then
+        responseText = ""
+    ElseIf TestPrompt(regEx, screenContent, "SOLD HOURS.*\?") Then
+        responseText = "0"
+    ElseIf TestPrompt(regEx, screenContent, "IS THIS A COMEBACK.*\(Y/N\)") Then
+        responseText = "Y"
+        logLevel = "INFO"
+        logMessage = "Comeback prompt detected for Line " & lineLetter & " - sending Y"
+    ElseIf TestPrompt(regEx, screenContent, "ADD A LABOR OPERATION") Then
+        responseText = "" ' Defaults to "N"
+    Else
+        GetReviewPromptAction = False
+    End If
 End Function
 
 Sub EnterReviewPrompt(text)
@@ -648,6 +792,213 @@ Function TestPrompt(regEx, text, pattern)
     regEx.Pattern = pattern
     TestPrompt = regEx.Test(text)
 End Function
+
+Function DetectMaintenanceWarrantyDialog()
+    Dim row, buf, hasLaborOp, hasClaimType
+    DetectMaintenanceWarrantyDialog = ""
+    hasLaborOp = False
+    hasClaimType = False
+
+    For row = 1 To 24
+        buf = ""
+        On Error Resume Next
+        g_bzhao.ReadScreen buf, 80, row, 1
+        If Err.Number <> 0 Then Err.Clear
+        On Error GoTo 0
+
+        If InStr(1, buf, "MODIFY FORD REPAIR TYPE INFORMATION", vbTextCompare) > 0 Then
+            DetectMaintenanceWarrantyDialog = "FORD"
+            Exit Function
+        End If
+        If InStr(1, buf, "LABOR OP:", vbTextCompare) > 0 Then hasLaborOp = True
+        If InStr(1, buf, "CLAIM TYPE:", vbTextCompare) > 0 Then hasClaimType = True
+        If InStr(1, buf, "FAILURE CODE:", vbTextCompare) > 0 Or InStr(1, buf, "MODIFY WARRANTY INFORMATION", vbTextCompare) > 0 Then
+            DetectMaintenanceWarrantyDialog = "W"
+            Exit Function
+        End If
+    Next
+
+    ' Require both markers to reduce false positives on non-dialog screens.
+    If hasLaborOp And hasClaimType Then
+        DetectMaintenanceWarrantyDialog = "FCA"
+    End If
+End Function
+
+Sub HandleMaintenanceWarrantyClaimsDialog(dialogType)
+    If dialogType = "FCA" Then
+        HandleMaintenanceFcaWarrantyDialog
+    ElseIf dialogType = "W" Then
+        HandleMaintenanceWWarrantyDialog
+    ElseIf dialogType = "FORD" Then
+        HandleMaintenanceFordWarrantyDialog
+    Else
+        LogResult "WARN", "HandleMaintenanceWarrantyClaimsDialog: unknown dialog type " & dialogType
+    End If
+End Sub
+
+Sub HandleMaintenanceFcaWarrantyDialog()
+    Dim row, buf, detected, i
+    detected = ""
+
+    For i = 1 To 20
+        For row = 20 To 24
+            buf = ""
+            On Error Resume Next
+            g_bzhao.ReadScreen buf, 80, row, 1
+            If Err.Number <> 0 Then Err.Clear
+            On Error GoTo 0
+
+            If InStr(1, buf, "LABOR OP:", vbTextCompare) > 0 Then
+                detected = "LABOROP"
+                Exit For
+            End If
+            If InStr(1, buf, "COMMAND:", vbTextCompare) > 0 Then
+                detected = "COMMAND"
+                Exit For
+            End If
+        Next
+        If detected <> "" Then Exit For
+        g_bzhao.Pause 500
+    Next
+
+    If detected = "LABOROP" Then
+        g_bzhao.SendKey "<NumpadEnter>"
+        g_bzhao.Pause WARRANTY_DIALOG_STEP_DELAY_MS
+        HandleMaintenanceCausePromptLoop FORD_WARRANTY_CAUSE_TEXT
+    ElseIf detected = "COMMAND" Then
+        g_bzhao.SendKey "."
+        g_bzhao.Pause REVIEW_PAUSE
+        g_bzhao.SendKey "<NumpadEnter>"
+        g_bzhao.Pause WARRANTY_DIALOG_STEP_DELAY_MS
+        g_bzhao.SendKey "E"
+        g_bzhao.Pause REVIEW_PAUSE
+        g_bzhao.SendKey "<NumpadEnter>"
+        g_bzhao.Pause REVIEW_PAUSE
+    Else
+        LogResult "WARN", "HandleMaintenanceFcaWarrantyDialog: expected FCA markers not found before timeout."
+    End If
+End Sub
+
+Sub HandleMaintenanceWWarrantyDialog()
+    Dim row, buf, i, commandFound
+    commandFound = False
+
+    For i = 1 To 15
+        For row = 20 To 24
+            buf = ""
+            On Error Resume Next
+            g_bzhao.ReadScreen buf, 80, row, 1
+            If Err.Number <> 0 Then Err.Clear
+            On Error GoTo 0
+            If InStr(1, buf, "WARRANTY COMMAND:", vbTextCompare) > 0 Then
+                commandFound = True
+                Exit For
+            End If
+        Next
+
+        If commandFound Then Exit For
+        g_bzhao.SendKey "<NumpadEnter>"
+        g_bzhao.Pause WARRANTY_DIALOG_STEP_DELAY_MS
+    Next
+
+    If commandFound Then
+        g_bzhao.SendKey "E"
+        g_bzhao.Pause REVIEW_PAUSE
+        g_bzhao.SendKey "<NumpadEnter>"
+        g_bzhao.Pause REVIEW_PAUSE
+    End If
+End Sub
+
+Sub HandleMaintenanceFordWarrantyDialog()
+    Dim vlsRow, vlsBuf, vlsLabelPos, vlsFieldText, vlsCharIdx, startupScreen
+
+    startupScreen = ""
+    On Error Resume Next
+    g_bzhao.ReadScreen startupScreen, 1920, 1, 1
+    If Err.Number <> 0 Then Err.Clear
+    On Error GoTo 0
+
+    If InStr(1, startupScreen, "MODIFY FORD REPAIR TYPE INFORMATION", vbTextCompare) = 0 Then
+        LogResult "WARN", "HandleMaintenanceFordWarrantyDialog: FORD dialog header not found. Skipping Ford dialog handler."
+        Exit Sub
+    End If
+
+    ' Step 1-3: P&A, Ford/L-M Make, Franchise Model (accept defaults)
+    g_bzhao.SendKey "<NumpadEnter>"
+    g_bzhao.Pause WARRANTY_DIALOG_STEP_DELAY_MS
+    g_bzhao.SendKey "<NumpadEnter>"
+    g_bzhao.Pause WARRANTY_DIALOG_STEP_DELAY_MS
+    g_bzhao.SendKey "<NumpadEnter>"
+    g_bzhao.Pause WARRANTY_DIALOG_STEP_DELAY_MS
+
+    ' Step 4: Vehicle License State (type only if blank)
+    vlsLabelPos = 0
+    vlsFieldText = ""
+    For vlsRow = 1 To 24
+        vlsBuf = ""
+        On Error Resume Next
+        g_bzhao.ReadScreen vlsBuf, 80, vlsRow, 1
+        If Err.Number <> 0 Then Err.Clear
+        On Error GoTo 0
+        vlsLabelPos = InStr(1, vlsBuf, "VEHICLE LICENSE STATE:", vbTextCompare)
+        If vlsLabelPos > 0 Then
+            vlsFieldText = Trim(Mid(vlsBuf, vlsLabelPos + 22, 5))
+            Exit For
+        End If
+    Next
+
+    If Len(vlsFieldText) = 0 Then
+        For vlsCharIdx = 1 To Len(FORD_WARRANTY_LICENSE_STATE)
+            g_bzhao.SendKey Mid(FORD_WARRANTY_LICENSE_STATE, vlsCharIdx, 1)
+            g_bzhao.Pause 100
+        Next
+    End If
+    g_bzhao.SendKey "<NumpadEnter>"
+    g_bzhao.Pause WARRANTY_DIALOG_STEP_DELAY_MS
+
+    ' Step 5-6: Repair Type=1, then Command='.'
+    g_bzhao.SendKey "1"
+    g_bzhao.Pause REVIEW_PAUSE
+    g_bzhao.SendKey "<NumpadEnter>"
+    g_bzhao.Pause WARRANTY_DIALOG_STEP_DELAY_MS
+
+    g_bzhao.SendKey "."
+    g_bzhao.Pause REVIEW_PAUSE
+    g_bzhao.SendKey "<NumpadEnter>"
+    g_bzhao.Pause WARRANTY_DIALOG_STEP_DELAY_MS
+
+    HandleMaintenanceCausePromptLoop FORD_WARRANTY_CAUSE_TEXT
+End Sub
+
+Sub HandleMaintenanceCausePromptLoop(causeText)
+    Dim causeRow, causeBuf, causeFound, ci, causePoll
+
+    For ci = 1 To 10
+        causeFound = False
+        For causePoll = 1 To 6
+            For causeRow = 20 To 24
+                causeBuf = ""
+                On Error Resume Next
+                g_bzhao.ReadScreen causeBuf, 80, causeRow, 1
+                If Err.Number <> 0 Then Err.Clear
+                On Error GoTo 0
+                If InStr(1, causeBuf, "CAUSE L", vbTextCompare) > 0 Then
+                    causeFound = True
+                    Exit For
+                End If
+            Next
+            If causeFound Then Exit For
+            g_bzhao.Pause 500
+        Next
+
+        If Not causeFound Then Exit For
+
+        g_bzhao.SendKey causeText
+        g_bzhao.Pause REVIEW_PAUSE
+        g_bzhao.SendKey "<NumpadEnter>"
+        g_bzhao.Pause REVIEW_PAUSE
+    Next
+End Sub
 
 Function CloseRoFinal()
     ' Phase II: The Closing
