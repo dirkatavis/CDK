@@ -36,7 +36,7 @@ cscript.exe run_tests.vbs
 - Maintains exception list for ROs that should not be auto-closed
 - Generates status reports for auditing and verification
 
-## Current Branch Goals (bugfix/remove-older-ro-gate)
+## Recent Hardening Goals
 - Prevent review-flow breaks from occasional/unexpected prompts by routing prompt handling through a single resolver path.
 - Ensure fallback behavior is explicit for missing defaults (for example, `ACTUAL HOURS`/`SOLD HOURS` -> `0`, comeback prompt -> `Y`).
 - Keep warranty handling conservative: process configured warranty labor types and skip unsupported `W*` types.

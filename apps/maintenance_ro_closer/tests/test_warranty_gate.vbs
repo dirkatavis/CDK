@@ -95,9 +95,11 @@ Function BuildStatusPage(ByVal statusText, ByVal laborTypeCode)
     BuildStatusPage = pageBuf
 End Function
 
-Dim scriptPath, fileContent
+Dim scriptPath, fileContent, scriptStream
 scriptPath = g_fso.BuildPath(g_repoRoot, "apps\maintenance_ro_closer\Maintenance_RO_Closer.vbs")
-fileContent = g_fso.OpenTextFile(scriptPath).ReadAll
+Set scriptStream = g_fso.OpenTextFile(scriptPath)
+fileContent = scriptStream.ReadAll
+scriptStream.Close
 fileContent = Replace(fileContent, "Set g_bzhao = CreateObject(""BZWhll.WhllObj"")", "Set g_bzhao = Nothing")
 fileContent = Replace(fileContent, vbCrLf & "' Execute" & vbCrLf & "RunAutomation", vbCrLf & "' Execute disabled during tests")
 ExecuteGlobal fileContent
@@ -108,10 +110,11 @@ Set g_bzhao = fake
 BLACKLIST_TERMS = ""
 OLD_RO_DAYS_THRESHOLD = 999
 DEBUG_LEVEL = 0
-WARRANTY_LTYPES_RAW = "WCH,WF,W"
+WARRANTY_LTYPES_RAW = "WCH,WF"
 InitializeSupportedWarrantyLTypes
 
-AssertEqual "Detect FCA warranty dialog", "FCA", DetectMaintenanceWarrantyDialogFromText("LABOR OP: L1")
+AssertEqual "Detect FCA warranty dialog", "FCA", DetectMaintenanceWarrantyDialogFromText("LABOR OP: L1 CLAIM TYPE: M")
+AssertEqual "Do not over-detect FCA on single marker", "", DetectMaintenanceWarrantyDialogFromText("LABOR OP: L1")
 AssertEqual "Detect W warranty dialog", "W", DetectMaintenanceWarrantyDialogFromText("FAILURE CODE:")
 AssertEqual "Detect FORD warranty dialog", "FORD", DetectMaintenanceWarrantyDialogFromText("MODIFY FORD REPAIR TYPE INFORMATION")
 AssertEqual "No warranty dialog detected on plain screen", "", DetectMaintenanceWarrantyDialogFromText("READY TO POST")

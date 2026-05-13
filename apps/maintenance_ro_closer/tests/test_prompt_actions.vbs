@@ -50,9 +50,11 @@ Sub RunPromptCase(ByVal label, ByVal promptText, ByVal expectedMatched, ByVal ex
     End If
 End Sub
 
-Dim scriptPath, fileContent
+Dim scriptPath, fileContent, scriptStream
 scriptPath = g_fso.BuildPath(g_repoRoot, "apps\maintenance_ro_closer\Maintenance_RO_Closer.vbs")
-fileContent = g_fso.OpenTextFile(scriptPath).ReadAll
+Set scriptStream = g_fso.OpenTextFile(scriptPath)
+fileContent = scriptStream.ReadAll
+scriptStream.Close
 fileContent = Replace(fileContent, "Set g_bzhao = CreateObject(""BZWhll.WhllObj"")", "Set g_bzhao = Nothing")
 fileContent = Replace(fileContent, vbCrLf & "' Execute" & vbCrLf & "RunAutomation", vbCrLf & "' Execute disabled during tests")
 ExecuteGlobal fileContent
@@ -69,8 +71,10 @@ RunPromptCase "Operation code prompt no default", "OPERATION CODE FOR LINE A, L1
 RunPromptCase "Operation code prompt with default", "OPERATION CODE FOR LINE A, L1 (I)?", True, ""
 RunPromptCase "Actual hours no default", "ACTUAL HOURS?", True, "0"
 RunPromptCase "Actual hours with default", "ACTUAL HOURS (3)?", True, ""
+RunPromptCase "Actual hours with decimal default", "ACTUAL HOURS (3.5)?", True, ""
 RunPromptCase "Sold hours no default", "SOLD HOURS?", True, "0"
 RunPromptCase "Sold hours with default", "SOLD HOURS (23): SOLD HOURS?", True, ""
+RunPromptCase "Sold hours with decimal default", "SOLD HOURS (2.0)?", True, ""
 RunPromptCase "Add labor operation", "ADD A LABOR OPERATION (N)?", True, ""
 RunPromptCase "Unknown prompt should not match", "SOME COMPLETELY NEW PROMPT", False, ""
 

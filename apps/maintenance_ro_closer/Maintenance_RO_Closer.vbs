@@ -46,7 +46,7 @@ Dim BLACKLIST_TERMS: BLACKLIST_TERMS = GetConfigSetting("Maintenance_RO_Closer",
 Dim OLD_RO_DAYS_THRESHOLD: OLD_RO_DAYS_THRESHOLD = GetConfigSetting("Maintenance_RO_Closer", "AssumeClosedAfterDays", 120)
 Dim EMPLOYEE_NUMBER: EMPLOYEE_NUMBER = GetConfigSetting("Maintenance_RO_Closer", "EmployeeNumber", "")
 Dim EMPLOYEE_NAME_CONFIRM: EMPLOYEE_NAME_CONFIRM = GetConfigSetting("Maintenance_RO_Closer", "EmployeeNameConfirm", "")
-Dim WARRANTY_LTYPES_RAW: WARRANTY_LTYPES_RAW = GetConfigSetting("Maintenance_RO_Closer", "WarrantyLTypes", "WCH,WF,W")
+Dim WARRANTY_LTYPES_RAW: WARRANTY_LTYPES_RAW = GetConfigSetting("Maintenance_RO_Closer", "WarrantyLTypes", "WCH,WF")
 Dim WARRANTY_DIALOG_STEP_DELAY_MS: WARRANTY_DIALOG_STEP_DELAY_MS = GetConfigSetting("Maintenance_RO_Closer", "WarrantyDialogStepDelayMs", 2000)
 Dim FORD_WARRANTY_CAUSE_TEXT: FORD_WARRANTY_CAUSE_TEXT = GetConfigSetting("Maintenance_RO_Closer", "FordWarrantyCauseText", "Defective Part")
 Dim FORD_WARRANTY_LICENSE_STATE: FORD_WARRANTY_LICENSE_STATE = GetConfigSetting("Maintenance_RO_Closer", "FordWarrantyLicenseState", "GA")
@@ -760,12 +760,12 @@ Function GetReviewPromptAction(regEx, screenContent, lineLetter, ByRef responseT
         logLevel = "WARN"
         logMessage = "TECHNICIAN prompt has no default for Line " & lineLetter & " — sending 99"
     ' ACTUAL HOURS: accept default if present, otherwise send 0
-    ElseIf TestPrompt(regEx, screenContent, "ACTUAL HOURS.*\([A-Za-z0-9]+\)") Then
+    ElseIf TestPrompt(regEx, screenContent, "ACTUAL HOURS.*\([A-Za-z0-9\.]+\)") Then
         responseText = ""
     ElseIf TestPrompt(regEx, screenContent, "ACTUAL HOURS.*\?") Then
         responseText = "0"
     ' SOLD HOURS: accept default if present, otherwise send 0
-    ElseIf TestPrompt(regEx, screenContent, "SOLD HOURS.*\([A-Za-z0-9]+\)") Then
+    ElseIf TestPrompt(regEx, screenContent, "SOLD HOURS.*\([A-Za-z0-9\.]+\)") Then
         responseText = ""
     ElseIf TestPrompt(regEx, screenContent, "SOLD HOURS.*\?") Then
         responseText = "0"
@@ -794,8 +794,10 @@ Function TestPrompt(regEx, text, pattern)
 End Function
 
 Function DetectMaintenanceWarrantyDialog()
-    Dim row, buf
+    Dim row, buf, hasLaborOp, hasClaimType
     DetectMaintenanceWarrantyDialog = ""
+    hasLaborOp = False
+    hasClaimType = False
 
     For row = 1 To 24
         buf = ""
@@ -808,15 +810,18 @@ Function DetectMaintenanceWarrantyDialog()
             DetectMaintenanceWarrantyDialog = "FORD"
             Exit Function
         End If
-        If InStr(1, buf, "LABOR OP:", vbTextCompare) > 0 Or InStr(1, buf, "CLAIM TYPE:", vbTextCompare) > 0 Then
-            DetectMaintenanceWarrantyDialog = "FCA"
-            Exit Function
-        End If
+        If InStr(1, buf, "LABOR OP:", vbTextCompare) > 0 Then hasLaborOp = True
+        If InStr(1, buf, "CLAIM TYPE:", vbTextCompare) > 0 Then hasClaimType = True
         If InStr(1, buf, "FAILURE CODE:", vbTextCompare) > 0 Or InStr(1, buf, "MODIFY WARRANTY INFORMATION", vbTextCompare) > 0 Then
             DetectMaintenanceWarrantyDialog = "W"
             Exit Function
         End If
     Next
+
+    ' Require both markers to reduce false positives on non-dialog screens.
+    If hasLaborOp And hasClaimType Then
+        DetectMaintenanceWarrantyDialog = "FCA"
+    End If
 End Function
 
 Sub HandleMaintenanceWarrantyClaimsDialog(dialogType)
@@ -869,6 +874,8 @@ Sub HandleMaintenanceFcaWarrantyDialog()
         g_bzhao.Pause REVIEW_PAUSE
         g_bzhao.SendKey "<NumpadEnter>"
         g_bzhao.Pause REVIEW_PAUSE
+    Else
+        LogResult "WARN", "HandleMaintenanceFcaWarrantyDialog: expected FCA markers not found before timeout."
     End If
 End Sub
 
@@ -903,7 +910,18 @@ Sub HandleMaintenanceWWarrantyDialog()
 End Sub
 
 Sub HandleMaintenanceFordWarrantyDialog()
-    Dim vlsRow, vlsBuf, vlsLabelPos, vlsFieldText, vlsCharIdx
+    Dim vlsRow, vlsBuf, vlsLabelPos, vlsFieldText, vlsCharIdx, startupScreen
+
+    startupScreen = ""
+    On Error Resume Next
+    g_bzhao.ReadScreen startupScreen, 1920, 1, 1
+    If Err.Number <> 0 Then Err.Clear
+    On Error GoTo 0
+
+    If InStr(1, startupScreen, "MODIFY FORD REPAIR TYPE INFORMATION", vbTextCompare) = 0 Then
+        LogResult "WARN", "HandleMaintenanceFordWarrantyDialog: FORD dialog header not found. Skipping Ford dialog handler."
+        Exit Sub
+    End If
 
     ' Step 1-3: P&A, Ford/L-M Make, Franchise Model (accept defaults)
     g_bzhao.SendKey "<NumpadEnter>"

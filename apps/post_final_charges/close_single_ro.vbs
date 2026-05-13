@@ -17,7 +17,7 @@ Sub Main()
         Exit Sub
     End If
 
-    ' 3. FC command (Final Charge) — only after all reviews pass
+    ' 3. F command (Final Charge) — only after all reviews pass
     If Not WaitForTextAtBottom("COMMAND:") Then Exit Sub
     EnterTextAndWait "F"
     bzhao.Pause 1000
