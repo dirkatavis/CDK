@@ -50,9 +50,11 @@ Dim WARRANTY_LTYPES_RAW: WARRANTY_LTYPES_RAW = GetConfigSetting("Maintenance_RO_
 Dim WARRANTY_DIALOG_STEP_DELAY_MS: WARRANTY_DIALOG_STEP_DELAY_MS = GetConfigSetting("Maintenance_RO_Closer", "WarrantyDialogStepDelayMs", 2000)
 Dim FORD_WARRANTY_CAUSE_TEXT: FORD_WARRANTY_CAUSE_TEXT = GetConfigSetting("Maintenance_RO_Closer", "FordWarrantyCauseText", "Defective Part")
 Dim FORD_WARRANTY_LICENSE_STATE: FORD_WARRANTY_LICENSE_STATE = GetConfigSetting("Maintenance_RO_Closer", "FordWarrantyLicenseState", "GA")
+Dim SCRIPT_BUILD_TAG: SCRIPT_BUILD_TAG = "2026-05-14-no-error-suppression"
 
 Dim g_SkipRoLookup
 Dim g_SupportedWarrantyLTypes
+Dim g_ReviewPhaseResult
 
 ' --- CDK Objects ---
 Set g_bzhao = CreateObject("BZWhll.WhllObj")
@@ -74,28 +76,20 @@ Sub RunAutomation()
     End If
 
     LogResult "INFO", "Starting Maintenance RO Auto-Closer using list: " & RO_LIST_PATH
+    LogResult "INFO", "Script build: " & SCRIPT_BUILD_TAG
     
     ' Load SkipRoList (required configuration for deterministic skip behavior)
     LoadSkipRoLookup SKIP_RO_LIST_PATH
     LogResult "INFO", "SkipRoList loaded from: " & SKIP_RO_LIST_PATH & " (entries=" & g_SkipRoLookup.Count & ")"
     
     ' Connect to terminal only after configuration and file existence are verified
-    On Error Resume Next
     g_bzhao.Connect ""
-    If Err.Number <> 0 Then
-        LogResult "ERROR", "Failed to connect to BlueZone: " & Err.Description
-        MsgBox "Failed to connect to BlueZone terminal session.", vbCritical
-        Exit Sub
-    End If
-    On Error GoTo 0
     
     ' Start processing with unified error handling
     ProcessRoList fso, successfulCount
     
     ' Final graceful disconnect
-    On Error Resume Next
     If Not g_bzhao Is Nothing Then g_bzhao.Disconnect
-    On Error GoTo 0
 
     LogResult "INFO", "Automation complete. Total successful closures: " & successfulCount
     MsgBox "Maintenance RO Auto-Closer Finished." & vbCrLf & "Successful Closures: " & successfulCount, vbInformation
@@ -104,22 +98,11 @@ End Sub
 ' --- Helper Subroutines & Functions ---
 
 Sub ProcessRoList(fso, ByRef successfulCount)
-    Dim ts, strLine, roFromCsv, currentRo
+    Dim ts, strLine, roFromCsv, currentRo, reviewOk
     
-    On Error Resume Next
     Set ts = fso.OpenTextFile(RO_LIST_PATH, 1) ' 1 = ForReading
-    
-    If Err.Number <> 0 Then
-        LogResult "ERROR", "CRITICAL: Failed to open RO List file: " & Err.Description
-        MsgBox "Failed to open RO List: " & RO_LIST_PATH, vbCritical
-        Exit Sub
-    End If
 
     Do While Not ts.AtEndOfStream
-        If Err.Number <> 0 Then 
-            LogResult "ERROR", "Unexpected runtime error: " & Err.Description
-            Err.Clear
-        End If
 
         strLine = Trim(ts.ReadLine)
         If strLine <> "" Then
@@ -145,7 +128,15 @@ Sub ProcessRoList(fso, ByRef successfulCount)
                 If IsRoProcessable(currentRo) Then
                     LogResult "INFO", "RO " & currentRo & " is processable."
                     If ShouldProcessRoByBusinessRules(currentRo) Then
-                        If ProcessRoReview() Then
+                        reviewOk = ProcessRoReview()
+                        If Err.Number <> 0 Then
+                            LogResult "ERROR", "TRACE: ProcessRoReview runtime error for RO " & currentRo & " | Err=" & Err.Number & " | Desc=" & Err.Description
+                            Err.Clear
+                            reviewOk = False
+                            g_ReviewPhaseResult = "FAILED"
+                        End If
+
+                        If reviewOk Then
                             If CloseRoFinal() Then
                                 LogResult "INFO", "SUCCESS: RO " & currentRo & " finalized and closed."
                                 successfulCount = successfulCount + 1
@@ -153,8 +144,15 @@ Sub ProcessRoList(fso, ByRef successfulCount)
                                 LogResult "ERROR", "Failed to close RO: " & currentRo & " during Phase II."
                             End If
                         Else
-                            LogResult "ERROR", "Failed to complete review for RO: " & currentRo & " during Phase I."
+                            If g_ReviewPhaseResult = "SKIPPED" Then
+                                LogResult "INFO", "RO " & currentRo & " skipped during review phase."
+                            Else
+                                LogResult "ERROR", "Failed to complete review for RO: " & currentRo & " during Phase I."
+                            End If
                         End If
+                    Else
+                        LogResult "INFO", "RO " & currentRo & " skipped by business gates. Sending 'E'."
+                        EnterTextWithStability "E"
                     End If
                 End If
 
@@ -172,7 +170,6 @@ Sub ProcessRoList(fso, ByRef successfulCount)
         ts.Close
         Set ts = Nothing
     End If
-    On Error GoTo 0
 End Sub
 
 Sub LoadSkipRoLookup(skipListPath)
@@ -260,8 +257,8 @@ Function ShouldProcessRoByBusinessRules(roNumber)
     ' RO Status                    | Condition                        | Action
     ' -----------------------------+----------------------------------+--------
     ' Any                          | Blacklisted (any page)           | SKIP
-    ' Any (non-blacklisted)        | Age >= AssumeClosedAfterDays     | CLOSE  (overrides status)
-    ' READY TO POST                | (none)                           | CLOSE
+    ' Any (non-blacklisted)        | Age >= AssumeClosedAfterDays     | PROCESS (overrides status)
+    ' READY TO POST                | (none)                           | PROCESS
     ' Any other                    | (none)                           | SKIP
     '
     ' Rules evaluated top to bottom. First match wins.
@@ -296,14 +293,14 @@ Function ShouldProcessRoByBusinessRules(roNumber)
 
     ' Gate 2: Age exception — overrides status check but not blacklist
     If isOldEnough Then
-        LogResult "INFO", "RO " & roNumber & " | Age exception: " & ageDays & " days old (threshold: " & OLD_RO_DAYS_THRESHOLD & "). Closing regardless of status."
+        LogResult "INFO", "RO " & roNumber & " | Age exception: " & ageDays & " days old (threshold: " & OLD_RO_DAYS_THRESHOLD & "). Proceeding regardless of status."
         ShouldProcessRoByBusinessRules = True
         Exit Function
     End If
 
     ' Gate 3: READY TO POST
     If isReadyToPost Then
-        LogResult "INFO", "RO " & roNumber & " | READY TO POST. Closing."
+        LogResult "INFO", "RO " & roNumber & " | READY TO POST. Proceeding."
         ShouldProcessRoByBusinessRules = True
         Exit Function
     End If
@@ -345,10 +342,7 @@ Function GetFirstUnsupportedWarrantyLaborType()
 
     For row = 9 To 23
         buf = ""
-        On Error Resume Next
         g_bzhao.ReadScreen buf, 80, row, 1
-        If Err.Number <> 0 Then Err.Clear
-        On Error GoTo 0
 
         If Len(buf) >= 55 Then
             If Mid(buf, 4, 1) = "L" And IsNumeric(Mid(buf, 5, 1)) Then
@@ -475,16 +469,7 @@ Function TryParseCdkDate(rawDateValue, ByRef parsedDate)
         yearNumber = CInt(yearPart)
     End If
 
-    On Error Resume Next
     parsedDate = DateSerial(yearNumber, monthNumber, dayNumber)
-    If Err.Number <> 0 Then
-        Err.Clear
-        On Error GoTo 0
-        TryParseCdkDate = False
-        Exit Function
-    End If
-    On Error GoTo 0
-
     TryParseCdkDate = True
 End Function
 
@@ -574,7 +559,7 @@ End Function
 
 Function ScanVisibleLineHeaders()
     Dim i, row, buf, lineLetter, statusCode, description, recordKey
-    Dim records, recordCount
+    Dim records, recordCount, lineLettersSummary, key
     
     ' Clear cache before scan
     Set g_CurrentPageLineRecords = CreateObject("Scripting.Dictionary")
@@ -584,44 +569,102 @@ Function ScanVisibleLineHeaders()
     ' Scan rows 10-22 (line-letter header rows before prompt area)
     For row = 10 To 22
         buf = ""
-        On Error Resume Next
         g_bzhao.ReadScreen buf, 80, row, 1
-        If Err.Number <> 0 Then
-            Err.Clear
-            Exit For
-        End If
-        On Error GoTo 0
         
         If Len(buf) >= 1 Then
-            lineLetter = Trim(Mid(buf, 1, 1))
-            
+            lineLetter = ExtractLineLetterFromHeaderRow(buf)
+
             ' Validate it's a line letter (A-Z)
             If Len(lineLetter) = 1 And Asc(UCase(lineLetter)) >= Asc("A") And Asc(UCase(lineLetter)) <= Asc("Z") Then
-                ' Extract status code from columns 42-49
+                ' Extract status code with fixed-column first, then pattern fallback
                 statusCode = ""
                 If Len(buf) >= 49 Then
                     statusCode = Trim(Mid(buf, 42, 8))
                 End If
-                
+                If Not IsLikelyLineStatusCode(statusCode) Then
+                    statusCode = ExtractStatusCodeFromHeaderRow(buf)
+                End If
+
                 ' Extract description from columns 4-41
                 description = ""
                 If Len(buf) >= 41 Then
                     description = Trim(Mid(buf, 4, 38))
                 End If
-                
-                ' Store in cache with line letter as key
+
+                ' Store in cache with line letter as key (prevent duplicate row captures)
                 recordKey = UCase(lineLetter)
-                Dim lineRecord
-                Set lineRecord = CreateLineRecord(lineLetter, statusCode, row, description)
-                g_CurrentPageLineRecords.Add recordKey, lineRecord
-                
-                recordCount = recordCount + 1
-                LogResult "INFO", "ScanVisibleLineHeaders: Line " & lineLetter & " status=" & statusCode & " desc=" & description
+                If Not g_CurrentPageLineRecords.Exists(recordKey) Then
+                    Dim lineRecord
+                    Set lineRecord = CreateLineRecord(lineLetter, statusCode, row, description)
+                    g_CurrentPageLineRecords.Add recordKey, lineRecord
+
+                    recordCount = recordCount + 1
+                    LogResult "INFO", "ScanVisibleLineHeaders: Line " & lineLetter & " status=" & statusCode & " desc=" & description
+                End If
             End If
         End If
     Next
+
+    If recordCount > 0 Then
+        lineLettersSummary = ""
+        For Each key In g_CurrentPageLineRecords.Keys
+            If lineLettersSummary <> "" Then
+                lineLettersSummary = lineLettersSummary & ","
+            End If
+            lineLettersSummary = lineLettersSummary & CStr(key)
+        Next
+        LogResult "INFO", "ScanVisibleLineHeaders: Visible lines=" & lineLettersSummary
+    End If
     
     ScanVisibleLineHeaders = recordCount
+End Function
+
+Function ExtractLineLetterFromHeaderRow(rowText)
+    Dim colIdx, ch
+    ExtractLineLetterFromHeaderRow = ""
+
+    ' Primary: first three columns where RO line letters appear most often.
+    For colIdx = 1 To 3
+        If Len(rowText) >= colIdx Then
+            ch = UCase(Mid(rowText, colIdx, 1))
+            If ch >= "A" And ch <= "Z" Then
+                ExtractLineLetterFromHeaderRow = ch
+                Exit Function
+            End If
+        End If
+    Next
+End Function
+
+Function IsLikelyLineStatusCode(statusCode)
+    Dim normalized
+    normalized = UCase(Trim(CStr(statusCode)))
+
+    If Len(normalized) < 3 Then
+        IsLikelyLineStatusCode = False
+        Exit Function
+    End If
+
+    If Left(normalized, 1) <> "C" And Left(normalized, 1) <> "I" And Left(normalized, 1) <> "H" Then
+        IsLikelyLineStatusCode = False
+        Exit Function
+    End If
+
+    IsLikelyLineStatusCode = IsNumeric(Mid(normalized, 2, Len(normalized) - 1))
+End Function
+
+Function ExtractStatusCodeFromHeaderRow(rowText)
+    Dim re, matches
+    ExtractStatusCodeFromHeaderRow = ""
+
+    Set re = CreateObject("VBScript.RegExp")
+    re.Global = False
+    re.IgnoreCase = True
+    re.Pattern = "([CIH][0-9]{2,3})"
+
+    If re.Test(rowText) Then
+        Set matches = re.Execute(rowText)
+        ExtractStatusCodeFromHeaderRow = UCase(matches(0).SubMatches(0))
+    End If
 End Function
 
 Function GetLineStatus(lineLetter)
@@ -726,10 +769,14 @@ End Function
 Function ProcessRoReview()
     Dim screenContent, pageCount, gateResult, processedLetters, i, recordKey, record
     Dim lineLetter, status, action, rereadCount
+    Dim hasScannedLines, hasActionableLine
     
     pageCount = 0
     Set processedLetters = CreateObject("Scripting.Dictionary")
+    g_ReviewPhaseResult = "PROCEED"
     ProcessRoReview = True
+    hasScannedLines = False
+    hasActionableLine = False
     
     ' === Page Loop: Process all pages of the RO detail ===
     Do
@@ -744,18 +791,28 @@ Function ProcessRoReview()
             LogResult "INFO", "ProcessRoReview: No lines found on page " & pageCount & ". Review complete."
             Exit Do
         End If
+        hasScannedLines = True
         
         ' === RO-Level Gate: Check for early-skip conditions ===
-        ' Only check on first page to avoid redundant checks
-        If pageCount = 1 Then
-            gateResult = CheckRoLineStatuses()
-            If gateResult = "HOLD_DETECTED" Then
-                LogResult "INFO", "ProcessRoReview: RO has line(s) on hold. Skipping review."
+        ' Check each page for hold conditions.
+        gateResult = CheckRoLineStatuses()
+        LogResult "INFO", "ProcessRoReview: page=" & pageCount & " gateResult=" & gateResult
+        If gateResult = "HOLD_DETECTED" Then
+            LogResult "INFO", "ProcessRoReview: RO has line(s) on hold. Skipping review."
+            EnterTextWithStability "E"
+            g_ReviewPhaseResult = "SKIPPED"
+            ProcessRoReview = False
+            Exit Function
+        ElseIf gateResult = "ALL_REVIEWED" Then
+            ' Deterministic single-page fast path: if this page is the end, skip now.
+            g_bzhao.ReadScreen screenContent, 1920, 1, 1
+            If InStr(1, screenContent, "(END OF DISPLAY)", vbTextCompare) > 0 Then
+                LogResult "INFO", "ProcessRoReview: All lines are C93 and end-of-display reached. Skipping review phase."
+                EnterTextWithStability "E"
+                g_ReviewPhaseResult = "SKIPPED"
                 ProcessRoReview = False
                 Exit Function
             End If
-            ' NOTE: Even if ALL_REVIEWED, we must still send R for each line before F.
-            ' Do not exit early; continue to per-line processing loop.
         End If
         
         ' === Per-Line Routing: Status-first decision ===
@@ -769,6 +826,9 @@ Function ProcessRoReview()
                 Else
                     status = record("statusCode")
                     action = GetLineActionFromStatus(status)
+                    If action <> "SKIP_REVIEWED" Then
+                        hasActionableLine = True
+                    End If
                 
                     LogResult "INFO", "ProcessRoReview: Line " & lineLetter & " status=" & status & " action=" & action
                 
@@ -780,22 +840,15 @@ Function ProcessRoReview()
                             g_bzhao.Pause STABILITY_PAUSE
                             If Not HandleReviewPrompts(lineLetter) Then
                                 LogResult "ERROR", "ProcessRoReview: Review failed for line " & lineLetter
+                                g_ReviewPhaseResult = "FAILED"
                                 ProcessRoReview = False
                                 Exit Function
                             End If
                             processedLetters.Add lineLetter, True
                         
                         Case "SKIP_REVIEWED"
-                            ' C93: already reviewed, but still need to send R before F
-                            LogResult "INFO", "ProcessRoReview: Line " & lineLetter & " status C93. Sending R to acknowledge."
-                            WaitForText "COMMAND:"
-                            EnterTextWithStability "R " & lineLetter
-                            g_bzhao.Pause STABILITY_PAUSE
-                            If Not HandleReviewPrompts(lineLetter) Then
-                                LogResult "ERROR", "ProcessRoReview: Review failed for line " & lineLetter
-                                ProcessRoReview = False
-                                Exit Function
-                            End If
+                            ' C93: already reviewed
+                            LogResult "INFO", "ProcessRoReview: Line " & lineLetter & " already reviewed (C93). Skipping review."
                             processedLetters.Add lineLetter, True
                         
                         Case "FINISH_AND_REROUTE"
@@ -825,6 +878,7 @@ Function ProcessRoReview()
                                 g_bzhao.Pause STABILITY_PAUSE
                                 If Not HandleReviewPrompts(lineLetter) Then
                                     LogResult "ERROR", "ProcessRoReview: Review failed for line " & lineLetter & " after FNL"
+                                    g_ReviewPhaseResult = "FAILED"
                                     ProcessRoReview = False
                                     Exit Function
                                 End If
@@ -836,6 +890,7 @@ Function ProcessRoReview()
                         Case "SKIP_RO_ON_HOLD"
                             ' Should not reach here due to RO-level gate, but handle it anyway
                             LogResult "ERROR", "ProcessRoReview: Line " & lineLetter & " is on hold. RO-level gate should have caught this."
+                            g_ReviewPhaseResult = "FAILED"
                             ProcessRoReview = False
                             Exit Function
                         
@@ -860,7 +915,18 @@ Function ProcessRoReview()
             g_bzhao.Pause STABILITY_PAUSE
         End If
     Loop
-    
+
+    ' If all scanned lines across all pages were C93, skip with E.
+    If hasScannedLines And Not hasActionableLine Then
+        LogResult "INFO", "ProcessRoReview: All scanned lines are C93 across all pages. Skipping review phase."
+        EnterTextWithStability "E"
+        g_ReviewPhaseResult = "SKIPPED"
+        ProcessRoReview = False
+        Exit Function
+    End If
+
+    LogResult "INFO", "ProcessRoReview: hasScannedLines=" & hasScannedLines & " hasActionableLine=" & hasActionableLine & " -> proceed"
+
     ProcessRoReview = True
 End Function
 
@@ -942,10 +1008,7 @@ Function GetPromptAreaText()
     ' Prompt/input area is typically near the bottom of the 24x80 screen.
     For row = 20 To 24
         buf = ""
-        On Error Resume Next
         g_bzhao.ReadScreen buf, 80, row, 1
-        If Err.Number <> 0 Then Err.Clear
-        On Error GoTo 0
 
         lineText = Trim(CStr(buf))
         If lineText <> "" Then
@@ -1023,10 +1086,7 @@ Function DetectMaintenanceWarrantyDialog()
 
     For row = 1 To 24
         buf = ""
-        On Error Resume Next
         g_bzhao.ReadScreen buf, 80, row, 1
-        If Err.Number <> 0 Then Err.Clear
-        On Error GoTo 0
 
         If InStr(1, buf, "MODIFY FORD REPAIR TYPE INFORMATION", vbTextCompare) > 0 Then
             DetectMaintenanceWarrantyDialog = "FORD"
@@ -1065,10 +1125,7 @@ Sub HandleMaintenanceFcaWarrantyDialog()
     For i = 1 To 20
         For row = 20 To 24
             buf = ""
-            On Error Resume Next
             g_bzhao.ReadScreen buf, 80, row, 1
-            If Err.Number <> 0 Then Err.Clear
-            On Error GoTo 0
 
             If InStr(1, buf, "LABOR OP:", vbTextCompare) > 0 Then
                 detected = "LABOROP"
@@ -1108,10 +1165,7 @@ Sub HandleMaintenanceWWarrantyDialog()
     For i = 1 To 15
         For row = 20 To 24
             buf = ""
-            On Error Resume Next
             g_bzhao.ReadScreen buf, 80, row, 1
-            If Err.Number <> 0 Then Err.Clear
-            On Error GoTo 0
             If InStr(1, buf, "WARRANTY COMMAND:", vbTextCompare) > 0 Then
                 commandFound = True
                 Exit For
@@ -1135,10 +1189,7 @@ Sub HandleMaintenanceFordWarrantyDialog()
     Dim vlsRow, vlsBuf, vlsLabelPos, vlsFieldText, vlsCharIdx, startupScreen
 
     startupScreen = ""
-    On Error Resume Next
     g_bzhao.ReadScreen startupScreen, 1920, 1, 1
-    If Err.Number <> 0 Then Err.Clear
-    On Error GoTo 0
 
     If InStr(1, startupScreen, "MODIFY FORD REPAIR TYPE INFORMATION", vbTextCompare) = 0 Then
         LogResult "WARN", "HandleMaintenanceFordWarrantyDialog: FORD dialog header not found. Skipping Ford dialog handler."
@@ -1158,10 +1209,7 @@ Sub HandleMaintenanceFordWarrantyDialog()
     vlsFieldText = ""
     For vlsRow = 1 To 24
         vlsBuf = ""
-        On Error Resume Next
         g_bzhao.ReadScreen vlsBuf, 80, vlsRow, 1
-        If Err.Number <> 0 Then Err.Clear
-        On Error GoTo 0
         vlsLabelPos = InStr(1, vlsBuf, "VEHICLE LICENSE STATE:", vbTextCompare)
         If vlsLabelPos > 0 Then
             vlsFieldText = Trim(Mid(vlsBuf, vlsLabelPos + 22, 5))
@@ -1200,10 +1248,7 @@ Sub HandleMaintenanceCausePromptLoop(causeText)
         For causePoll = 1 To 6
             For causeRow = 20 To 24
                 causeBuf = ""
-                On Error Resume Next
                 g_bzhao.ReadScreen causeBuf, 80, causeRow, 1
-                If Err.Number <> 0 Then Err.Clear
-                On Error GoTo 0
                 If InStr(1, causeBuf, "CAUSE L", vbTextCompare) > 0 Then
                     causeFound = True
                     Exit For
@@ -1350,13 +1395,9 @@ Sub LogResult(logType, message)
     
     If typeLevel <= DEBUG_LEVEL Then
         Set fso = CreateObject("Scripting.FileSystemObject")
-        On Error Resume Next
         Set logFile = fso.OpenTextFile(LOG_FILE_PATH, 8, True)
-        If Err.Number = 0 Then
-            logFile.WriteLine Now & " [" & logType & "] " & message
-            logFile.Close
-        End If
-        On Error GoTo 0
+        logFile.WriteLine Now & " [" & logType & "] " & message
+        logFile.Close
         Set logFile = Nothing
         Set fso = Nothing
     End If
@@ -1364,12 +1405,10 @@ End Sub
 
 Sub TerminateScript(reason)
     LogResult "ERROR", "TERMINATING SCRIPT: " & reason
-    On Error Resume Next
     If Not g_bzhao Is Nothing Then
         g_bzhao.Disconnect
         g_bzhao.StopScript
     End If
-    On Error GoTo 0
     Host_Quit
 End Sub
 

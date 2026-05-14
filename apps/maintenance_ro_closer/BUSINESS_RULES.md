@@ -22,7 +22,7 @@ The script applies **2 line-level gates immediately on entry to ProcessRoReview*
 │
 ├─ Gate 2: Age Exception (OVERRIDES Gate 3)
 │  IF RO age >= 30 days THEN
-│     PROCESS and EXIT (closes old ROs regardless of READY TO POST status)
+│     PROCESS and EXIT (process old ROs regardless of READY TO POST status)
 │  END IF
 │
 ├─ Gate 3: READY TO POST Status
@@ -96,7 +96,7 @@ The script applies **2 line-level gates immediately on entry to ProcessRoReview*
 **Priority:** HIGH — overrides normal status requirements
 - **Rule:** If RO age ≥ `OLD_RO_DAYS_THRESHOLD` (default: 30 days)
 - **Action:** Process and EXIT function immediately (skip Gate 3)
-- **Log:** `"Age exception: ... days old (threshold: 30). Closing regardless of status."`
+- **Log:** `"Age exception: ... days old (threshold: 30). Proceeding regardless of status."`
 - **Rationale:** Business rule to clean up old stuck ROs
 - **Overrides:** Gate 3 (READY TO POST check) — old ROs process even if NOT ready
 - **Overridden By:** Gate 0, Gate 1 (cannot override unsupported labor or blacklist)
@@ -108,7 +108,7 @@ The script applies **2 line-level gates immediately on entry to ProcessRoReview*
 **Priority:** NORMAL — standard operational requirement
 - **Rule:** If RO status is "READY TO POST"
 - **Action:** Process
-- **Log:** `"READY TO POST. Closing."`
+- **Log:** `"READY TO POST. Proceeding."`
 - **Rationale:** Default eligibility check
 - **Overrides:** Nothing (this gate has no override power)
 - **Overridden By:** Gate 2 (age exception) — if RO is old, this gate is skipped
@@ -189,20 +189,20 @@ Once ProcessRoReview runs (after RO-level gates pass), individual lines are proc
 ### Scenario
 ```
 Age Exception (Gate 2):
-  "RO is 316 days old → CLOSE regardless of READY TO POST status"
+   "RO is 316 days old -> PROCESS regardless of READY TO POST status"
     ↓
 Line Gate 2 (All-Reviewed):
   "All lines are C93 (already reviewed) → Skip re-review, finalize only"
 ```
 
 ### Outcome (INTENDED DESIGN)
-- Exception says: "This old RO must be closed/finalized"
+- Exception says: "This old RO must be processed"
 - Line gate says: "Lines are already reviewed (C93), so skip redundant review work"
 - **Result:** RO is finalized without re-reviewing C93 lines (efficient)
 
 ### Why This Is Correct
 1. **C93 = Already Reviewed:** Re-reviewing C93 lines wastes time and terminal interactions
-2. **Age Exception Purpose:** Close old ROs that are stuck/forgotten, not to force re-review
+2. **Age Exception Purpose:** Process old ROs that are stuck/forgotten, not to force re-review
 3. **Optimization:** If all lines are done (C93), jump to finalization step (F/Y sequence)
 4. **Production Behavior:** Logs show successful closures with this approach (ROs 807231, 810245, 835900, 843321, 843593, 843602, 872458)
 
@@ -222,7 +222,7 @@ Line Gate 2 ALWAYS BLOCKS: If any line is Hxx (hold)
 
 ## Design Principle
 
-**Exception = "Close this RO"**
+**Exception = "Process this RO"**
 - Overrides normal status checks (READY TO POST)
 - Does NOT mean "re-review everything"
 - Works with line-level gates to optimize work
@@ -233,3 +233,52 @@ Line Gate 2 ALWAYS BLOCKS: If any line is Hxx (hold)
 - Reduces unnecessary terminal interactions and time
 
 **Combined Effect:** Old stuck ROs with all-reviewed lines are finalized efficiently without redundant terminal work.
+
+---
+
+## Process Flow Diagram (Current)
+
+```mermaid
+flowchart TD
+   A[Start ProcessRoReview] --> B[ScanVisibleLineHeaders]
+   B --> C{Any lines found?}
+   C -- No --> Z[Return True to caller]
+   C -- Yes --> D{First page?}
+   D -- Yes --> E[CheckRoLineStatuses]
+   D -- No --> G[Per-line loop]
+   E --> F{Any Hxx line?}
+   F -- Yes --> X[Return False: skip RO]
+   F -- No --> G[Per-line loop]
+
+   G --> H{Line already processed?}
+   H -- Yes --> G
+   H -- No --> I[Map status to action]
+
+   I --> J[C92 -> REVIEW]
+   I --> K[C93 -> SKIP_REVIEWED]
+   I --> L[Ixx -> FINISH_AND_REROUTE]
+   I --> M[Unknown -> SKIP_UNKNOWN]
+
+   J --> N[Send R line and handle prompts]
+   K --> O[Send R line and handle prompts]
+   L --> P[Send FNL line, re-scan, re-route]
+   M --> Q[Log and mark processed]
+
+   N --> R[Mark line processed]
+   O --> R
+   P --> R
+   Q --> R
+
+   R --> S{More lines on page?}
+   S -- Yes --> G
+   S -- No --> T{End of display?}
+   T -- No --> U[Send N for next page]
+   U --> B
+   T -- Yes --> Z
+
+   Z --> Y[Caller sends F then Y]
+```
+
+Notes:
+- Hold detection can stop processing at RO level.
+- C92 requires review prompts; C93 is already reviewed and skips review prompts.
