@@ -753,11 +753,9 @@ Function ProcessRoReview()
                 LogResult "INFO", "ProcessRoReview: RO has line(s) on hold. Skipping review."
                 ProcessRoReview = False
                 Exit Function
-            ElseIf gateResult = "ALL_REVIEWED" Then
-                LogResult "INFO", "ProcessRoReview: All lines already C93 reviewed. Skipping review."
-                ProcessRoReview = True
-                Exit Function
             End If
+            ' NOTE: Even if ALL_REVIEWED, we must still send R for each line before F.
+            ' Do not exit early; continue to per-line processing loop.
         End If
         
         ' === Per-Line Routing: Status-first decision ===
@@ -788,8 +786,16 @@ Function ProcessRoReview()
                             processedLetters.Add lineLetter, True
                         
                         Case "SKIP_REVIEWED"
-                            ' C93: already reviewed
-                            LogResult "INFO", "ProcessRoReview: Line " & lineLetter & " already reviewed (C93). Skipping."
+                            ' C93: already reviewed, but still need to send R before F
+                            LogResult "INFO", "ProcessRoReview: Line " & lineLetter & " status C93. Sending R to acknowledge."
+                            WaitForText "COMMAND:"
+                            EnterTextWithStability "R " & lineLetter
+                            g_bzhao.Pause STABILITY_PAUSE
+                            If Not HandleReviewPrompts(lineLetter) Then
+                                LogResult "ERROR", "ProcessRoReview: Review failed for line " & lineLetter
+                                ProcessRoReview = False
+                                Exit Function
+                            End If
                             processedLetters.Add lineLetter, True
                         
                         Case "FINISH_AND_REROUTE"
