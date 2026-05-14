@@ -531,114 +531,330 @@ Function ExtractStatusText(screenContent)
 End Function
 
 Function DiscoverLineLetters()
-    Dim i, capturedLetter, screenContentBuffer, readLength
-    Dim foundLetters, foundCount
-    Dim startReadRow, startReadColumn, emptyRowCount, nextColChar
-    Dim startRow, endRow
+    Dim i, recordKey, record, letters, letterIndex
     
-    ' Array to store discovered line letters
-    Dim tempLetters(25) ' Max 26 letters A-Z
-    foundCount = 0
-    emptyRowCount = 0
+    ' Use extensible line-record scanner
+    ScanVisibleLineHeaders()
     
-    ' The prompt area starts at row 23, so we must stop at row 22
-    ' Anchor scanning at row 10 to skip header rows (e.g., REPAIR, REMARKS)
-    startRow = 10 ' First data row in CDK
-    endRow = 22  ' Last possible data row before prompt area
+    ' Extract just the line letters from scanned records
+    If g_CurrentPageLineRecords.Count = 0 Then
+        DiscoverLineLetters = Array()
+        Exit Function
+    End If
     
-    For startReadRow = startRow To endRow
-        startReadColumn = 1
-        readLength = 1 ' Read just 1 character (the line letter)
-        
+    ReDim letters(g_CurrentPageLineRecords.Count - 1)
+    letterIndex = 0
+    
+    ' Extract letters in order by iterating the dictionary
+    For Each recordKey In g_CurrentPageLineRecords.Keys
+        Set record = g_CurrentPageLineRecords(recordKey)
+        letters(letterIndex) = record("lineLetter")
+        letterIndex = letterIndex + 1
+    Next
+    
+    DiscoverLineLetters = letters
+End Function
+
+
+' --- Line Status Detection: Extensible Line-Record Architecture ---
+
+' Global cache for scanned line records from current page
+Dim g_CurrentPageLineRecords
+Set g_CurrentPageLineRecords = CreateObject("Scripting.Dictionary")
+
+Function CreateLineRecord(lineLetter, statusCode, rowNumber, description)
+    Dim record
+    Set record = CreateObject("Scripting.Dictionary")
+    record("lineLetter") = UCase(Trim(CStr(lineLetter)))
+    record("statusCode") = UCase(Trim(CStr(statusCode)))
+    record("row") = rowNumber
+    record("description") = Trim(CStr(description))
+    Set CreateLineRecord = record
+End Function
+
+Function ScanVisibleLineHeaders()
+    Dim i, row, buf, lineLetter, statusCode, description, recordKey
+    Dim records, recordCount
+    
+    ' Clear cache before scan
+    Set g_CurrentPageLineRecords = CreateObject("Scripting.Dictionary")
+    
+    recordCount = 0
+    
+    ' Scan rows 10-22 (line-letter header rows before prompt area)
+    For row = 10 To 22
+        buf = ""
         On Error Resume Next
-        g_bzhao.ReadScreen screenContentBuffer, readLength, startReadRow, startReadColumn
+        g_bzhao.ReadScreen buf, 80, row, 1
         If Err.Number <> 0 Then
             Err.Clear
             Exit For
         End If
         On Error GoTo 0
         
-        ' Trim and check if it's a valid letter (A-Z)
-        capturedLetter = Trim(screenContentBuffer)
-        If Len(capturedLetter) = 1 Then
-            If Asc(UCase(capturedLetter)) >= Asc("A") And Asc(UCase(capturedLetter)) <= Asc("Z") Then
-                ' Peek column 2 to ensure this is a line letter (typical form: "A  DESCRIPTION")
-                nextColChar = ""
-                On Error Resume Next
-                g_bzhao.ReadScreen nextColChar, 1, startReadRow, startReadColumn + 1
-                If Err.Number <> 0 Then
-                    Err.Clear
-                    nextColChar = ""
+        If Len(buf) >= 1 Then
+            lineLetter = Trim(Mid(buf, 1, 1))
+            
+            ' Validate it's a line letter (A-Z)
+            If Len(lineLetter) = 1 And Asc(UCase(lineLetter)) >= Asc("A") And Asc(UCase(lineLetter)) <= Asc("Z") Then
+                ' Extract status code from columns 42-49
+                statusCode = ""
+                If Len(buf) >= 49 Then
+                    statusCode = Trim(Mid(buf, 42, 8))
                 End If
-                On Error GoTo 0
-
-                If Len(nextColChar) > 0 And Asc(nextColChar) = 32 Then
-                    tempLetters(foundCount) = UCase(capturedLetter)
-                    foundCount = foundCount + 1
-                    emptyRowCount = 0 ' Reset when a letter is found
-                Else
-                    emptyRowCount = emptyRowCount + 1
+                
+                ' Extract description from columns 4-41
+                description = ""
+                If Len(buf) >= 41 Then
+                    description = Trim(Mid(buf, 4, 38))
                 End If
-            Else
-                emptyRowCount = emptyRowCount + 1
+                
+                ' Store in cache with line letter as key
+                recordKey = UCase(lineLetter)
+                Dim lineRecord
+                Set lineRecord = CreateLineRecord(lineLetter, statusCode, row, description)
+                g_CurrentPageLineRecords.Add recordKey, lineRecord
+                
+                recordCount = recordCount + 1
+                LogResult "INFO", "ScanVisibleLineHeaders: Line " & lineLetter & " status=" & statusCode & " desc=" & description
             End If
-        Else
-            emptyRowCount = emptyRowCount + 1
         End If
-
-        ' If we hit 3 consecutive rows without a letter, we've likely finished the list
-        If emptyRowCount >= 3 Then Exit For
     Next
     
-    If foundCount = 0 Then
-        DiscoverLineLetters = Array()
+    ScanVisibleLineHeaders = recordCount
+End Function
+
+Function GetLineStatus(lineLetter)
+    Dim key, record
+    key = UCase(Trim(CStr(lineLetter)))
+    
+    If g_CurrentPageLineRecords.Exists(key) Then
+        Set record = g_CurrentPageLineRecords(key)
+        GetLineStatus = record("statusCode")
+    Else
+        GetLineStatus = ""
+    End If
+End Function
+
+Function CreateStatusActionMap()
+    Dim statusMap
+    Set statusMap = CreateObject("Scripting.Dictionary")
+    
+    ' Map status patterns to actions
+    ' Action: "REVIEW" (send R <line>)
+    statusMap("C92") = "REVIEW"
+    
+    ' Action: "SKIP_REVIEWED" (line already reviewed, skip)
+    statusMap("C93") = "SKIP_REVIEWED"
+    
+    ' Note: Ixx and Hxx and unknown are handled separately as patterns, not exact keys
+    
+    Set CreateStatusActionMap = statusMap
+End Function
+
+Function GetLineActionFromStatus(statusCode)
+    Dim statusMap
+    Set statusMap = CreateStatusActionMap()
+    
+    Dim status, normalizedStatus
+    normalizedStatus = UCase(Trim(CStr(statusCode)))
+    
+    ' Check exact match first
+    If statusMap.Exists(normalizedStatus) Then
+        GetLineActionFromStatus = statusMap(normalizedStatus)
         Exit Function
     End If
     
-    ' Create properly sized array with found letters
-    ReDim foundLetters(foundCount - 1)
-    For i = 0 To foundCount - 1
-        foundLetters(i) = tempLetters(i)
+    ' Check patterns
+    If Left(normalizedStatus, 1) = "C" And Len(normalizedStatus) >= 3 Then
+        If statusMap.Exists(Left(normalizedStatus, 3)) Then
+            GetLineActionFromStatus = statusMap(Left(normalizedStatus, 3))
+            Exit Function
+        End If
+    End If
+    
+    ' Pattern checks for I* (in progress), H* (hold), unknown
+    If Left(normalizedStatus, 1) = "I" Then
+        GetLineActionFromStatus = "FINISH_AND_REROUTE"
+    ElseIf Left(normalizedStatus, 1) = "H" Then
+        GetLineActionFromStatus = "SKIP_RO_ON_HOLD"
+    ElseIf normalizedStatus <> "" Then
+        GetLineActionFromStatus = "SKIP_UNKNOWN"
+    Else
+        GetLineActionFromStatus = "SKIP_UNKNOWN"
+    End If
+End Function
+
+Function CheckRoLineStatuses()
+    Dim i, recordKey, record, status, action
+    Dim foundHold, allReviewed, hasLines
+    
+    foundHold = False
+    allReviewed = True
+    hasLines = (g_CurrentPageLineRecords.Count > 0)
+    
+    ' Iterate all scanned line records
+    For Each recordKey In g_CurrentPageLineRecords.Keys
+        Set record = g_CurrentPageLineRecords(recordKey)
+        status = record("statusCode")
+        action = GetLineActionFromStatus(status)
+        
+        ' Check for hold
+        If action = "SKIP_RO_ON_HOLD" Then
+            LogResult "INFO", "CheckRoLineStatuses: Line " & record("lineLetter") & " is on hold (" & status & "). Skipping entire RO."
+            foundHold = True
+            Exit For
+        End If
+        
+        ' Check if all are reviewed (C93)
+        If action <> "SKIP_REVIEWED" Then
+            allReviewed = False
+        End If
     Next
     
-    DiscoverLineLetters = foundLetters
+    ' Return early-skip reason if found
+    If foundHold Then
+        CheckRoLineStatuses = "HOLD_DETECTED"
+    ElseIf allReviewed And hasLines Then
+        LogResult "INFO", "CheckRoLineStatuses: All lines are C93 (already reviewed). Skipping entire RO."
+        CheckRoLineStatuses = "ALL_REVIEWED"
+    Else
+        CheckRoLineStatuses = ""
+    End If
 End Function
 
 Function ProcessRoReview()
-    Dim letter, screenContent
-
-    ' Step through lines A, B, C... until CDK signals the line does not exist.
-    ' Sending "R <letter>" from COMMAND: navigates directly to that line's review
-    ' prompts regardless of screen pagination — CDK handles the navigation.
-    ' When a letter has no corresponding line, CDK returns immediately to COMMAND:.
-    letter = "A"
-    Do While Asc(letter) <= Asc("Z")
-
-        WaitForText "COMMAND:"
-        EnterTextWithStability "R " & letter
-
-        ' Allow the screen to settle before checking state
-        g_bzhao.Pause STABILITY_PAUSE
+    Dim screenContent, pageCount, gateResult, processedLetters, i, recordKey, record
+    Dim lineLetter, status, action, rereadCount
+    
+    pageCount = 0
+    Set processedLetters = CreateObject("Scripting.Dictionary")
+    ProcessRoReview = True
+    
+    ' === Page Loop: Process all pages of the RO detail ===
+    Do
+        pageCount = pageCount + 1
+        LogResult "INFO", "ProcessRoReview: Scanning page " & pageCount
+        
+        ' Scan current page line headers and populate g_CurrentPageLineRecords
+        Dim lineCount
+        lineCount = ScanVisibleLineHeaders()
+        
+        If lineCount = 0 Then
+            LogResult "INFO", "ProcessRoReview: No lines found on page " & pageCount & ". Review complete."
+            Exit Do
+        End If
+        
+        ' === RO-Level Gate: Check for early-skip conditions ===
+        ' Only check on first page to avoid redundant checks
+        If pageCount = 1 Then
+            gateResult = CheckRoLineStatuses()
+            If gateResult = "HOLD_DETECTED" Then
+                LogResult "INFO", "ProcessRoReview: RO has line(s) on hold. Skipping review."
+                ProcessRoReview = False
+                Exit Function
+            ElseIf gateResult = "ALL_REVIEWED" Then
+                LogResult "INFO", "ProcessRoReview: All lines already C93 reviewed. Skipping review."
+                ProcessRoReview = True
+                Exit Function
+            End If
+        End If
+        
+        ' === Per-Line Routing: Status-first decision ===
+        For Each recordKey In g_CurrentPageLineRecords.Keys
+            Set record = g_CurrentPageLineRecords(recordKey)
+            lineLetter = record("lineLetter")
+            
+            ' Skip if already processed on a prior page
+                If processedLetters.Exists(lineLetter) Then
+                    LogResult "INFO", "ProcessRoReview: Line " & lineLetter & " already processed. Skipping."
+                Else
+                    status = record("statusCode")
+                    action = GetLineActionFromStatus(status)
+                
+                    LogResult "INFO", "ProcessRoReview: Line " & lineLetter & " status=" & status & " action=" & action
+                
+                    Select Case action
+                        Case "REVIEW"
+                            ' C92: needs review
+                            WaitForText "COMMAND:"
+                            EnterTextWithStability "R " & lineLetter
+                            g_bzhao.Pause STABILITY_PAUSE
+                            If Not HandleReviewPrompts(lineLetter) Then
+                                LogResult "ERROR", "ProcessRoReview: Review failed for line " & lineLetter
+                                ProcessRoReview = False
+                                Exit Function
+                            End If
+                            processedLetters.Add lineLetter, True
+                        
+                        Case "SKIP_REVIEWED"
+                            ' C93: already reviewed
+                            LogResult "INFO", "ProcessRoReview: Line " & lineLetter & " already reviewed (C93). Skipping."
+                            processedLetters.Add lineLetter, True
+                        
+                        Case "FINISH_AND_REROUTE"
+                            ' Ixx: finish the line, then re-read status and route again
+                            LogResult "INFO", "ProcessRoReview: Line " & lineLetter & " not finished (I*). Sending FNL command."
+                            WaitForText "COMMAND:"
+                            EnterTextWithStability "FNL " & lineLetter
+                            g_bzhao.Pause STABILITY_PAUSE
+                        
+                            ' Re-scan this specific line to get updated status
+                            Dim updatedStatus
+                            updatedStatus = GetLineStatus(lineLetter)
+                            If updatedStatus = "" Then
+                                ' Re-read the full page to refresh status
+                                ScanVisibleLineHeaders()
+                                updatedStatus = GetLineStatus(lineLetter)
+                            End If
+                        
+                            Dim updatedAction
+                            updatedAction = GetLineActionFromStatus(updatedStatus)
+                            LogResult "INFO", "ProcessRoReview: After FNL, Line " & lineLetter & " status=" & updatedStatus & " new-action=" & updatedAction
+                        
+                            ' Re-route based on new status
+                            If updatedAction = "REVIEW" Then
+                                WaitForText "COMMAND:"
+                                EnterTextWithStability "R " & lineLetter
+                                g_bzhao.Pause STABILITY_PAUSE
+                                If Not HandleReviewPrompts(lineLetter) Then
+                                    LogResult "ERROR", "ProcessRoReview: Review failed for line " & lineLetter & " after FNL"
+                                    ProcessRoReview = False
+                                    Exit Function
+                                End If
+                            ElseIf updatedAction = "SKIP_REVIEWED" Then
+                                LogResult "INFO", "ProcessRoReview: Line " & lineLetter & " transitioned to C93 after FNL. Skipping review."
+                            End If
+                            processedLetters.Add lineLetter, True
+                        
+                        Case "SKIP_RO_ON_HOLD"
+                            ' Should not reach here due to RO-level gate, but handle it anyway
+                            LogResult "ERROR", "ProcessRoReview: Line " & lineLetter & " is on hold. RO-level gate should have caught this."
+                            ProcessRoReview = False
+                            Exit Function
+                        
+                        Case "SKIP_UNKNOWN"
+                            ' Unknown status: log and skip
+                            LogResult "INFO", "ProcessRoReview: Line " & lineLetter & " has unknown status (" & status & "). Skipping."
+                            processedLetters.Add lineLetter, True
+                    End Select
+                End If
+        Next
+        
+        ' === Pagination Check ===
         g_bzhao.ReadScreen screenContent, 1920, 1, 1
-
-        ' If CDK returned to COMMAND: immediately, this line does not exist — done
-        If InStr(1, screenContent, "COMMAND:", vbTextCompare) > 0 Then
-            LogResult "INFO", "ProcessRoReview: Line '" & letter & "' not found. Review complete."
-            ProcessRoReview = True
-            Exit Function
+        If InStr(1, screenContent, "(END OF DISPLAY)", vbTextCompare) > 0 Then
+            LogResult "INFO", "ProcessRoReview: Reached end of display. Review complete."
+            Exit Do
+        Else
+            LogResult "INFO", "ProcessRoReview: More lines exist. Advancing page."
+            ' Send N command to advance to next page (existing pagination handling)
+            WaitForText "COMMAND:"
+            EnterTextWithStability "N"
+            g_bzhao.Pause STABILITY_PAUSE
         End If
-
-        ' Line exists — handle its review prompts
-        LogResult "INFO", "ProcessRoReview: Reviewing Line '" & letter & "'."
-        If Not HandleReviewPrompts(letter) Then
-            LogResult "ERROR", "ProcessRoReview: Review timed out for Line '" & letter & "'."
-            ProcessRoReview = False
-            Exit Function
-        End If
-
-        letter = Chr(Asc(letter) + 1)
     Loop
-
+    
     ProcessRoReview = True
 End Function
 
