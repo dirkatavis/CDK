@@ -137,10 +137,10 @@ Sub ProcessRoList(fso, ByRef successfulCount)
 
                         If reviewOk Then
                             If CloseRoFinal() Then
-                                LogResult "INFO", "SUCCESS: RO " & currentRo & " finalized and closed."
+                                LogResult "INFO", "SUCCESS: RO " & currentRo & " finalized (FILE command sent)."
                                 successfulCount = successfulCount + 1
                             Else
-                                LogResult "ERROR", "Failed to close RO: " & currentRo & " during Phase II."
+                                LogResult "ERROR", "Failed to finalize RO: " & currentRo & " during Phase II."
                             End If
                         Else
                             If g_ReviewPhaseResult = "SKIPPED" Then
@@ -798,161 +798,102 @@ Function CheckAllReviewedPageGate(ByVal gateResult)
 End Function
 
 Function ProcessRoReview()
-    Dim screenContent, pageCount, gateResult, processedLetters, i, recordKey, record
-    Dim lineLetter, status, action, rereadCount
-    Dim hasScannedLines, hasActionableLine
-    
+    Dim screenContent, pageCount, processedLetters, lineActionByLetter, lineLetterQueue, lineLetterQueueCount, i, recordKey, record
+    Dim lineLetter, status, action, lineCount
+    Dim hasScannedLines, hasActionableLine, pageWarrantyGate, pageHoldGate
+
     pageCount = 0
     Set processedLetters = CreateObject("Scripting.Dictionary")
+    Set lineActionByLetter = CreateObject("Scripting.Dictionary")
+    ReDim lineLetterQueue(0)
+    lineLetterQueueCount = 0
     g_ReviewPhaseResult = "PROCEED"
     ProcessRoReview = True
     hasScannedLines = False
     hasActionableLine = False
-    
-    ' === Page Loop: Process all pages of the RO detail ===
+    pageWarrantyGate = False
+    pageHoldGate = False
+
+    ' === PAGE SCAN PHASE: Accumulate all line statuses across all pages ===
     Do
         pageCount = pageCount + 1
         LogResult "INFO", "ProcessRoReview: Scanning page " & pageCount
-        
-        ' Scan current page line headers and populate g_CurrentPageLineRecords
-        Dim lineCount
+
         lineCount = ScanVisibleLineHeaders()
-        
         If lineCount = 0 Then
             LogResult "INFO", "ProcessRoReview: No lines found on page " & pageCount & ". Review complete."
             Exit Do
         End If
         hasScannedLines = True
-        
-        ' === Apply Page-Level Gates (in sequence) ===
-        gateResult = CheckWarrantyPageGate()
-        If gateResult <> "" Then
-            EnterTextWithStability "E"
-            g_ReviewPhaseResult = "SKIPPED"
-            ProcessRoReview = False
-            Exit Function
+
+        ' Warranty gate (fail-fast, but only if found on any page)
+        If Not pageWarrantyGate Then
+            If CheckWarrantyPageGate() <> "" Then
+                pageWarrantyGate = True
+            End If
         End If
-        
+
+        ' Hold gate (fail-fast, but only if found on any page)
+        Dim gateResult
         gateResult = CheckRoLineStatuses()
-        gateResult = CheckHoldPageGate(gateResult)
-        If gateResult <> "" Then
-            EnterTextWithStability "E"
-            g_ReviewPhaseResult = "SKIPPED"
-            ProcessRoReview = False
-            Exit Function
+        If Not pageHoldGate Then
+            If gateResult = "HOLD_DETECTED" Then
+                pageHoldGate = True
+            End If
         End If
-        
-        gateResult = CheckAllReviewedPageGate(gateResult)
-        If gateResult <> "" Then
-            EnterTextWithStability "E"
-            g_ReviewPhaseResult = "SKIPPED"
-            ProcessRoReview = False
-            Exit Function
-        End If
-        
-        ' === Per-Line Routing: Status-first decision ===
+
+        ' Accumulate only non-C93 lines across all pages.
+        ' C93 (already reviewed) lines are intentionally excluded from the queue.
         For Each recordKey In g_CurrentPageLineRecords.Keys
             Set record = g_CurrentPageLineRecords(recordKey)
             lineLetter = record("lineLetter")
-            
-            ' Skip if already processed on a prior page
-                If processedLetters.Exists(lineLetter) Then
-                    LogResult "INFO", "ProcessRoReview: Line " & lineLetter & " already processed. Skipping."
+            status = record("statusCode")
+            action = GetLineActionFromStatus(status)
+            If action <> "SKIP_REVIEWED" And Not processedLetters.Exists(lineLetter) Then
+                lineActionByLetter.Add lineLetter, action
+                If lineLetterQueueCount = 0 Then
+                    ReDim lineLetterQueue(0)
                 Else
-                    status = record("statusCode")
-                    action = GetLineActionFromStatus(status)
-                    If action <> "SKIP_REVIEWED" Then
-                        hasActionableLine = True
-                    End If
-                
-                    LogResult "INFO", "ProcessRoReview: Line " & lineLetter & " status=" & status & " action=" & action
-                
-                    Select Case action
-                        Case "REVIEW"
-                            ' C92: needs review
-                            WaitForText "COMMAND:"
-                            EnterTextWithStability "R " & lineLetter
-                            g_bzhao.Pause STABILITY_PAUSE
-                            If Not HandleReviewPrompts(lineLetter) Then
-                                LogResult "ERROR", "ProcessRoReview: Review failed for line " & lineLetter
-                                g_ReviewPhaseResult = "FAILED"
-                                ProcessRoReview = False
-                                Exit Function
-                            End If
-                            processedLetters.Add lineLetter, True
-                        
-                        Case "SKIP_REVIEWED"
-                            ' C93: already reviewed
-                            LogResult "INFO", "ProcessRoReview: Line " & lineLetter & " already reviewed (C93). Skipping review."
-                            processedLetters.Add lineLetter, True
-                        
-                        Case "FINISH_AND_REROUTE"
-                            ' Ixx: finish the line, then re-read status and route again
-                            LogResult "INFO", "ProcessRoReview: Line " & lineLetter & " not finished (I*). Sending FNL command."
-                            WaitForText "COMMAND:"
-                            EnterTextWithStability "FNL " & lineLetter
-                            g_bzhao.Pause STABILITY_PAUSE
-                        
-                            ' Re-scan this specific line to get updated status
-                            Dim updatedStatus
-                            updatedStatus = GetLineStatus(lineLetter)
-                            If updatedStatus = "" Then
-                                ' Re-read the full page to refresh status
-                                ScanVisibleLineHeaders()
-                                updatedStatus = GetLineStatus(lineLetter)
-                            End If
-                        
-                            Dim updatedAction
-                            updatedAction = GetLineActionFromStatus(updatedStatus)
-                            LogResult "INFO", "ProcessRoReview: After FNL, Line " & lineLetter & " status=" & updatedStatus & " new-action=" & updatedAction
-                        
-                            ' Re-route based on new status
-                            If updatedAction = "REVIEW" Then
-                                WaitForText "COMMAND:"
-                                EnterTextWithStability "R " & lineLetter
-                                g_bzhao.Pause STABILITY_PAUSE
-                                If Not HandleReviewPrompts(lineLetter) Then
-                                    LogResult "ERROR", "ProcessRoReview: Review failed for line " & lineLetter & " after FNL"
-                                    g_ReviewPhaseResult = "FAILED"
-                                    ProcessRoReview = False
-                                    Exit Function
-                                End If
-                            ElseIf updatedAction = "SKIP_REVIEWED" Then
-                                LogResult "INFO", "ProcessRoReview: Line " & lineLetter & " transitioned to C93 after FNL. Skipping review."
-                            End If
-                            processedLetters.Add lineLetter, True
-                        
-                        Case "SKIP_RO_ON_HOLD"
-                            ' Should not reach here due to RO-level gate, but handle it anyway
-                            LogResult "ERROR", "ProcessRoReview: Line " & lineLetter & " is on hold. RO-level gate should have caught this."
-                            g_ReviewPhaseResult = "FAILED"
-                            ProcessRoReview = False
-                            Exit Function
-                        
-                        Case "SKIP_UNKNOWN"
-                            ' Unknown status: log and skip
-                            LogResult "INFO", "ProcessRoReview: Line " & lineLetter & " has unknown status (" & status & "). Skipping."
-                            processedLetters.Add lineLetter, True
-                    End Select
+                    ReDim Preserve lineLetterQueue(lineLetterQueueCount)
                 End If
+                lineLetterQueue(lineLetterQueueCount) = lineLetter
+                lineLetterQueueCount = lineLetterQueueCount + 1
+                processedLetters.Add lineLetter, True
+            End If
         Next
-        
-        ' === Pagination Check ===
+
+        ' Pagination check
         g_bzhao.ReadScreen screenContent, 1920, 1, 1
         If InStr(1, screenContent, "(END OF DISPLAY)", vbTextCompare) > 0 Then
-            LogResult "INFO", "ProcessRoReview: Reached end of display. Review complete."
+            LogResult "INFO", "ProcessRoReview: Reached end of display. Page scan complete. PageCount=" & pageCount
             Exit Do
         Else
             LogResult "INFO", "ProcessRoReview: More lines exist. Advancing page."
-            ' Send N command to advance to next page (existing pagination handling)
             WaitForText "COMMAND:"
             EnterTextWithStability "N"
             g_bzhao.Pause STABILITY_PAUSE
         End If
     Loop
 
-    ' If all scanned lines across all pages were C93, skip with E.
-    If hasScannedLines And Not hasActionableLine Then
+    ' === GATE EVALUATION PHASE: Decide what to do based on all accumulated lines ===
+    If pageWarrantyGate Then
+        LogResult "INFO", "ProcessRoReview: Unsupported warranty labor type detected on at least one page. Skipping review."
+        EnterTextWithStability "E"
+        g_ReviewPhaseResult = "SKIPPED"
+        ProcessRoReview = False
+        Exit Function
+    End If
+
+    If pageHoldGate Then
+        LogResult "INFO", "ProcessRoReview: RO has line(s) on hold on at least one page. Skipping review."
+        EnterTextWithStability "E"
+        g_ReviewPhaseResult = "SKIPPED"
+        ProcessRoReview = False
+        Exit Function
+    End If
+
+    ' If no non-C93 lines were captured across all pages, skip with E.
+    If hasScannedLines And lineLetterQueueCount = 0 Then
         LogResult "INFO", "ProcessRoReview: All scanned lines are C93 across all pages. Skipping review phase."
         EnterTextWithStability "E"
         g_ReviewPhaseResult = "SKIPPED"
@@ -960,8 +901,78 @@ Function ProcessRoReview()
         Exit Function
     End If
 
-    LogResult "INFO", "ProcessRoReview: hasScannedLines=" & hasScannedLines & " hasActionableLine=" & hasActionableLine & " -> proceed"
+    ' === ACTION PHASE: Route all actionable lines ===
+    If lineLetterQueueCount > 0 Then
+        Dim reviewQueueText
+        reviewQueueText = ""
+        For i = 0 To lineLetterQueueCount - 1
+            If reviewQueueText <> "" Then reviewQueueText = reviewQueueText & ","
+            reviewQueueText = reviewQueueText & CStr(lineLetterQueue(i))
+        Next
+        LogResult "INFO", "Lines(" & reviewQueueText & ") need to be reviewed"
+    End If
 
+    For i = 0 To lineLetterQueueCount - 1
+        lineLetter = CStr(lineLetterQueue(i))
+        action = lineActionByLetter(lineLetter)
+        status = ""
+        ' Find the latest status for this lineLetter (from last page it appeared)
+        If g_CurrentPageLineRecords.Exists(lineLetter) Then
+            status = g_CurrentPageLineRecords(lineLetter)("statusCode")
+        End If
+        LogResult "INFO", "ProcessRoReview: Line " & lineLetter & " action=" & action
+        Select Case action
+            Case "REVIEW"
+                WaitForText "COMMAND:"
+                EnterTextWithStability "R " & lineLetter
+                g_bzhao.Pause STABILITY_PAUSE
+                If Not HandleReviewPrompts(lineLetter) Then
+                    LogResult "ERROR", "ProcessRoReview: Review failed for line " & lineLetter
+                    g_ReviewPhaseResult = "FAILED"
+                    ProcessRoReview = False
+                    Exit Function
+                End If
+            Case "SKIP_REVIEWED"
+                LogResult "INFO", "ProcessRoReview: Line " & lineLetter & " already reviewed (C93). Skipping review."
+            Case "FINISH_AND_REROUTE"
+                LogResult "INFO", "ProcessRoReview: Line " & lineLetter & " not finished (I*). Sending FNL command."
+                WaitForText "COMMAND:"
+                EnterTextWithStability "FNL " & lineLetter
+                g_bzhao.Pause STABILITY_PAUSE
+                ' Re-scan this specific line to get updated status
+                Dim updatedStatus
+                updatedStatus = GetLineStatus(lineLetter)
+                If updatedStatus = "" Then
+                    ScanVisibleLineHeaders()
+                    updatedStatus = GetLineStatus(lineLetter)
+                End If
+                Dim updatedAction
+                updatedAction = GetLineActionFromStatus(updatedStatus)
+                LogResult "INFO", "ProcessRoReview: After FNL, Line " & lineLetter & " status=" & updatedStatus & " new-action=" & updatedAction
+                If updatedAction = "REVIEW" Then
+                    WaitForText "COMMAND:"
+                    EnterTextWithStability "R " & lineLetter
+                    g_bzhao.Pause STABILITY_PAUSE
+                    If Not HandleReviewPrompts(lineLetter) Then
+                        LogResult "ERROR", "ProcessRoReview: Review failed for line " & lineLetter & " after FNL"
+                        g_ReviewPhaseResult = "FAILED"
+                        ProcessRoReview = False
+                        Exit Function
+                    End If
+                ElseIf updatedAction = "SKIP_REVIEWED" Then
+                    LogResult "INFO", "ProcessRoReview: Line " & lineLetter & " transitioned to C93 after FNL. Skipping review."
+                End If
+            Case "SKIP_RO_ON_HOLD"
+                LogResult "ERROR", "ProcessRoReview: Line " & lineLetter & " is on hold. RO-level gate should have caught this."
+                g_ReviewPhaseResult = "FAILED"
+                ProcessRoReview = False
+                Exit Function
+            Case "SKIP_UNKNOWN"
+                LogResult "INFO", "ProcessRoReview: Line " & lineLetter & " has unknown status (" & status & "). Skipping."
+        End Select
+    Next
+
+    LogResult "INFO", "ProcessRoReview: hasScannedLines=" & hasScannedLines & " -> proceed"
     ProcessRoReview = True
 End Function
 
@@ -1321,6 +1332,7 @@ Function CloseRoFinal()
         g_bzhao.ReadScreen screenContent, 1920, 1, 1
         If InStr(1, screenContent, "COMMAND:", vbTextCompare) > 0 Or _
            InStr(1, screenContent, MAIN_PROMPT, vbTextCompare) > 0 Then
+            LogResult "INFO", "SUCCESS: RO finalized (FILE command sent)."
             CloseRoFinal = True
             Exit Function
         End If
