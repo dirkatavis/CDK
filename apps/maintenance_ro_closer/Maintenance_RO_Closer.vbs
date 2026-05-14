@@ -275,15 +275,6 @@ Function ShouldProcessRoByBusinessRules(roNumber)
 
     LogResult "INFO", "RO " & roNumber & " | Status: " & IIf(isReadyToPost, "READY TO POST", currentStatus) & " | Age: " & IIf(ageDays >= 0, ageDays & " days", "unknown")
 
-    ' Gate 0: Unsupported warranty labor types (only configured types are allowed)
-    Dim unsupportedWarrantyLType
-    unsupportedWarrantyLType = GetFirstUnsupportedWarrantyLaborType()
-    If unsupportedWarrantyLType <> "" Then
-        LogResult "INFO", "RO " & roNumber & " | Unsupported warranty labor type (" & unsupportedWarrantyLType & ") detected. Skipping."
-        ShouldProcessRoByBusinessRules = False
-        Exit Function
-    End If
-
     ' Gate 1: Blacklist
     If matchedBlacklistTerm <> "" Then
         LogResult "INFO", "RO " & roNumber & " | Blacklisted ('" & matchedBlacklistTerm & "'). Skipping."
@@ -779,6 +770,59 @@ Function ProcessRoReview()
     ProcessRoReview = True
     hasScannedLines = False
     hasActionableLine = False
+
+    Function CheckWarrantyPageGate()
+        Dim unsupportedType
+        unsupportedType = GetFirstUnsupportedWarrantyLaborType()
+        If unsupportedType <> "" Then
+            LogResult "INFO", "ProcessRoReview: Unsupported warranty labor type (" & unsupportedType & ") detected. Skipping review."
+            CheckWarrantyPageGate = "UNSUPPORTED_WARRANTY"
+        Else
+            CheckWarrantyPageGate = ""
+        End If
+    End Function
+
+    Function CheckHoldPageGate()
+        Dim gateResult
+        gateResult = CheckRoLineStatuses()
+        If gateResult = "HOLD_DETECTED" Then
+            LogResult "INFO", "ProcessRoReview: RO has line(s) on hold. Skipping review."
+            CheckHoldPageGate = "HOLD_DETECTED"
+        Else
+            CheckHoldPageGate = ""
+        End If
+    End Function
+
+    Function CheckAllReviewedPageGate()
+        Dim gateResult, screenContent
+        gateResult = CheckRoLineStatuses()
+        LogResult "INFO", "ProcessRoReview: gateResult=" & gateResult
+    
+        If gateResult = "ALL_REVIEWED" Then
+            ' Deterministic single-page fast path: if this page is the end, skip now.
+            g_bzhao.ReadScreen screenContent, 1920, 1, 1
+            If InStr(1, screenContent, "(END OF DISPLAY)", vbTextCompare) > 0 Then
+                LogResult "INFO", "ProcessRoReview: All lines are C93 and end-of-display reached. Skipping review phase."
+                CheckAllReviewedPageGate = "ALL_REVIEWED"
+            Else
+                CheckAllReviewedPageGate = ""
+            End If
+        Else
+            CheckAllReviewedPageGate = ""
+        End If
+    End Function
+
+    Function ProcessRoReview()
+        Dim screenContent, pageCount, gateResult, processedLetters, i, recordKey, record
+        Dim lineLetter, status, action, rereadCount
+        Dim hasScannedLines, hasActionableLine
+    
+        pageCount = 0
+        Set processedLetters = CreateObject("Scripting.Dictionary")
+        g_ReviewPhaseResult = "PROCEED"
+        ProcessRoReview = True
+        hasScannedLines = False
+        hasActionableLine = False
     
     ' === Page Loop: Process all pages of the RO detail ===
     Do
@@ -795,26 +839,29 @@ Function ProcessRoReview()
         End If
         hasScannedLines = True
         
-        ' === RO-Level Gate: Check for early-skip conditions ===
-        ' Check each page for hold conditions.
-        gateResult = CheckRoLineStatuses()
-        LogResult "INFO", "ProcessRoReview: page=" & pageCount & " gateResult=" & gateResult
-        If gateResult = "HOLD_DETECTED" Then
-            LogResult "INFO", "ProcessRoReview: RO has line(s) on hold. Skipping review."
+        ' === Apply Page-Level Gates (in sequence) ===
+        gateResult = CheckWarrantyPageGate()
+        If gateResult <> "" Then
             EnterTextWithStability "E"
             g_ReviewPhaseResult = "SKIPPED"
             ProcessRoReview = False
             Exit Function
-        ElseIf gateResult = "ALL_REVIEWED" Then
-            ' Deterministic single-page fast path: if this page is the end, skip now.
-            g_bzhao.ReadScreen screenContent, 1920, 1, 1
-            If InStr(1, screenContent, "(END OF DISPLAY)", vbTextCompare) > 0 Then
-                LogResult "INFO", "ProcessRoReview: All lines are C93 and end-of-display reached. Skipping review phase."
-                EnterTextWithStability "E"
-                g_ReviewPhaseResult = "SKIPPED"
-                ProcessRoReview = False
-                Exit Function
-            End If
+        End If
+        
+        gateResult = CheckHoldPageGate()
+        If gateResult <> "" Then
+            EnterTextWithStability "E"
+            g_ReviewPhaseResult = "SKIPPED"
+            ProcessRoReview = False
+            Exit Function
+        End If
+        
+        gateResult = CheckAllReviewedPageGate()
+        If gateResult <> "" Then
+            EnterTextWithStability "E"
+            g_ReviewPhaseResult = "SKIPPED"
+            ProcessRoReview = False
+            Exit Function
         End If
         
         ' === Per-Line Routing: Status-first decision ===
