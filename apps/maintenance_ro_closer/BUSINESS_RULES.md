@@ -1,21 +1,16 @@
 # Maintenance RO Closer — Business Rules and Gate Precedence
 
 ## Overview
-The script applies **2 line-level gates immediately on entry to ProcessRoReview** (if all work is done or impossible, exit immediately), then **4 RO-level gates** during the business logic evaluation to determine whether to process an RO.
+The script applies **RO-level business gates first** (blacklist, age override, READY TO POST), then enters `ProcessRoReview` where it **scans all pages before acting** and applies review-phase gates (unsupported warranty type, hold detection, all-C93 optimization).
 
 ---
 
 ## Exact Decision Flow (Complete Ordering)
 
-**PHASE 1: RO-Level Eligibility Gates** (before entering terminal, evaluated in order):
+**PHASE 1: RO-Level Eligibility Gates** (before entering review flow, evaluated in order):
 
 ```
-┌─ Gate 0: Unsupported Warranty Labor Types
-│  IF unsupportedWarrantyLType <> "" THEN
-│     SKIP and EXIT (cannot override)
-│  END IF
-│
-├─ Gate 1: Blacklist Check
+┌─ Gate 1: Blacklist Check
 │  IF RO in SkipRoList THEN
 │     SKIP and EXIT (cannot override, even by age exception)
 │  END IF
@@ -36,17 +31,22 @@ The script applies **2 line-level gates immediately on entry to ProcessRoReview*
    END IF
 ```
 
-**PHASE 2: Line-Level Optimization Gates** (inside ProcessRoReview, checked FIRST, immediate exit):
+**PHASE 2: ProcessRoReview Scan + Review-Phase Gates** (inside `ProcessRoReview`, after all-page scan):
 
 ```
-┌─ Line Gate 1: All Lines Already Reviewed?
-│  IF ALL visible lines are C93 THEN
-│     SKIP REVIEW, finalize only, EXIT ProcessRoReview
+┌─ Gate A: Unsupported Warranty Labor Type (any scanned page)
+│  IF unsupported W* type is detected THEN
+│     SKIP REVIEW and EXIT ProcessRoReview
 │  END IF
 │
-└─ Line Gate 2: Any Line On Hold?
-   IF ANY line is Hxx THEN
-      SKIP ENTIRE RO, EXIT ProcessRoReview
+├─ Gate B: Hold Detection (any scanned page)
+│  IF ANY scanned line is Hxx THEN
+│     SKIP REVIEW and EXIT ProcessRoReview
+│  END IF
+│
+└─ Gate C: All Scanned Lines Already Reviewed
+   IF review queue is empty after all-page scan (all C93) THEN
+      SKIP REVIEW and EXIT ProcessRoReview
    END IF
 
 [If both gates pass, proceed to per-line processing]
@@ -65,18 +65,6 @@ The script applies **2 line-level gates immediately on entry to ProcessRoReview*
 ---
 
 ## Gate Precedence (RO-Level) — Ordered by Evaluation
-
-### Gate 0: Unsupported Warranty Labor Types
-**Evaluation Order:** 1st (first check)
-**Priority:** ABSOLUTE — cannot be overridden by anything
-- **Rule:** If RO contains labor types NOT in configured `WARRANTY_LTYPES_RAW` (default: WCH, WF)
-- **Action:** Skip and EXIT function immediately
-- **Log:** `"Unsupported warranty labor type (...) detected. Skipping."`
-- **Rationale:** Business policy — only specific warranty labor types are eligible
-- **Overrides:** Nothing (this gate cannot be overridden)
-- **Overridden By:** Nothing
-
----
 
 ### Gate 1: Blacklist (SkipRoList.csv)
 **Evaluation Order:** 2nd
@@ -129,13 +117,13 @@ The script applies **2 line-level gates immediately on entry to ProcessRoReview*
 
 | Phase | Gate | Order | Condition | Action | Overrides | Can Be Overridden By |
 |-------|------|-------|-----------|--------|-----------|---------------------|
-| Line | Line 1 | 1st | All lines C93 | Skip review + EXIT | Everything in Phase 2-3 | None (immediate exit) |
-| Line | Line 2 | 2nd | Any line Hxx | Skip RO + EXIT | Everything in Phase 2-3 | None (immediate exit) |
-| RO | 0 | 3rd | Unsupported warranty labor type | Skip + EXIT | — | None (absolute) |
-| RO | 1 | 4th | Blacklist (SkipRoList) | Skip + EXIT | — | None (absolute, even age exception) |
-| RO | 2 | 5th | Age ≥ 30 days | Process + EXIT | Gate 3 (READY TO POST) | Gate 0, Gate 1 |
-| RO | 3 | 6th | READY TO POST | Process | — | Gate 2 (age exception skips this) |
-| RO | 4 | 7th | Default | Skip | — | — |
+| RO | 1 | 1st | Blacklist (SkipRoList) | Skip + EXIT | — | None (absolute, even age exception) |
+| RO | 2 | 2nd | Age ≥ 30 days | Process + EXIT | Gate 3 (READY TO POST) | Gate 1 |
+| RO | 3 | 3rd | READY TO POST | Process | — | Gate 2 (age exception skips this) |
+| RO | 4 | 4th | Default | Skip | — | — |
+| Review | A | 5th | Unsupported warranty labor type on any page | Skip review + EXIT | Remaining review actions | None (review-phase absolute) |
+| Review | B | 6th | Any line Hxx on any page | Skip review + EXIT | Remaining review actions | None (review-phase absolute) |
+| Review | C | 7th | Review queue empty after all-page scan (all C93) | Skip review + EXIT | Remaining review actions | None (review-phase absolute) |
 
 ---
 
@@ -151,9 +139,9 @@ Once an RO passes RO-level gates and enters `ProcessRoReview()`, **line status i
 **Evaluation Order:** 1st in ProcessRoReview (immediate check)
 **Priority:** HIGHEST — if all work is done, nothing else matters
 - **Rule:** If ALL visible lines have status "C93" (already reviewed)
-- **Action:** Skip entire review; mark RO success and exit ProcessRoReview
+- **Action:** Skip entire review phase and exit RO with `E` (do not finalize)
 - **Log:** `"All lines are C93 (already reviewed). Skipping entire RO."`
-- **Rationale:** No review work needed; RO is finalized without re-work
+- **Rationale:** No review work needed and no additional review/finalization actions are required
 - **Why First:** If all lines C93, there's nothing to review — skip everything
 - **Efficiency Benefit:** Avoids wasted terminal interactions for already-done work
 
@@ -192,13 +180,13 @@ Age Exception (Gate 2):
    "RO is 316 days old -> PROCESS regardless of READY TO POST status"
     ↓
 Line Gate 2 (All-Reviewed):
-  "All lines are C93 (already reviewed) → Skip re-review, finalize only"
+   "All lines are C93 (already reviewed) → Skip re-review and exit"
 ```
 
 ### Outcome (INTENDED DESIGN)
 - Exception says: "This old RO must be processed"
 - Line gate says: "Lines are already reviewed (C93), so skip redundant review work"
-- **Result:** RO is finalized without re-reviewing C93 lines (efficient)
+- **Result:** Review phase exits without re-reviewing C93 lines (efficient)
 
 ### Why This Is Correct
 1. **C93 = Already Reviewed:** Re-reviewing C93 lines wastes time and terminal interactions
@@ -229,10 +217,10 @@ Line Gate 2 ALWAYS BLOCKS: If any line is Hxx (hold)
 
 **Line Gate 2 = "All lines done, skip redundant review"**
 - Applies to ALL ROs (exception or not)
-- Skips the review prompt loop, goes straight to finalize
+- Skips the review prompt loop and exits review phase
 - Reduces unnecessary terminal interactions and time
 
-**Combined Effect:** Old stuck ROs with all-reviewed lines are finalized efficiently without redundant terminal work.
+**Combined Effect:** Old stuck ROs with all-reviewed lines are exited from review efficiently without redundant terminal work.
 
 ---
 
@@ -240,45 +228,35 @@ Line Gate 2 ALWAYS BLOCKS: If any line is Hxx (hold)
 
 ```mermaid
 flowchart TD
-   A[Start ProcessRoReview] --> B[ScanVisibleLineHeaders]
-   B --> C{Any lines found?}
-   C -- No --> Z[Return True to caller]
-   C -- Yes --> D{First page?}
-   D -- Yes --> E[CheckRoLineStatuses]
-   D -- No --> G[Per-line loop]
-   E --> F{Any Hxx line?}
-   F -- Yes --> X[Return False: skip RO]
-   F -- No --> G[Per-line loop]
+   A[Start ProcessRoReview] --> B[Scan page N line headers]
+   B --> C{Any lines on page?}
+   C -- No --> D[End scan loop]
+   C -- Yes --> E[Accumulate non-C93 lines into review queue]
+   E --> F[Evaluate page-level warranty/hold flags]
+   F --> G{End of display?}
+   G -- No --> H[Send N and scan next page]
+   H --> B
+   G -- Yes --> D
 
-   G --> H{Line already processed?}
-   H -- Yes --> G
-   H -- No --> I[Map status to action]
+   D --> I{Unsupported warranty on any page?}
+   I -- Yes --> J[Send E and return skipped]
+   I -- No --> K{Hold line on any page?}
+   K -- Yes --> J
+   K -- No --> L{Review queue empty?}
+   L -- Yes --> J
+   L -- No --> M[Iterate queued lines only]
 
-   I --> J[C92 -> REVIEW]
-   I --> K[C93 -> SKIP_REVIEWED]
-   I --> L[Ixx -> FINISH_AND_REROUTE]
-   I --> M[Unknown -> SKIP_UNKNOWN]
-
-   J --> N[Send R line and handle prompts]
-   K --> O[Send R line and handle prompts]
-   L --> P[Send FNL line, re-scan, re-route]
-   M --> Q[Log and mark processed]
-
-   N --> R[Mark line processed]
-   O --> R
+   M --> N{Action by status}
+   N --> O[REVIEW: send R line and handle prompts]
+   N --> P[FINISH_AND_REROUTE: send FNL then rescan status]
+   N --> Q[SKIP_UNKNOWN: log and continue]
+   O --> R{More queued lines?}
    P --> R
    Q --> R
-
-   R --> S{More lines on page?}
-   S -- Yes --> G
-   S -- No --> T{End of display?}
-   T -- No --> U[Send N for next page]
-   U --> B
-   T -- Yes --> Z
-
-   Z --> Y[Caller sends F then Y]
+   R -- Yes --> M
+   R -- No --> S[Return success to caller]
 ```
 
 Notes:
-- Hold detection can stop processing at RO level.
-- C92 requires review prompts; C93 is already reviewed and skips review prompts.
+- Review actions run only for queued non-C93 lines captured during all-page scan.
+- Unsupported warranty and hold checks are review-phase gates evaluated across scanned pages.

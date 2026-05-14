@@ -1,108 +1,89 @@
 Option Explicit
 
-' Test suite for line status detection and routing in Maintenance_RO_Closer
-' Tests the status->action mapping, RO-level gates, and state transitions
+' Production-backed tests for Maintenance_RO_Closer line routing and review scan behavior.
 
-Dim g_Pass, g_Fail
+Dim g_Pass, g_Fail, g_fso, g_shell, g_repoRoot
 g_Pass = 0
 g_Fail = 0
 
-' Global variables and functions extracted from Maintenance_RO_Closer for testing
-Dim g_CurrentPageLineRecords
+Set g_fso = CreateObject("Scripting.FileSystemObject")
+Set g_shell = CreateObject("WScript.Shell")
+g_repoRoot = g_shell.Environment("USER")("CDK_BASE")
 
-Set g_CurrentPageLineRecords = CreateObject("Scripting.Dictionary")
+If g_repoRoot = "" Then
+    WScript.Echo "FAIL: CDK_BASE is not set"
+    WScript.Quit 1
+End If
 
-' ============================================================================
-' EXTRACTED FUNCTIONS FROM MAINTENANCE_RO_CLOSER
-' ============================================================================
+Class FakeBzhao
+    Private m_pages
+    Private m_pageIndex
+    Private m_pending
+    Private m_commands
 
-Function CreateLineRecord(lineLetter, statusCode, rowNumber, description)
-    Dim record
-    Set record = CreateObject("Scripting.Dictionary")
-    record("lineLetter") = lineLetter
-    record("statusCode") = statusCode
-    record("row") = rowNumber
-    record("description") = description
-    Set CreateLineRecord = record
-End Function
+    Private Sub Class_Initialize()
+        m_pageIndex = 0
+        m_pending = ""
+        m_commands = ""
+    End Sub
 
-Function GetLineStatus(lineLetter)
-    If g_CurrentPageLineRecords.Exists(lineLetter) Then
-        Dim record
-        Set record = g_CurrentPageLineRecords(lineLetter)
-        GetLineStatus = record("statusCode")
-    Else
-        GetLineStatus = ""
-    End If
-End Function
+    Public Sub SetPages(ByRef pages)
+        m_pages = pages
+        m_pageIndex = 0
+        m_pending = ""
+        m_commands = ""
+    End Sub
 
-Function CreateStatusActionMap()
-    Dim m
-    Set m = CreateObject("Scripting.Dictionary")
-    m("C92") = "REVIEW"
-    m("C93") = "SKIP_REVIEWED"
-    Set CreateStatusActionMap = m
-End Function
+    Public Sub ReadScreen(ByRef outText, ByVal length, ByVal row, ByVal col)
+        Dim pageText, pos
+        pageText = CStr(m_pages(m_pageIndex))
+        pos = ((row - 1) * 80) + col
+        If pos < 1 Then pos = 1
+        outText = Mid(pageText, pos, length)
+    End Sub
 
-Function GetLineActionFromStatus(statusCode)
-    Dim statusMap, action
-    Set statusMap = CreateStatusActionMap()
-    
-    ' First try exact match
-    If statusMap.Exists(statusCode) Then
-        GetLineActionFromStatus = statusMap(statusCode)
-        Exit Function
-    End If
-    
-    ' Then try pattern matching
-    If Left(statusCode, 1) = "I" Then
-        GetLineActionFromStatus = "FINISH_AND_REROUTE"
-    ElseIf Left(statusCode, 1) = "H" Then
-        GetLineActionFromStatus = "SKIP_RO_ON_HOLD"
-    Else
-        GetLineActionFromStatus = "SKIP_UNKNOWN"
-    End If
-End Function
+    Public Sub Pause(ByVal ms)
+    End Sub
 
-Function CheckRoLineStatuses()
-    Dim recordKey, record, allC93, hasHold
-    Dim statusCode
-    
-    ' If no lines found, no early gate
-    If g_CurrentPageLineRecords.Count = 0 Then
-        CheckRoLineStatuses = ""
-        Exit Function
-    End If
-    
-    allC93 = True
-    hasHold = False
-    
-    ' Scan all lines
-    For Each recordKey In g_CurrentPageLineRecords.Keys
-        Set record = g_CurrentPageLineRecords(recordKey)
-        statusCode = record("statusCode")
-        
-        ' Check for hold (Hxx)
-        If Left(statusCode, 1) = "H" Then
-            hasHold = True
-            Exit For
+    Public Sub SendKey(ByVal keyText)
+        If keyText = "<NumpadEnter>" Then
+            ExecutePendingCommand
+            Exit Sub
         End If
-        
-        ' Check if all are C93
-        If statusCode <> "C93" Then
-            allC93 = False
+
+        m_pending = m_pending & CStr(keyText)
+    End Sub
+
+    Public Sub Disconnect()
+    End Sub
+
+    Public Sub StopScript()
+    End Sub
+
+    Public Function CommandsCsv()
+        CommandsCsv = m_commands
+    End Function
+
+    Private Sub ExecutePendingCommand()
+        Dim cmd
+        cmd = UCase(Trim(m_pending))
+
+        If cmd <> "" Then
+            If m_commands <> "" Then
+                m_commands = m_commands & "|"
+            End If
+            m_commands = m_commands & cmd
+
+            If cmd = "N" Then
+                If m_pageIndex < UBound(m_pages) Then
+                    m_pageIndex = m_pageIndex + 1
+                End If
+            End If
         End If
-    Next
-    
-    ' Return early gate result
-    If hasHold Then
-        CheckRoLineStatuses = "HOLD_DETECTED"
-    ElseIf allC93 Then
-        CheckRoLineStatuses = "ALL_REVIEWED"
-    Else
-        CheckRoLineStatuses = ""
-    End If
-End Function
+
+        m_pending = ""
+    End Sub
+End Class
 
 Sub AssertEqual(ByVal label, ByVal expected, ByVal actual)
     If CStr(expected) = CStr(actual) Then
@@ -113,195 +94,150 @@ Sub AssertEqual(ByVal label, ByVal expected, ByVal actual)
     End If
 End Sub
 
-Sub AssertTrue(ByVal label, ByVal actual)
-    If CBool(actual) Then
+Sub AssertTrue(ByVal label, ByVal value)
+    If CBool(value) Then
         g_Pass = g_Pass + 1
     Else
         g_Fail = g_Fail + 1
-        WScript.Echo "FAIL: " & label & " | expected=true actual=false"
+        WScript.Echo "FAIL: " & label
     End If
 End Sub
 
-' ==============================================================================
-' TEST 1: Status -> Action Mapping
-' ==============================================================================
-
-Sub Test_StatusAction_C92()
-    Dim action
-    action = GetLineActionFromStatus("C92")
-    AssertEqual "C92 maps to REVIEW", "REVIEW", action
+Sub AssertFalse(ByVal label, ByVal value)
+    AssertTrue label, (Not value)
 End Sub
 
-Sub Test_StatusAction_C93()
-    Dim action
-    action = GetLineActionFromStatus("C93")
-    AssertEqual "C93 maps to SKIP_REVIEWED", "SKIP_REVIEWED", action
+Function ContainsToken(ByVal csvText, ByVal token)
+    ContainsToken = (InStr(1, "|" & UCase(csvText) & "|", "|" & UCase(token) & "|", vbTextCompare) > 0)
+End Function
+
+Function SetColText(ByVal rowText, ByVal colNum, ByVal textValue)
+    Dim base
+    base = Left(rowText & String(80, " "), 80)
+    SetColText = Left(Left(base, colNum - 1) & textValue & Mid(base, colNum + Len(textValue)) & String(80, " "), 80)
+End Function
+
+Function SetRow(ByVal pageBuf, ByVal rowNum, ByVal rowText)
+    Dim pos
+    pos = (rowNum - 1) * 80 + 1
+    SetRow = Left(pageBuf, pos - 1) & Left(rowText & String(80, " "), 80) & Mid(pageBuf, pos + 80)
+End Function
+
+Function BuildPageWithSingleLine(ByVal lineLetter, ByVal lineStatus, ByVal laborTypeCode, ByVal description, ByVal endOfDisplay)
+    Dim pageBuf, row10, row24
+    pageBuf = String(24 * 80, " ")
+
+    row10 = String(80, " ")
+    row10 = SetColText(row10, 1, lineLetter)
+    row10 = SetColText(row10, 4, "L1 " & description)
+    row10 = SetColText(row10, 42, lineStatus)
+    row10 = SetColText(row10, 50, laborTypeCode)
+    pageBuf = SetRow(pageBuf, 10, row10)
+
+    row24 = String(80, " ")
+    row24 = SetColText(row24, 1, "COMMAND:")
+    If endOfDisplay Then
+        row24 = SetColText(row24, 30, "(END OF DISPLAY)")
+    End If
+    pageBuf = SetRow(pageBuf, 24, row24)
+
+    BuildPageWithSingleLine = pageBuf
+End Function
+
+Sub ConfigureTestEnvironment(ByRef fake)
+    Set g_bzhao = fake
+    DEBUG_LEVEL = 0
+    STABILITY_PAUSE = 0
+    LOOP_PAUSE = 0
+    REVIEW_PAUSE = 0
+    BLACKLIST_TERMS = ""
+    WARRANTY_LTYPES_RAW = "WCH,WF"
+    InitializeSupportedWarrantyLTypes
 End Sub
 
-Sub Test_StatusAction_Ixx()
-    Dim action1, action2
-    action1 = GetLineActionFromStatus("I123")
-    action2 = GetLineActionFromStatus("I91")
-    AssertEqual "I123 maps to FINISH_AND_REROUTE", "FINISH_AND_REROUTE", action1
-    AssertEqual "I91 maps to FINISH_AND_REROUTE", "FINISH_AND_REROUTE", action2
+Sub Test_StatusActionMap_Production()
+    AssertEqual "C92 maps to REVIEW", "REVIEW", GetLineActionFromStatus("C92")
+    AssertEqual "C93 maps to SKIP_REVIEWED", "SKIP_REVIEWED", GetLineActionFromStatus("C93")
+    AssertEqual "Ixx maps to FINISH_AND_REROUTE", "FINISH_AND_REROUTE", GetLineActionFromStatus("I91")
+    AssertEqual "Hxx maps to SKIP_RO_ON_HOLD", "SKIP_RO_ON_HOLD", GetLineActionFromStatus("H20")
 End Sub
 
-Sub Test_StatusAction_Hxx()
-    Dim action1, action2
-    action1 = GetLineActionFromStatus("H20")
-    action2 = GetLineActionFromStatus("H99")
-    AssertEqual "H20 maps to SKIP_RO_ON_HOLD", "SKIP_RO_ON_HOLD", action1
-    AssertEqual "H99 maps to SKIP_RO_ON_HOLD", "SKIP_RO_ON_HOLD", action2
+Sub Test_ProcessRoReview_MultiPage_QueuesNonC93Only()
+    Dim fake, pages(1), ok, commands
+    Set fake = New FakeBzhao
+
+    pages(0) = BuildPageWithSingleLine("A", "C93", "WCH", "PAGE1", False)
+    pages(1) = BuildPageWithSingleLine("C", "C92", "WCH", "PAGE2", True)
+    fake.SetPages pages
+
+    ConfigureTestEnvironment fake
+
+    ok = ProcessRoReview()
+    commands = fake.CommandsCsv()
+
+    AssertTrue "ProcessRoReview returns success on actionable multipage", ok
+    AssertEqual "Review phase result", "PROCEED", g_ReviewPhaseResult
+    AssertTrue "Sends N to scan next page", ContainsToken(commands, "N")
+    AssertTrue "Reviews line on page 2", ContainsToken(commands, "R C")
+    AssertFalse "Does not review C93 line from page 1", ContainsToken(commands, "R A")
+    AssertFalse "Does not skip review phase", ContainsToken(commands, "E")
 End Sub
 
-Sub Test_StatusAction_Unknown()
-    Dim action1, action2
-    action1 = GetLineActionFromStatus("X99")
-    action2 = GetLineActionFromStatus("Z01")
-    AssertEqual "X99 maps to SKIP_UNKNOWN", "SKIP_UNKNOWN", action1
-    AssertEqual "Z01 maps to SKIP_UNKNOWN", "SKIP_UNKNOWN", action2
+Sub Test_ProcessRoReview_MultiPage_AllC93Skips()
+    Dim fake, pages(1), ok, commands
+    Set fake = New FakeBzhao
+
+    pages(0) = BuildPageWithSingleLine("A", "C93", "WCH", "PAGE1", False)
+    pages(1) = BuildPageWithSingleLine("B", "C93", "WCH", "PAGE2", True)
+    fake.SetPages pages
+
+    ConfigureTestEnvironment fake
+
+    ok = ProcessRoReview()
+    commands = fake.CommandsCsv()
+
+    AssertFalse "All-C93 multipage returns skipped", ok
+    AssertEqual "Review phase result for all-C93", "SKIPPED", g_ReviewPhaseResult
+    AssertTrue "Sends N before deciding all-C93", ContainsToken(commands, "N")
+    AssertTrue "Sends E to exit skipped review", ContainsToken(commands, "E")
 End Sub
 
-Sub Test_StatusAction_Empty()
-    Dim action
-    action = GetLineActionFromStatus("")
-    AssertEqual "Empty status maps to SKIP_UNKNOWN", "SKIP_UNKNOWN", action
+Sub Test_ProcessRoReview_UnsupportedWarrantySkips()
+    Dim fake, pages(0), ok, commands
+    Set fake = New FakeBzhao
+
+    pages(0) = BuildPageWithSingleLine("A", "C92", "WZZ", "WARRANTY", True)
+    fake.SetPages pages
+
+    ConfigureTestEnvironment fake
+
+    ok = ProcessRoReview()
+    commands = fake.CommandsCsv()
+
+    AssertFalse "Unsupported warranty gate returns skipped", ok
+    AssertEqual "Review phase result for unsupported warranty", "SKIPPED", g_ReviewPhaseResult
+    AssertTrue "Sends E for unsupported warranty skip", ContainsToken(commands, "E")
+    AssertFalse "Does not attempt review when unsupported warranty found", ContainsToken(commands, "R A")
 End Sub
 
-' ==============================================================================
-' TEST 2: Line Record Creation and Line Status Query
-' ==============================================================================
+Dim scriptPath, fileContent, scriptStream
+scriptPath = g_fso.BuildPath(g_repoRoot, "apps\maintenance_ro_closer\Maintenance_RO_Closer.vbs")
+Set scriptStream = g_fso.OpenTextFile(scriptPath)
+fileContent = scriptStream.ReadAll
+scriptStream.Close
+fileContent = Replace(fileContent, "Set g_bzhao = CreateObject(""BZWhll.WhllObj"")", "Set g_bzhao = Nothing")
+fileContent = Replace(fileContent, vbCrLf & "' Execute" & vbCrLf & "RunAutomation", vbCrLf & "' Execute disabled during tests")
+ExecuteGlobal fileContent
 
-Sub Test_CreateLineRecord()
-    Dim record
-    Set record = CreateLineRecord("A", "C92", 10, "TEST DESCRIPTION")
-    AssertEqual "Line letter", "A", record("lineLetter")
-    AssertEqual "Status code", "C92", record("statusCode")
-    AssertEqual "Row", 10, record("row")
-    AssertEqual "Description", "TEST DESCRIPTION", record("description")
-End Sub
+WScript.Echo "Maintenance RO line routing tests"
+WScript.Echo "================================"
 
-Sub Test_GetLineStatus_Found()
-    ' Clear and populate records
-    Set g_CurrentPageLineRecords = CreateObject("Scripting.Dictionary")
-    Set g_CurrentPageLineRecords("A") = CreateLineRecord("A", "C92", 10, "TEST")
-    
-    Dim status
-    status = GetLineStatus("A")
-    AssertEqual "Status for line A", "C92", status
-End Sub
-
-Sub Test_GetLineStatus_NotFound()
-    ' Clear records
-    Set g_CurrentPageLineRecords = CreateObject("Scripting.Dictionary")
-    
-    Dim status
-    status = GetLineStatus("Z")
-    AssertEqual "Status for non-existent line", "", status
-End Sub
-
-Sub Test_LineRecordsByLetter()
-    ' Populate multiple records
-    Set g_CurrentPageLineRecords = CreateObject("Scripting.Dictionary")
-    Set g_CurrentPageLineRecords("A") = CreateLineRecord("A", "C92", 10, "TIRE PRESSURE")
-    Set g_CurrentPageLineRecords("B") = CreateLineRecord("B", "I91", 11, "TIRE TREAD")
-    Set g_CurrentPageLineRecords("C") = CreateLineRecord("C", "H20", 12, "BATTERY TEST")
-    
-    AssertEqual "Line A status", "C92", GetLineStatus("A")
-    AssertEqual "Line B status", "I91", GetLineStatus("B")
-    AssertEqual "Line C status", "H20", GetLineStatus("C")
-End Sub
-
-' ==============================================================================
-' TEST 3: RO-Level Gate Logic
-' ==============================================================================
-
-Sub Test_CheckRoLineStatuses_AllC93()
-    ' Simulate RO with all lines C93 (already reviewed)
-    Set g_CurrentPageLineRecords = CreateObject("Scripting.Dictionary")
-    Set g_CurrentPageLineRecords("A") = CreateLineRecord("A", "C93", 10, "LINE A")
-    Set g_CurrentPageLineRecords("B") = CreateLineRecord("B", "C93", 11, "LINE B")
-    
-    Dim gateResult
-    gateResult = CheckRoLineStatuses()
-    AssertEqual "All C93 -> ALL_REVIEWED gate", "ALL_REVIEWED", gateResult
-End Sub
-
-Sub Test_CheckRoLineStatuses_HoldDetected()
-    ' Simulate RO with hold
-    Set g_CurrentPageLineRecords = CreateObject("Scripting.Dictionary")
-    Set g_CurrentPageLineRecords("A") = CreateLineRecord("A", "C92", 10, "LINE A")
-    Set g_CurrentPageLineRecords("B") = CreateLineRecord("B", "H20", 11, "LINE B")
-    
-    Dim gateResult
-    gateResult = CheckRoLineStatuses()
-    AssertEqual "Hold detected -> HOLD_DETECTED gate", "HOLD_DETECTED", gateResult
-End Sub
-
-Sub Test_CheckRoLineStatuses_Mixed()
-    ' Simulate RO with mixed statuses (not all reviewed, no hold)
-    Set g_CurrentPageLineRecords = CreateObject("Scripting.Dictionary")
-    Set g_CurrentPageLineRecords("A") = CreateLineRecord("A", "C92", 10, "LINE A")
-    Set g_CurrentPageLineRecords("B") = CreateLineRecord("B", "I91", 11, "LINE B")
-    
-    Dim gateResult
-    gateResult = CheckRoLineStatuses()
-    AssertEqual "Mixed statuses -> no early gate", "", gateResult
-End Sub
-
-Sub Test_CheckRoLineStatuses_Unknown()
-    ' Simulate RO with unknown status (not C92/C93/I/H)
-    Set g_CurrentPageLineRecords = CreateObject("Scripting.Dictionary")
-    Set g_CurrentPageLineRecords("A") = CreateLineRecord("A", "X99", 10, "LINE A")
-    
-    Dim gateResult
-    gateResult = CheckRoLineStatuses()
-    ' Unknown status alone does not trigger RO-level gate
-    AssertEqual "Unknown status -> no early gate", "", gateResult
-End Sub
-
-Sub Test_CheckRoLineStatuses_Empty()
-    ' Simulate RO with no lines
-    Set g_CurrentPageLineRecords = CreateObject("Scripting.Dictionary")
-    
-    Dim gateResult
-    gateResult = CheckRoLineStatuses()
-    AssertEqual "No lines -> no early gate", "", gateResult
-End Sub
-
-' ==============================================================================
-' RUN TESTS
-' ==============================================================================
-
-WScript.Echo "Line Status Detection and Routing Tests"
-WScript.Echo "========================================"
-WScript.Echo ""
-
-WScript.Echo "TEST GROUP: Status -> Action Mapping"
-Test_StatusAction_C92
-Test_StatusAction_C93
-Test_StatusAction_Ixx
-Test_StatusAction_Hxx
-Test_StatusAction_Unknown
-Test_StatusAction_Empty
+Test_StatusActionMap_Production
+Test_ProcessRoReview_MultiPage_QueuesNonC93Only
+Test_ProcessRoReview_MultiPage_AllC93Skips
+Test_ProcessRoReview_UnsupportedWarrantySkips
 
 WScript.Echo ""
-WScript.Echo "TEST GROUP: Line Record Creation and Query"
-Test_CreateLineRecord
-Test_GetLineStatus_Found
-Test_GetLineStatus_NotFound
-Test_LineRecordsByLetter
-
-WScript.Echo ""
-WScript.Echo "TEST GROUP: RO-Level Gate Logic"
-Test_CheckRoLineStatuses_AllC93
-Test_CheckRoLineStatuses_HoldDetected
-Test_CheckRoLineStatuses_Mixed
-Test_CheckRoLineStatuses_Unknown
-Test_CheckRoLineStatuses_Empty
-
-WScript.Echo ""
-WScript.Echo "========================================"
 If g_Fail = 0 Then
     WScript.Echo "SUCCESS: All " & g_Pass & " tests passed."
     WScript.Quit 0

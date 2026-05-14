@@ -420,11 +420,34 @@ Function TryParseCdkDate(rawDateValue, ByRef parsedDate)
     End If
 
     If InStr(token, "/") > 0 Then
-        If IsDate(token) Then
-            parsedDate = CDate(token)
-            TryParseCdkDate = True
+        Set regEx = CreateObject("VBScript.RegExp")
+        regEx.IgnoreCase = True
+        regEx.Global = False
+        regEx.Pattern = "^(\d{1,2})/(\d{1,2})/(\d{2,4})$"
+
+        If Not regEx.Test(token) Then
+            TryParseCdkDate = False
             Exit Function
         End If
+
+        Set matches = regEx.Execute(token)
+        monthNumber = CInt(matches(0).SubMatches(0))
+        dayNumber = CInt(matches(0).SubMatches(1))
+        yearPart = matches(0).SubMatches(2)
+
+        If Len(yearPart) = 2 Then
+            yearNumber = CInt(yearPart)
+            If yearNumber >= 70 Then
+                yearNumber = 1900 + yearNumber
+            Else
+                yearNumber = 2000 + yearNumber
+            End If
+        Else
+            yearNumber = CInt(yearPart)
+        End If
+
+        TryParseCdkDate = TryCreateStrictDate(yearNumber, monthNumber, dayNumber, parsedDate)
+        Exit Function
     End If
 
     Set regEx = CreateObject("VBScript.RegExp")
@@ -460,8 +483,26 @@ Function TryParseCdkDate(rawDateValue, ByRef parsedDate)
         yearNumber = CInt(yearPart)
     End If
 
+    TryParseCdkDate = TryCreateStrictDate(yearNumber, monthNumber, dayNumber, parsedDate)
+End Function
+
+Function TryCreateStrictDate(yearNumber, monthNumber, dayNumber, ByRef parsedDate)
+    On Error Resume Next
     parsedDate = DateSerial(yearNumber, monthNumber, dayNumber)
-    TryParseCdkDate = True
+    If Err.Number <> 0 Then
+        Err.Clear
+        On Error GoTo 0
+        TryCreateStrictDate = False
+        Exit Function
+    End If
+    On Error GoTo 0
+
+    If Year(parsedDate) <> yearNumber Or Month(parsedDate) <> monthNumber Or Day(parsedDate) <> dayNumber Then
+        TryCreateStrictDate = False
+        Exit Function
+    End If
+
+    TryCreateStrictDate = True
 End Function
 
 Function MonthNumberFromAbbrev(monthAbbrev)
@@ -941,11 +982,8 @@ Function ProcessRoReview()
                 g_bzhao.Pause STABILITY_PAUSE
                 ' Re-scan this specific line to get updated status
                 Dim updatedStatus
+                ScanVisibleLineHeaders()
                 updatedStatus = GetLineStatus(lineLetter)
-                If updatedStatus = "" Then
-                    ScanVisibleLineHeaders()
-                    updatedStatus = GetLineStatus(lineLetter)
-                End If
                 Dim updatedAction
                 updatedAction = GetLineActionFromStatus(updatedStatus)
                 LogResult "INFO", "ProcessRoReview: After FNL, Line " & lineLetter & " status=" & updatedStatus & " new-action=" & updatedAction

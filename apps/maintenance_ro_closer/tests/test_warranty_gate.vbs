@@ -88,9 +88,13 @@ Function BuildStatusPage(ByVal statusText, ByVal laborTypeCode)
     pageBuf = SetRow(pageBuf, 5, row5)
 
     row11 = String(80, " ")
+    row11 = SetColText(row11, 1, "A")
     row11 = SetColText(row11, 4, "L1")
+    row11 = SetColText(row11, 42, "C92")
     row11 = SetColText(row11, 50, laborTypeCode)
     pageBuf = SetRow(pageBuf, 11, row11)
+
+    pageBuf = SetRow(pageBuf, 24, SetColText(String(80, " "), 1, "COMMAND: (END OF DISPLAY)"))
 
     BuildStatusPage = pageBuf
 End Function
@@ -129,7 +133,9 @@ fake.SetPage BuildStatusPage("READY TO POST", "CP")
 AssertTrue "Non-warranty READY TO POST RO still proceeds", ShouldProcessRoByBusinessRules("333333")
 
 fake.SetPage BuildStatusPage("READY TO POST", "WZZ")
-AssertFalse "Unsupported W* labor type is skipped", ShouldProcessRoByBusinessRules("444444")
+AssertTrue "Unsupported W* labor type does not block RO business gate", ShouldProcessRoByBusinessRules("444444")
+AssertFalse "Unsupported W* labor type is skipped during review phase", ProcessRoReview()
+AssertEqual "Review phase result for unsupported W* labor type", "SKIPPED", g_ReviewPhaseResult
 
 If g_Fail = 0 Then
     WScript.Echo "SUCCESS: All " & g_Pass & " maintenance warranty processing tests passed."
