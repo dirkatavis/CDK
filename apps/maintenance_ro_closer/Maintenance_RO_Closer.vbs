@@ -50,7 +50,7 @@ Dim WARRANTY_LTYPES_RAW: WARRANTY_LTYPES_RAW = GetConfigSetting("Maintenance_RO_
 Dim WARRANTY_DIALOG_STEP_DELAY_MS: WARRANTY_DIALOG_STEP_DELAY_MS = GetConfigSetting("Maintenance_RO_Closer", "WarrantyDialogStepDelayMs", 2000)
 Dim FORD_WARRANTY_CAUSE_TEXT: FORD_WARRANTY_CAUSE_TEXT = GetConfigSetting("Maintenance_RO_Closer", "FordWarrantyCauseText", "Defective Part")
 Dim FORD_WARRANTY_LICENSE_STATE: FORD_WARRANTY_LICENSE_STATE = GetConfigSetting("Maintenance_RO_Closer", "FordWarrantyLicenseState", "GA")
-Dim SCRIPT_BUILD_TAG: SCRIPT_BUILD_TAG = "2026-05-14-no-error-suppression"
+Dim SCRIPT_BUILD_TAG: SCRIPT_BUILD_TAG = "2026-05-14-fix-asc-empty-string"
 
 Dim g_SkipRoLookup
 Dim g_SupportedWarrantyLTypes
@@ -575,7 +575,8 @@ Function ScanVisibleLineHeaders()
             lineLetter = ExtractLineLetterFromHeaderRow(buf)
 
             ' Validate it's a line letter (A-Z)
-            If Len(lineLetter) = 1 And Asc(UCase(lineLetter)) >= Asc("A") And Asc(UCase(lineLetter)) <= Asc("Z") Then
+            If Len(lineLetter) = 1 And Len(Trim(lineLetter)) > 0 Then
+                If Asc(UCase(Trim(lineLetter))) >= Asc("A") And Asc(UCase(Trim(lineLetter))) <= Asc("Z") Then
                 ' Extract status code with fixed-column first, then pattern fallback
                 statusCode = ""
                 If Len(buf) >= 49 Then
@@ -600,6 +601,7 @@ Function ScanVisibleLineHeaders()
 
                     recordCount = recordCount + 1
                     LogResult "INFO", "ScanVisibleLineHeaders: Line " & lineLetter & " status=" & statusCode & " desc=" & description
+                End If
                 End If
             End If
         End If
