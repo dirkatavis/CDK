@@ -126,7 +126,6 @@ Sub ProcessRoList(fso, ByRef successfulCount)
                 
                 ' Check for errors or closed status
                 If IsRoProcessable(currentRo) Then
-                    LogResult "INFO", "RO " & currentRo & " is processable."
                     If ShouldProcessRoByBusinessRules(currentRo) Then
                         reviewOk = ProcessRoReview()
                         If Err.Number <> 0 Then
@@ -216,6 +215,7 @@ End Function
 
 Function IsRoProcessable(roNumber)
     Dim screenContent
+    IsRoProcessable = True
     g_bzhao.Pause STABILITY_PAUSE
     ' Read screen starting from Row 2 down to Row 6 to catch status (Row 5) and RO info
     ' We also read more to catch system errors (Pick/BASIC errors)
