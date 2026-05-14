@@ -759,6 +759,47 @@ Function CheckRoLineStatuses()
     End If
 End Function
 
+Function CheckWarrantyPageGate()
+    Dim unsupportedType
+    unsupportedType = GetFirstUnsupportedWarrantyLaborType()
+    If unsupportedType <> "" Then
+        LogResult "INFO", "ProcessRoReview: Unsupported warranty labor type (" & unsupportedType & ") detected. Skipping review."
+        CheckWarrantyPageGate = "UNSUPPORTED_WARRANTY"
+    Else
+        CheckWarrantyPageGate = ""
+    End If
+End Function
+
+Function CheckHoldPageGate()
+    Dim gateResult
+    gateResult = CheckRoLineStatuses()
+    If gateResult = "HOLD_DETECTED" Then
+        LogResult "INFO", "ProcessRoReview: RO has line(s) on hold. Skipping review."
+        CheckHoldPageGate = "HOLD_DETECTED"
+    Else
+        CheckHoldPageGate = ""
+    End If
+End Function
+
+Function CheckAllReviewedPageGate()
+    Dim gateResult, screenContent
+    gateResult = CheckRoLineStatuses()
+    LogResult "INFO", "ProcessRoReview: gateResult=" & gateResult
+
+    If gateResult = "ALL_REVIEWED" Then
+        ' Deterministic single-page fast path: if this page is the end, skip now.
+        g_bzhao.ReadScreen screenContent, 1920, 1, 1
+        If InStr(1, screenContent, "(END OF DISPLAY)", vbTextCompare) > 0 Then
+            LogResult "INFO", "ProcessRoReview: All lines are C93 and end-of-display reached. Skipping review phase."
+            CheckAllReviewedPageGate = "ALL_REVIEWED"
+        Else
+            CheckAllReviewedPageGate = ""
+        End If
+    Else
+        CheckAllReviewedPageGate = ""
+    End If
+End Function
+
 Function ProcessRoReview()
     Dim screenContent, pageCount, gateResult, processedLetters, i, recordKey, record
     Dim lineLetter, status, action, rereadCount
@@ -770,59 +811,6 @@ Function ProcessRoReview()
     ProcessRoReview = True
     hasScannedLines = False
     hasActionableLine = False
-
-    Function CheckWarrantyPageGate()
-        Dim unsupportedType
-        unsupportedType = GetFirstUnsupportedWarrantyLaborType()
-        If unsupportedType <> "" Then
-            LogResult "INFO", "ProcessRoReview: Unsupported warranty labor type (" & unsupportedType & ") detected. Skipping review."
-            CheckWarrantyPageGate = "UNSUPPORTED_WARRANTY"
-        Else
-            CheckWarrantyPageGate = ""
-        End If
-    End Function
-
-    Function CheckHoldPageGate()
-        Dim gateResult
-        gateResult = CheckRoLineStatuses()
-        If gateResult = "HOLD_DETECTED" Then
-            LogResult "INFO", "ProcessRoReview: RO has line(s) on hold. Skipping review."
-            CheckHoldPageGate = "HOLD_DETECTED"
-        Else
-            CheckHoldPageGate = ""
-        End If
-    End Function
-
-    Function CheckAllReviewedPageGate()
-        Dim gateResult, screenContent
-        gateResult = CheckRoLineStatuses()
-        LogResult "INFO", "ProcessRoReview: gateResult=" & gateResult
-    
-        If gateResult = "ALL_REVIEWED" Then
-            ' Deterministic single-page fast path: if this page is the end, skip now.
-            g_bzhao.ReadScreen screenContent, 1920, 1, 1
-            If InStr(1, screenContent, "(END OF DISPLAY)", vbTextCompare) > 0 Then
-                LogResult "INFO", "ProcessRoReview: All lines are C93 and end-of-display reached. Skipping review phase."
-                CheckAllReviewedPageGate = "ALL_REVIEWED"
-            Else
-                CheckAllReviewedPageGate = ""
-            End If
-        Else
-            CheckAllReviewedPageGate = ""
-        End If
-    End Function
-
-    Function ProcessRoReview()
-        Dim screenContent, pageCount, gateResult, processedLetters, i, recordKey, record
-        Dim lineLetter, status, action, rereadCount
-        Dim hasScannedLines, hasActionableLine
-    
-        pageCount = 0
-        Set processedLetters = CreateObject("Scripting.Dictionary")
-        g_ReviewPhaseResult = "PROCEED"
-        ProcessRoReview = True
-        hasScannedLines = False
-        hasActionableLine = False
     
     ' === Page Loop: Process all pages of the RO detail ===
     Do
