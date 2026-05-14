@@ -770,9 +770,7 @@ Function CheckWarrantyPageGate()
     End If
 End Function
 
-Function CheckHoldPageGate()
-    Dim gateResult
-    gateResult = CheckRoLineStatuses()
+Function CheckHoldPageGate(ByVal gateResult)
     If gateResult = "HOLD_DETECTED" Then
         LogResult "INFO", "ProcessRoReview: RO has line(s) on hold. Skipping review."
         CheckHoldPageGate = "HOLD_DETECTED"
@@ -781,9 +779,8 @@ Function CheckHoldPageGate()
     End If
 End Function
 
-Function CheckAllReviewedPageGate()
-    Dim gateResult, screenContent
-    gateResult = CheckRoLineStatuses()
+Function CheckAllReviewedPageGate(ByVal gateResult)
+    Dim screenContent
     LogResult "INFO", "ProcessRoReview: gateResult=" & gateResult
 
     If gateResult = "ALL_REVIEWED" Then
@@ -836,7 +833,8 @@ Function ProcessRoReview()
             Exit Function
         End If
         
-        gateResult = CheckHoldPageGate()
+        gateResult = CheckRoLineStatuses()
+        gateResult = CheckHoldPageGate(gateResult)
         If gateResult <> "" Then
             EnterTextWithStability "E"
             g_ReviewPhaseResult = "SKIPPED"
@@ -844,7 +842,7 @@ Function ProcessRoReview()
             Exit Function
         End If
         
-        gateResult = CheckAllReviewedPageGate()
+        gateResult = CheckAllReviewedPageGate(gateResult)
         If gateResult <> "" Then
             EnterTextWithStability "E"
             g_ReviewPhaseResult = "SKIPPED"
