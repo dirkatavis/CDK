@@ -30,6 +30,7 @@ ExecuteGlobal g_fso.OpenTextFile(g_fso.BuildPath(g_root, "framework\BZHelper.vbs
 
 ' --- Configuration ---
 Dim LOG_FILE_PATH:         LOG_FILE_PATH         = GetConfigPath("RoStatusSummary", "Log")
+Dim OUTPUT_CSV_PATH:       OUTPUT_CSV_PATH       = GetConfigPath("RoStatusSummary", "OutputCSV")
 Dim STEP_DELAY_MS:         STEP_DELAY_MS         = CInt(GetIniSetting("RoStatusSummary", "StepDelayMs", "1000"))
 Dim EMPLOYEE_NUMBER:       EMPLOYEE_NUMBER       = GetIniSetting("RoStatusSummary", "EmployeeNumber", "")
 Dim EMPLOYEE_NAME_CONFIRM: EMPLOYEE_NAME_CONFIRM = GetIniSetting("RoStatusSummary", "EmployeeNameConfirm", "")
@@ -44,19 +45,35 @@ Call ProcessRONumbers()
 '==============================================================================
 Sub ProcessRONumbers()
     Dim statusDict
+    Dim csvFile
     Set statusDict = CreateObject("Scripting.Dictionary")
+
+    On Error Resume Next
+    Set csvFile = g_fso.CreateTextFile(OUTPUT_CSV_PATH, True)
+    If Err.Number <> 0 Then
+        LogResult "ERROR", "Failed to open output CSV: " & OUTPUT_CSV_PATH & " | " & Err.Description
+        MsgBox "Failed to open output CSV file." & vbCrLf & OUTPUT_CSV_PATH, vbCritical, "RO Status Summary"
+        Set statusDict = Nothing
+        Exit Sub
+    End If
+    On Error GoTo 0
+    csvFile.WriteLine "MVA,Status"
 
     On Error Resume Next
     g_bzhao.Connect ""
     If Err.Number <> 0 Then
         LogResult "ERROR", "Failed to connect to BlueZone: " & Err.Description
         MsgBox "Failed to connect to BlueZone terminal session.", vbCritical, "RO Status Summary"
+        csvFile.Close
+        Set csvFile = Nothing
         Set statusDict = Nothing
         Exit Sub
     End If
     On Error GoTo 0
 
-    Call GatherROStatuses(statusDict)
+    Call GatherROStatuses(statusDict, csvFile)
+    csvFile.Close
+    Set csvFile = Nothing
     Call DisplaySummary(statusDict)
 
     Set statusDict = Nothing
@@ -71,7 +88,7 @@ End Sub
 '   3. Status read  — GetRepairOrderStatus() → tally into statusDict
 '   4. E+Enter      — return to COMMAND prompt
 '==============================================================================
-Sub GatherROStatuses(statusDict)
+Sub GatherROStatuses(statusDict, csvFile)
     Dim roNumber: roNumber = 1
 
     Do
@@ -96,22 +113,26 @@ Sub GatherROStatuses(statusDict)
         If IsTextPresent("for this RO is not on file") Then
             LogResult "INFO", "Seq " & roNumber & ": VEHID not on file — recovering via full PFC re-auth."
             Call TallyStatus(statusDict, "DEFECTIVE RO")
+            Call WriteStatusCsvRow(csvFile, "UNKNOWN", "DEFECTIVE RO")
             Call RecoverFromVehidError()
             skipToNext = True
 
         ElseIf IsTextPresent("PRESS RETURN TO CONTINUE") Then
             LogResult "INFO", "Seq " & roNumber & ": VEHID error (all-caps) — recovering via full PFC re-auth."
             Call TallyStatus(statusDict, "DEFECTIVE RO")
+            Call WriteStatusCsvRow(csvFile, "UNKNOWN", "DEFECTIVE RO")
             Call RecoverFromVehidError()
             skipToNext = True
 
         ElseIf IsTextPresent("NOT ON FILE") Then
             Call TallyStatus(statusDict, "NOT ON FILE")
+            Call WriteStatusCsvRow(csvFile, "UNKNOWN", "NOT ON FILE")
             Call RecoverFromSkippableError()
             skipToNext = True
 
         ElseIf IsTextPresent("is closed") Or IsTextPresent("ALREADY CLOSED") Then
             Call TallyStatus(statusDict, "ALREADY CLOSED")
+            Call WriteStatusCsvRow(csvFile, "UNKNOWN", "ALREADY CLOSED")
             Call RecoverFromSkippableError()
             skipToNext = True
 
@@ -130,10 +151,11 @@ Sub GatherROStatuses(statusDict)
             End If
 
             ' --- 3. Status read and tally ---
-            Dim roActualNumber: roActualNumber = GetROFromScreen()
+            Dim mva: mva = GetMVAFromScreen()
             Dim roStatus: roStatus = GetRepairOrderStatus()
             Call TallyStatus(statusDict, roStatus)
-            LogResult "INFO", "Seq " & roNumber & " RO " & roActualNumber & ": " & roStatus
+            Call WriteStatusCsvRow(csvFile, mva, roStatus)
+            LogResult "INFO", "Seq " & roNumber & " MVA " & mva & ": " & roStatus
 
             ' --- 4. Return to COMMAND prompt ---
             g_bzhao.SendKey "E<NumpadEnter>"
@@ -143,6 +165,22 @@ Sub GatherROStatuses(statusDict)
         roNumber = roNumber + 1
     Loop
 End Sub
+
+Sub WriteStatusCsvRow(csvFile, mva, status)
+    Dim safeMva: safeMva = CsvSafe(mva)
+    Dim safeStatus: safeStatus = CsvSafe(status)
+    csvFile.WriteLine safeMva & "," & safeStatus
+End Sub
+
+Function CsvSafe(value)
+    Dim text: text = CStr(value)
+    If InStr(text, Chr(34)) > 0 Then text = Replace(text, Chr(34), Chr(34) & Chr(34))
+    If InStr(text, ",") > 0 Or InStr(text, Chr(34)) > 0 Then
+        CsvSafe = Chr(34) & text & Chr(34)
+    Else
+        CsvSafe = text
+    End If
+End Function
 
 
 '==============================================================================
@@ -222,6 +260,23 @@ Function GetROFromScreen()
             GetROFromScreen = "UNKNOWN"
         End If
     End If
+End Function
+
+Function GetMVAFromScreen()
+    Dim buf, re, matches
+    g_bzhao.ReadScreen buf, 240, 1, 1
+
+    Set re = CreateObject("VBScript.RegExp")
+    re.Pattern = "MVA:?\s*([A-Z0-9\-]{4,})"
+    re.IgnoreCase = True
+    If re.Test(buf) Then
+        Set matches = re.Execute(buf)
+        GetMVAFromScreen = Trim(matches(0).SubMatches(0))
+        Exit Function
+    End If
+
+    ' Fallback: when MVA label is unavailable, use the same header identifier used by current logging.
+    GetMVAFromScreen = GetROFromScreen()
 End Function
 
 Function GetRepairOrderStatus()
